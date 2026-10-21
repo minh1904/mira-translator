@@ -242,7 +242,7 @@ vai trò trong một control. Màn feature chỉ dùng tên semantic như `bg-su
 
 - Dùng scale khoảng cách 2/4/8/12/16/20/24/32/40/48 px. Khoảng cách ngoài một nhóm phải lớn hơn hoặc
   bằng khoảng cách trong nhóm.
-- Thanh tiêu đề cao 40 px. Sidebar chuẩn rộng 260 px; app sidebar hiện tại rộng 224 px và thu về rail
+- Thanh tiêu đề duy nhất cao 35 px theo chuẩn VS Code. Sidebar chuẩn rộng 260 px; app sidebar hiện tại rộng 224 px và thu về rail
   48 px theo quyết định navigation riêng.
 - Ưu tiên một mặt phẳng lớn chia bằng hairline border. Card chỉ dùng khi nhóm có biên nhận thức và hành
   động riêng; không bọc mọi section trong card.

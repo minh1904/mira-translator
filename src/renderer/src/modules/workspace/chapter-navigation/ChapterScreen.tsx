@@ -12,7 +12,6 @@ import { Breadcrumb } from '../../../components/ui/Breadcrumb'
 import { Button } from '../../../components/ui/Button'
 import { cn } from '../../../lib/cn'
 import type { TextStore } from '../chapter-editor/editorSession'
-import { languages } from '../../library/public'
 import { headingTitle } from '../work-detail/chapterList'
 import { ChapterWorkspace } from './ChapterWorkspace'
 import { ImportDialog } from './ImportDialog'
@@ -179,14 +178,6 @@ export function ChapterScreen({
           ]}
         />
       </TopBarTitle>
-      <header className="flex h-(--mira-header-height) shrink-0 items-center gap-2 border-b border-default bg-surface px-2.5">
-        <h2 className="min-w-0 truncate text-body-sm font-semibold">
-          {headingTitle(chapter)}{' '}
-          <span className="font-normal text-subtle">
-            · {work.title} · {languages[work.sourceLanguage].short} → Việt
-          </span>
-        </h2>
-      </header>
 
       {fileInput}
 

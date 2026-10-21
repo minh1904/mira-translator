@@ -37,7 +37,10 @@ function openTarget(target: ResolvedTarget): void {
  */
 export function AssistantSidePanel({ onClose }: { onClose(): void }): JSX.Element {
   return (
-    <section aria-label="Bảng Trợ lý" className="flex h-full min-h-0 flex-col bg-subtle">
+    <section
+      aria-label="Bảng Trợ lý"
+      className="flex h-full min-h-0 flex-col rounded-xs border border-default bg-surface overflow-hidden shadow-xs"
+    >
       <AgentPanel onOpenTarget={openTarget} onClose={onClose} />
     </section>
   )

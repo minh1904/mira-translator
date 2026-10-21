@@ -15,7 +15,6 @@ import {
   UploadMinimalisticIcon
 } from '@renderer/components/ui/reicon'
 
-import { splitParagraphs } from '../../../../../shared/text/paragraphSpans'
 import type { ChapterItem } from '../../../../../shared/contracts/chapters'
 import type { SourceCatalogItem } from '../../../../../shared/contracts/sources'
 import { extractChapterNumber } from '../../../../../shared/text/chapterNumber'
@@ -24,7 +23,7 @@ import { TopBarActions, TopBarTitle } from '../../../components/ui/TopBarActions
 import { WorkTabActiveContext } from '../../../components/ui/topBarSlot'
 import { cn } from '../../../lib/cn'
 import { Breadcrumb } from '../../../components/ui/Breadcrumb'
-import { Button, LinkButton } from '../../../components/ui/Button'
+import { Button } from '../../../components/ui/Button'
 import { CompactButton } from '../../../components/ui/CompactButton'
 import { MenuItem, MenuPopup, MenuRoot, MenuTrigger } from '../../../components/ui/DropdownMenu'
 import { TabsList, TabsRoot, TabsTab } from '../../../components/ui/Tabs'
@@ -41,7 +40,6 @@ import { useChapterStore } from '../store/chapterStore'
 import { usePaneLayoutStore } from '../store/paneLayoutStore'
 import { useWorkspaceStore } from '../store/workspaceStore'
 import { headingTitle } from '../work-detail/chapterList'
-import { contextArea } from '../work-detail/workAreas'
 import { PanelResizeHandle } from './PanelResizeHandle'
 import { buildLocation, type PaneCaret } from '../assistant/chatLocation'
 import { AssistantSideDrawer, AssistantSidePanel, useNarrowWindow } from './AssistantSidePanel'
@@ -95,16 +93,6 @@ export interface ChapterWorkspaceProps {
 }
 
 const otherSide = (side: Side): Side => (side === 'source' ? 'target' : 'source')
-
-/**
- * Chuỗi thống kê số lượng đoạn văn bản gốc và bản dịch của chương.
- */
-const paragraphFigures = (source: TextRecord, target: TextRecord): string => {
-  const sourceCount = splitParagraphs(source.content).length.toLocaleString('vi')
-  if (target.content.trim() === '') return sourceCount + ' đoạn gốc, chưa dịch'
-  const targetCount = splitParagraphs(target.content).length.toLocaleString('vi')
-  return sourceCount + ' đoạn gốc · ' + targetCount + ' đoạn dịch'
-}
 
 interface GapPromptState {
   nextChapter: ChapterItem
@@ -583,8 +571,24 @@ export function ChapterWorkspace({
         />
       </TopBarTitle>
 
-      {/* Các nút thao tác Hỏi AI, chế độ tập trung và menu chương hiển thị trên thanh tiêu đề cửa sổ. */}
+      {/* Các nút thao tác chế độ câu/toàn văn, Hỏi AI, chế độ tập trung và menu chương hiển thị trên thanh tiêu đề cửa sổ. */}
       <TopBarActions>
+        {SENTENCE_MODE_ENABLED && (
+          <TabsRoot
+            value={mode}
+            aria-label="Chế độ soạn thảo"
+            onValueChange={(value) => void switchMode(value as 'full' | 'sentence')}
+          >
+            <TabsList variant="pill">
+              <TabsTab variant="pill" value="full">
+                Toàn văn
+              </TabsTab>
+              <TabsTab variant="pill" value="sentence">
+                Từng câu
+              </TabsTab>
+            </TabsList>
+          </TabsRoot>
+        )}
         {mode === 'full' && (
           <CompactButton
             aria-pressed={aiOpen}
@@ -640,47 +644,8 @@ export function ChapterWorkspace({
         </MenuRoot>
       </TopBarActions>
 
-      {/* Tiêu đề chương kèm thống kê số đoạn và liên kết chuyển đến ngữ cảnh tác phẩm. */}
-      <div className="flex h-(--mira-header-height) shrink-0 items-center gap-3 border-b border-default bg-surface px-2.5">
-        <h2 className="min-w-0 flex-1 truncate text-body-sm font-semibold">
-          {headingTitle(chapter)}{' '}
-          <span className="font-normal text-subtle">· {paragraphFigures(source, target)}</span>
-        </h2>
-        {SENTENCE_MODE_ENABLED && (
-          <>
-            <TabsRoot
-              value={mode}
-              aria-label="Chế độ soạn thảo"
-              onValueChange={(value) => void switchMode(value as 'full' | 'sentence')}
-            >
-              <TabsList variant="pill">
-                <TabsTab variant="pill" value="full">
-                  Toàn văn
-                </TabsTab>
-                <TabsTab variant="pill" value="sentence">
-                  Từng câu
-                </TabsTab>
-              </TabsList>
-            </TabsRoot>
-            <span className="h-4 w-px shrink-0 bg-line" aria-hidden="true" />
-          </>
-        )}
-        {/* Mở phân vùng Thuật ngữ và Xưng hô trong chi tiết tác phẩm. */}
-        <LinkButton
-          color="neutral"
-          className="shrink-0"
-          onClick={() => {
-            useWorkspaceStore.getState().setWorkArea(work.id, contextArea.id)
-            onBackToWork()
-          }}
-        >
-          Thuật ngữ · Xưng hô
-        </LinkButton>
-      </div>
-
       {gapPrompt && (
-        <div
-          role="region"
+        <section
           aria-label="Thông báo khoảng khuyết chương"
           className="flex flex-wrap items-center justify-between gap-sm border-b border-warning/40 bg-warning/10 px-md py-xs text-body-sm text-default"
         >
@@ -707,23 +672,25 @@ export function ChapterWorkspace({
               Đóng
             </Button>
           </div>
-        </div>
+        </section>
       )}
 
       {mode === 'sentence' ? (
-        <div className="min-h-0 flex-1 p-3">
-          <SentenceMode
-            handleRef={sentence}
-            workId={work.id}
-            chapterId={chapter.id}
-            source={source}
-            target={target}
-            sourceLang={work.sourceLanguage}
-            onTargetChanged={onTargetSaved}
-          />
+        <div className="flex min-h-0 flex-1 p-1.5">
+          <div className="min-h-0 flex-1 overflow-auto rounded-xs border border-default bg-surface p-2 shadow-xs">
+            <SentenceMode
+              handleRef={sentence}
+              workId={work.id}
+              chapterId={chapter.id}
+              source={source}
+              target={target}
+              sourceLang={work.sourceLanguage}
+              onTargetChanged={onTargetSaved}
+            />
+          </div>
         </div>
       ) : (
-        <div ref={panes} className="flex min-h-0 flex-1">
+        <div ref={panes} className="flex min-h-0 flex-1 gap-1.5 bg-default p-1.5">
           {sourceHidden && (
             <FoldedPane
               label="Bản gốc"
@@ -732,7 +699,7 @@ export function ChapterWorkspace({
               onOpen={toggleSource}
             />
           )}
-          <div ref={editors} className="flex min-h-0 min-w-0 flex-1">
+          <div ref={editors} className="flex min-h-0 min-w-0 flex-1 gap-1.5">
             <div
               className={sourceHidden ? 'hidden' : 'flex min-h-0 min-w-0'}
               style={{ flex: `${targetHidden ? 1 : sourceRatio} 1 0` }}
@@ -919,13 +886,13 @@ export function ChapterWorkspace({
             inert={!dockOpen || undefined}
             aria-hidden={!dockOpen || undefined}
             className={cn(
-              'relative min-h-0 shrink-0 overflow-hidden border-default transition-[width] duration-(--mira-duration-base) ease-standard',
-              dockOpen ? 'border-l' : 'w-0 border-l-0'
+              'relative min-h-0 shrink-0 overflow-hidden transition-[width] duration-(--mira-duration-base) ease-standard',
+              dockOpen ? 'visible' : 'w-0 invisible'
             )}
             style={{ width: dockOpen ? aiWidth : 0 }}
           >
             {dockOpen && <PanelResizeHandle width={aiWidth} onWidthChange={setAiWidth} />}
-            <div className="flex h-full min-h-0 flex-col" style={{ width: aiWidth }}>
+            <div className="flex h-full min-h-0 flex-col pl-1.5" style={{ width: aiWidth }}>
               {tabActive && !narrow && sidePanel}
             </div>
           </div>
@@ -1007,10 +974,7 @@ function FoldedPane({
   return (
     <div
       ref={strip}
-      className={
-        'flex w-8 shrink-0 flex-col items-center gap-2 border-default bg-surface py-3 transition-opacity duration-(--mira-duration-fast) ' +
-        (side === 'left' ? 'border-r' : 'border-l')
-      }
+      className="flex w-8 shrink-0 flex-col items-center gap-2 rounded-xs border border-default bg-surface py-3 shadow-xs transition-opacity duration-(--mira-duration-fast)"
     >
       <CompactButton
         aria-label={action}

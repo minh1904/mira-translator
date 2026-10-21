@@ -39,11 +39,11 @@ export function EditorPane({
   return (
     <section
       aria-label={title}
-      className="flex min-h-0 min-w-0 flex-1 flex-col gap-2 bg-surface p-3"
+      className="flex min-h-0 min-w-0 flex-1 flex-col rounded-xs border border-default bg-surface overflow-hidden shadow-xs"
     >
-      <div className="flex min-h-6 min-w-0 items-center justify-between gap-2">
+      <div className="flex h-7 shrink-0 items-center justify-between border-b border-default bg-subtle/30 px-2.5">
         <div className="flex min-w-0 items-center gap-2">
-          <h3 className="shrink-0 text-body-sm font-semibold">{title}</h3>
+          <h3 className="shrink-0 text-label-xs font-semibold text-emphasis">{title}</h3>
           {lockIcon}
           <p className="truncate text-body-xs text-subtle">{subtitle}</p>
           <p
@@ -58,10 +58,10 @@ export function EditorPane({
             {!saved && STATE_LABEL[status.state]}
           </p>
         </div>
-        <div className="flex shrink-0 items-center gap-1">{actions}</div>
+        <div className="flex shrink-0 items-center gap-0.5">{actions}</div>
       </div>
-      {notice}
-      <div className="min-h-0 flex-1">{children}</div>
+      {notice && <div className="border-b border-default bg-warning/10 p-2">{notice}</div>}
+      <div className="min-h-0 flex-1 p-2">{children}</div>
     </section>
   )
 }

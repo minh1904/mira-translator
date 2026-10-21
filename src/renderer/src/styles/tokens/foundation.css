@@ -147,7 +147,7 @@
   --mira-z-tooltip: 1400;
 
   /* Khung cửa sổ ứng dụng */
-  /* Chiều cao thanh tiêu đề ứng dụng */
-  --mira-header-height: 40px;
+  /* Chiều cao thanh tiêu đề ứng dụng (chuẩn 35px theo VS Code) */
+  --mira-header-height: 35px;
   --mira-sidebar-width: 260px;
 }

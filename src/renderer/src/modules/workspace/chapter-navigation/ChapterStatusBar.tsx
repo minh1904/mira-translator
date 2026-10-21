@@ -51,7 +51,7 @@ export function ChapterStatusBar({
   return (
     <footer
       aria-label="Trạng thái chương"
-      className="flex h-6 shrink-0 items-center justify-end gap-1 border-t border-default bg-subtle px-2 text-body-xs text-subtle tabular-nums"
+      className="flex h-[22px] shrink-0 items-center justify-end gap-1.5 border-t border-default bg-subtle px-2 text-body-xs text-subtle tabular-nums select-none"
     >
       {pending > 0 && (
         <LinkButton
@@ -62,10 +62,10 @@ export function ChapterStatusBar({
           {pending.toLocaleString('vi')} đề xuất chờ duyệt
         </LinkButton>
       )}
-      <span className="px-1 py-0.5">
+      <span className="px-1">
         Bản dịch: {words.toLocaleString('vi')} chữ · {characters.toLocaleString('vi')} ký tự
       </span>
-      <span role="status" className="flex items-center gap-1.5 px-1 py-0.5">
+      <span role="status" className="flex items-center gap-1.5 px-1">
         <span
           aria-hidden="true"
           className={cn('size-1.5 rounded-full', save.safe ? 'bg-success' : 'bg-warning')}

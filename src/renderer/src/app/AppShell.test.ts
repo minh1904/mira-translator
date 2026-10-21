@@ -20,26 +20,24 @@ function renderShell(
 }
 
 describe('AppShell', () => {
-  it('keeps the app title bar above both navigation and the page bar', () => {
+  it('keeps the unified title bar above the workspace and navigation', () => {
     const html = renderShell()
     const titleBar = html.indexOf('data-slot="app-titlebar"')
     const workspace = html.indexOf('data-slot="app-workspace"')
     const nav = html.indexOf('data-testid="nav"')
-    const pageBar = html.indexOf('data-slot="page-topbar"')
 
     expect(titleBar).toBeGreaterThanOrEqual(0)
     expect(workspace).toBeGreaterThan(titleBar)
     expect(nav).toBeGreaterThan(workspace)
-    expect(pageBar).toBeGreaterThan(nav)
   })
 
   it.each([
     ['app navigation', renderShell()],
     ['chapter controls', renderShell(null)]
-  ])('keeps one banner and right-edge spacing with %s', (_name, html) => {
-    const pageBar = /<header[^>]*data-slot="page-topbar"[^>]*>/.exec(html)?.[0]
+  ])('keeps one unified header and right-edge spacing with %s', (_name, html) => {
+    const titleBar = /<header[^>]*data-slot="app-titlebar"[^>]*>/.exec(html)?.[0]
 
     expect(html.match(/<header\b/g)).toHaveLength(1)
-    expect(pageBar).toContain('pr-sm')
+    expect(titleBar).toContain('pr-sm')
   })
 })
