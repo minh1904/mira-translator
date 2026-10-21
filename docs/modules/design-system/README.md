@@ -42,6 +42,23 @@ cho tải font từ CDN. Editor và chế độ câu dùng font hệ thống (`S
 cỡ 16 px, dòng 1,5; chữ Trung, Nhật rơi về font CJK của hệ thống. Code và định danh kỹ thuật dùng
 JetBrains Mono. Google Sans Flex đã gỡ.
 
+**2026-10-21: Chuẩn hóa toàn bộ control UI và focus theo VS Code.**
+Chủ sản phẩm yêu cầu điều chỉnh các button và control đang bị to trên toàn bộ UI, đưa về kích thước desktop editor gọn gàng, thuận mắt như VS Code và sửa viền focus ô nhập chỉ outline nhẹ 1px ôm khít viền trong:
+- **Thang control chuẩn hóa 24 / 28 / 32 px (thay thế thang cũ 24 / 32 / 40 px):**
+
+  | Cỡ | Cao | Chữ nhãn | Đệm ngang | Bo góc | Icon |
+  | --- | --- | --- | --- | --- | --- |
+  | `sm` | 24 | 12 (`label-xs`) | 8 | 4 | 14 |
+  | `md` (mặc định) | 28 | 12 (`label-xs`) | 10 | 4 | 16 |
+  | `lg` | 32 | 13 (`label-sm`) | 12 | 4 | 16 |
+
+  - Mặc định là 28 px theo chuẩn VS Code (`monaco-text-button`), giúp nút và ô nhập trên toàn màn hình không bị quá khổ hay thô.
+  - Mọi control đứng cạnh nhau (Button, Input, Select trigger, ButtonGroup, NavItem, DropdownMenu item, Tabs) cùng chung chiều cao 28 px ở cỡ `md`.
+  - CompactButton theo thang này: 28 / 24 / 20 px.
+- **Focus của ô nhập liệu (Input, Textarea, Select):**
+  - Chuyển từ outline 2px quầng ngoài (`outline-offset-1`) sang outline 1px solid ôm khít viền trong (`outline-offset: -1px`, `has-[:focus]:outline-1 has-[:focus]:-outline-offset-1`) đúng như VS Code (`style.css:274-277`), sắc nét, thanh thoát và không làm nở khung.
+- **Focus của nút bấm và điều khiển:** Giảm từ `outline-2` xuống `outline-1` đồng bộ.
+
 **2026-10-08, cùng tối: thang control cho app desktop.** Chủ sản phẩm duyệt đề xuất sau khi đối chiếu
 `DESIGN.md`, `DESIGN-REVIEW.md` của LMS v3 với các nguyên lý thị giác. Bộ size chép từ LMS là của một
 app web, và ba component lệch nhau: nút sm 24 cạnh ô nhập sm 32, ButtonGroup md 36 nhưng sm 28. Quyết

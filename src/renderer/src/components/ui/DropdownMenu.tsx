@@ -8,9 +8,9 @@ import { cn } from '../../lib/cn'
 export const menuSurfaceClass =
   'rounded-md border border-default bg-surface p-2xs text-body-sm text-default shadow-sm outline-none transition-[opacity,scale] duration-(--mira-duration-fast) ease-enter data-starting-style:scale-95 data-starting-style:opacity-0 data-ending-style:scale-95 data-ending-style:opacity-0 data-ending-style:ease-exit origin-(--transform-origin)'
 
-/** Một hàng trong menu hoặc danh sách chọn: chiều cao 32px, hiển thị hiệu ứng hover mềm mại. */
+/** Một hàng trong menu hoặc danh sách chọn: chiều cao 28px theo chuẩn VS Code, hiển thị hiệu ứng hover mềm mại. */
 export const menuItemClass =
-  'flex h-8 cursor-default items-center gap-xs rounded-sm px-xs outline-none select-none transition-colors duration-(--mira-duration-fast) ease-standard active:scale-[0.99] data-disabled:text-disabled data-disabled:active:scale-100 data-highlighted:bg-hover'
+  'flex h-7 cursor-default items-center gap-xs rounded-xs px-xs outline-none select-none transition-colors duration-(--mira-duration-fast) ease-standard active:scale-[0.99] data-disabled:text-disabled data-disabled:active:scale-100 data-highlighted:bg-hover'
 
 /** Lớp z-index định vị menu để luôn hiển thị phía trên các lớp giao diện khác bao gồm cả hộp thoại. */
 const positionerClass = 'z-(--mira-z-dropdown)'

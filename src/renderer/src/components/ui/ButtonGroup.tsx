@@ -42,8 +42,8 @@ export function ButtonGroup<T extends string>({
       }}
       className={cn(
         'inline-flex items-center gap-3xs bg-muted p-3xs',
-        'rounded-sm',
-        size === 'md' ? 'h-8' : 'h-6',
+        'rounded-xs',
+        size === 'md' ? 'h-7' : 'h-6',
         className
       )}
     >
@@ -52,8 +52,8 @@ export function ButtonGroup<T extends string>({
           key={option.value}
           value={option.value}
           className={cn(
-            'h-full rounded-xs px-sm whitespace-nowrap text-subtle transition-colors duration-(--mira-duration-fast) hover:text-default data-pressed:bg-surface data-pressed:text-default data-pressed:shadow-xs',
-            size === 'md' ? 'text-label-sm' : 'px-xs text-label-xs',
+            'h-full rounded-xs px-2.5 whitespace-nowrap text-subtle transition-colors duration-(--mira-duration-fast) hover:text-default data-pressed:bg-surface data-pressed:text-default data-pressed:shadow-xs',
+            size === 'md' ? 'text-label-xs' : 'px-2 text-label-xs',
             focusRing
           )}
         >

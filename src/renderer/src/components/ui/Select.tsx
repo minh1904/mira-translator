@@ -4,7 +4,7 @@ import { AltArrowDownIcon, CheckIcon } from '@renderer/components/ui/reicon'
 
 import { cn } from '../../lib/cn'
 import { menuItemClass, menuSurfaceClass } from './DropdownMenu'
-import { focusRing } from './focus'
+import { inputFocusRing } from './focus'
 
 export interface SelectOption<T extends string> {
   value: T
@@ -55,9 +55,9 @@ export function Select<T extends string>({
           'transition-colors duration-(--mira-duration-fast) ease-standard hover:bg-(--mira-input-bg-hover) data-popup-open:bg-(--mira-input-bg-hover)',
           'data-disabled:cursor-not-allowed data-disabled:bg-disabled data-disabled:text-disabled',
           size === 'md'
-            ? 'h-8 rounded-sm pr-xs pl-sm text-body-sm'
+            ? 'h-7 rounded-xs pr-xs pl-2.5 text-body-sm'
             : 'h-6 rounded-xs pr-2xs pl-xs text-body-xs',
-          focusRing,
+          inputFocusRing,
           className
         )}
       >

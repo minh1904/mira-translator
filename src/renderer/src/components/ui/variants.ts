@@ -12,9 +12,9 @@ import { ICON } from './icon'
  * Biến thể nút bấm: màu sắc × kiểu dáng × kích thước.
  *   colour  neutral (mặc định; solid là hành động chính của màn hình) | danger (thao tác xóa)
  *   style   solid | outline | light | ghost
- *   size    lg 40px (tối đa một nút trên màn hình) · md 32px (mặc định) · sm 24px (bảng, hàng, thanh công cụ)
- * Thang kích thước chuẩn cho nút, ô nhập và nhóm: chiều cao 24 / 32 / 40, nhãn chữ 12 / 13 / 15,
- * đệm ngang 8 / 12 / 16, bo góc 4 / 6 / 8.
+ *   size    lg 32px (hành động nổi bật) · md 28px (mặc định theo chuẩn VS Code) · sm 24px (bảng, hàng, thanh công cụ)
+ * Thang kích thước chuẩn cho nút, ô nhập và nhóm theo chuẩn VS Code: chiều cao 24 / 28 / 32, nhãn chữ 12 / 12 / 13,
+ * đệm ngang 8 / 10 / 12, bo góc 4px (rounded-xs).
  */
 export const buttonVariants = variants({
   base: cn(
@@ -27,15 +27,15 @@ export const buttonVariants = variants({
     color: { neutral: '', danger: '' },
     variant: { solid: '', outline: 'border', light: '', ghost: '' },
     size: {
-      lg: 'h-10 gap-xs rounded-md px-md text-label-md',
-      md: 'h-8 gap-xs rounded-sm px-sm text-label-sm',
-      sm: 'h-6 gap-2xs rounded-xs px-xs text-label-xs'
+      lg: 'h-8 gap-xs rounded-xs px-sm text-label-sm',
+      md: 'h-7 gap-2xs rounded-xs px-2.5 text-label-xs',
+      sm: 'h-6 gap-2xs rounded-xs px-2 text-label-xs'
     },
     iconOnly: { true: 'px-0', false: '' }
   },
   compound: [
-    { when: { size: 'lg', iconOnly: true }, className: 'w-10' },
-    { when: { size: 'md', iconOnly: true }, className: 'w-8' },
+    { when: { size: 'lg', iconOnly: true }, className: 'w-8' },
+    { when: { size: 'md', iconOnly: true }, className: 'w-7' },
     { when: { size: 'sm', iconOnly: true }, className: 'w-6' },
     {
       when: { color: 'neutral', variant: 'solid' },
@@ -82,7 +82,7 @@ export const buttonVariants = variants({
 })
 
 /** Kích thước biểu tượng theo từng cỡ nút (biểu tượng Reicon nhận giá trị pixel). */
-export const BUTTON_ICON = { lg: ICON.md, md: ICON.sm, sm: ICON.xs } as const
+export const BUTTON_ICON = { lg: ICON.sm, md: ICON.sm, sm: ICON.xs } as const
 
 /** Nút hành động dạng văn bản: màu liên kết, gạch chân khi hover. */
 export const linkButtonVariants = variants({
@@ -131,7 +131,7 @@ export const compactButtonVariants = variants({
         'border border-(--mira-button-neutral-border) bg-surface text-(--mira-button-neutral-fg) shadow-xs hover:bg-(--mira-button-neutral-bg-hover)'
     },
     size: {
-      lg: 'size-7 rounded-sm',
+      lg: 'size-7 rounded-xs',
       md: 'size-6 rounded-xs',
       sm: 'size-5 rounded-xs'
     },
@@ -187,8 +187,8 @@ export const badgeVariants = variants({
 
 /*
  * Khung dùng chung cho trường nhập một dòng và trigger chọn: hộp bề mặt có viền màu ô nhập,
- * hiệu ứng hover, viền focus quanh toàn khung và viền đỏ khi không hợp lệ.
- * Kích thước: md 32px · sm 24px (thanh công cụ, hàng bảng), tương ứng chiều cao các nút cạnh bên.
+ * hiệu ứng hover, viền focus nhẹ ôm khít kiểu VS Code quanh toàn khung và viền đỏ khi không hợp lệ.
+ * Kích thước: md 28px · sm 24px (thanh công cụ, hàng bảng), tương ứng chiều cao các nút cạnh bên.
  */
 export const inputFrameVariants = variants({
   base: cn(
@@ -200,7 +200,7 @@ export const inputFrameVariants = variants({
   ),
   variants: {
     size: {
-      md: 'h-8 rounded-sm px-sm text-body-sm',
+      md: 'h-7 rounded-xs px-2.5 text-body-sm',
       sm: 'h-6 rounded-xs px-xs text-body-xs'
     }
   },

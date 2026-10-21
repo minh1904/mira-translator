@@ -31,7 +31,7 @@ export function TabsList({
           ? // Đường kẻ mảnh được vẽ bên trong danh sách (::before, dưới các tab) thay vì làm viền mà
             // các tab đè lên bằng lề âm (negative margin), tránh việc thanh tab cuộn bị cuộn dọc.
             'relative gap-md before:pointer-events-none before:absolute before:inset-x-0 before:bottom-0 before:h-px before:bg-line'
-          : 'h-8 gap-3xs rounded-sm bg-muted p-3xs',
+          : 'h-7 gap-3xs rounded-xs bg-muted p-3xs',
         className
       )}
       {...props}
@@ -53,8 +53,8 @@ export function TabsTab({
       className={cn(
         'inline-flex items-center gap-2xs text-subtle transition-[color,background-color,transform] duration-(--mira-duration-fast) ease-standard hover:text-default active:scale-[0.98] data-active:text-default',
         variant === 'line'
-          ? 'relative h-8 text-label-sm after:pointer-events-none after:absolute after:inset-x-0 after:bottom-0 after:h-0.5 after:transition-colors after:duration-(--mira-duration-fast) data-active:after:bg-(--mira-text)'
-          : 'h-full rounded-xs px-sm text-label-xs transition-[background-color,box-shadow,color] duration-(--mira-duration-fast) ease-standard data-active:bg-surface data-active:shadow-xs',
+          ? 'relative h-7 text-label-xs after:pointer-events-none after:absolute after:inset-x-0 after:bottom-0 after:h-0.5 after:transition-colors after:duration-(--mira-duration-fast) data-active:after:bg-(--mira-text)'
+          : 'h-full rounded-xs px-2.5 text-label-xs transition-[background-color,box-shadow,color] duration-(--mira-duration-fast) ease-standard data-active:bg-surface data-active:shadow-xs',
         focusRing,
         className
       )}

@@ -159,22 +159,22 @@ components:
   button-md:
     backgroundColor: "{colors.primary}"
     textColor: "{colors.surface-light}"
+    height: 28px
+    padding: 10px
+    rounded: "{rounded.xs}"
+    typography: "{typography.label-xs}"
+  button-lg:
     height: 32px
     padding: 12px
-    rounded: "{rounded.sm}"
+    rounded: "{rounded.xs}"
     typography: "{typography.label-sm}"
-  button-lg:
-    height: 40px
-    padding: 16px
-    rounded: "{rounded.md}"
-    typography: "{typography.label-md}"
   compact-button:
     size: 24px
     rounded: "{rounded.xs}"
   input-md:
-    height: 32px
-    padding: 12px
-    rounded: "{rounded.sm}"
+    height: 28px
+    padding: 10px
+    rounded: "{rounded.xs}"
     typography: "{typography.body-sm}"
   dialog-md:
     width: 512px
@@ -206,8 +206,8 @@ Năm nguyên tắc bắt buộc:
 1. **Nội dung là trọng tâm.** Chrome của ứng dụng lùi lại; văn bản, bản dịch và trạng thái công việc nổi
    lên trước.
 2. **Grayscale là mặc định.** Màu chỉ truyền đạt trạng thái hoặc một điểm nhấn đã có nghĩa rõ ràng.
-3. **Cùng một ngôn ngữ control.** Nút, input và group dùng chung thang 24/32/40 px; kích thước mặc định
-   cho màn feature là 32 px.
+3. **Cùng một ngôn ngữ control.** Nút, input và group dùng chung thang 24/28/32 px; kích thước mặc định
+   cho màn feature là 28 px theo chuẩn desktop VS Code.
 4. **Accessible từ token.** Focus luôn nhìn thấy; chữ quan trọng và cạnh control đạt contrast; màu không
    bao giờ là dấu hiệu duy nhất.
 5. **Primitive trước tùy biến.** Màn feature dùng component chung. Nếu primitive thiếu khả năng thật sự
@@ -226,7 +226,7 @@ vai trò trong một control. Màn feature chỉ dùng tên semantic như `bg-su
 - `success`, `info`, `warning`, `error`, `accent` lần lượt biểu thị hoàn tất, đang diễn ra/thông tin,
   cần chú ý, thất bại/nguy hiểm và điểm nổi bật không phán xét. Nhãn hoặc icon phải nói lại ý nghĩa màu.
 - Theme tối dùng semantic token riêng; không đảo màu bằng filter và không suy ra màu trong component.
-- Focus dùng ring xám; trạng thái lỗi có ring đỏ. Không bỏ focus ring nếu chưa có dấu focus tương đương.
+- Focus của ô nhập liệu dùng outline nhẹ 1px (-1px offset) như VS Code; nút bấm và điều khiển dùng outline 1px. Trạng thái lỗi có viền đỏ. Không bỏ focus ring nếu chưa có dấu focus tương đương.
 
 ## Typography
 
@@ -246,8 +246,8 @@ vai trò trong một control. Màn feature chỉ dùng tên semantic như `bg-su
   48 px theo quyết định navigation riêng.
 - Ưu tiên một mặt phẳng lớn chia bằng hairline border. Card chỉ dùng khi nhóm có biên nhận thức và hành
   động riêng; không bọc mọi section trong card.
-- Màn feature dùng control `md` 32 px. `sm` 24 px dành cho toolbar, table/row hoặc composition nội bộ;
-  `lg` 40 px chỉ cho một hành động chính nổi bật và tối đa một lần trên một màn.
+- Màn feature dùng control `md` 28 px. `sm` 24 px dành cho toolbar, table/row hoặc composition nội bộ;
+  `lg` 32 px chỉ cho một hành động chính nổi bật và tối đa một lần trên một màn.
 - Layout phải chịu được cửa sổ hẹp, chuỗi tiếng Việt dài và nội dung CJK. Chỉ ẩn thông tin khi có đường
   truy cập thay thế rõ ràng.
 - Z-index chỉ dùng scale `sticky < backdrop < modal < dropdown < toast < tooltip`; không viết số tùy ý.
@@ -264,7 +264,7 @@ vai trò trong một control. Màn feature chỉ dùng tên semantic như `bg-su
 ## Shapes
 
 - Radius theo thang 0/4/6/8/12/16 px; pill chỉ cho tag, switch track hoặc affordance thật sự tròn.
-- Control 24/32/40 px lần lượt dùng radius 4/6/8 px. Card dùng 12 px; dialog dùng 16 px.
+- Control 24/28/32 px dùng radius 4px (rounded-xs theo chuẩn desktop VS Code). Card dùng 12 px; dialog dùng 16 px.
 - Phần tử nằm trong phần tử khác dùng radius nhỏ hơn theo khoảng cách inset; tránh nhiều đường cong cạnh
   nhau không đồng tâm.
 - Icon dùng Reicon Outline với nét mặc định 1,5 px và thang 12/14/16/18/24 px. Chỉ dùng Filled để biểu

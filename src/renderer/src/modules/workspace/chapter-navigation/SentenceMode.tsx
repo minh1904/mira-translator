@@ -344,7 +344,7 @@ const SentenceRow = memo(function SentenceRow({
           aria-label={'Bản dịch hàng ' + number}
           aria-describedby={statusId}
           spellCheck={false}
-          className="w-full resize-none overflow-hidden rounded-sm border border-strong bg-transparent px-2.5 py-1.5 font-editor text-editor outline-none focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-offset-1 focus-visible:outline-focus"
+          className="w-full resize-none overflow-hidden rounded-xs border border-strong bg-transparent px-2.5 py-1.5 font-editor text-editor outline-none focus-visible:outline-1 focus-visible:outline-solid focus-visible:-outline-offset-1 focus-visible:outline-focus"
           onFocus={() => onActive(row.index)}
           onChange={(event) => onDraft(row.sourceId, event.target.value)}
           onBlur={() => void onCommit(row.sourceId)}

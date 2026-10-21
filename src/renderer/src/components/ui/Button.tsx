@@ -9,7 +9,7 @@ export interface ButtonProps extends Omit<BaseButton.Props, 'className' | 'color
   color?: 'neutral' | 'danger'
   /** Kiểu nút: solid (hành động chính trên màn hình); outline (mặc định cho các hành động khác); light; ghost. */
   variant?: 'solid' | 'outline' | 'light' | 'ghost'
-  /** Kích thước: lg 40px (tối đa một nút chính trên màn hình) · md 32px (mặc định) · sm 24px (bảng, hàng, thanh công cụ). */
+  /** Kích thước: lg 32px (hành động chính nổi bật) · md 28px (mặc định theo chuẩn VS Code) · sm 24px (bảng, hàng, thanh công cụ). */
   size?: 'lg' | 'md' | 'sm'
   className?: string
   /** Biểu tượng hiển thị trước nhãn văn bản. */

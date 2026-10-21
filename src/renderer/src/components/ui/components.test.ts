@@ -11,15 +11,15 @@ import { Tip, type TipProps } from './Tooltip'
 import { buttonVariants } from './variants'
 
 describe('Button', () => {
-  it('sizes on the control scale: lg 40 · md 32 · sm 24', () => {
-    expect(buttonVariants({ size: 'lg' })).toContain('h-10')
-    expect(buttonVariants({ size: 'md' })).toContain('h-8')
+  it('sizes on the control scale: lg 32 · md 28 · sm 24', () => {
+    expect(buttonVariants({ size: 'lg' })).toContain('h-8')
+    expect(buttonVariants({ size: 'md' })).toContain('h-7')
     expect(buttonVariants({ size: 'sm' })).toContain('h-6')
   })
 
   it('keeps its size while loading and shows a spinner in place of the left icon', () => {
     const busy = renderToStaticMarkup(createElement(Button, { loading: true }, 'Kết nối'))
-    expect(busy).toContain('h-8')
+    expect(busy).toContain('h-7')
     expect(busy).toContain('aria-busy="true"')
     expect(busy).toContain('animate-spin')
     expect(busy).toContain('Kết nối')
@@ -36,7 +36,7 @@ describe('Button', () => {
     const html = renderToStaticMarkup(
       createElement(Button, { icon: createElement('svg'), 'aria-label': 'Thêm' })
     )
-    expect(html).toContain('w-8')
+    expect(html).toContain('w-7')
   })
 })
 
@@ -112,9 +112,11 @@ describe('focus', () => {
       .map((block) => block.split(' ')[0])
     const styledByTable = tables.some((table) => text.includes(table + '('))
     const wrapsOthers = /from '\.\/(Button|CompactButton)'/.test(text)
-    expect(styledByTable || wrapsOthers || /focus(Within)?Ring|data-highlighted/.test(text)).toBe(
-      true
-    )
+    expect(
+      styledByTable ||
+        wrapsOthers ||
+        /focus(Within|Input)?Ring|inputFocusRing|data-highlighted/.test(text)
+    ).toBe(true)
   })
 })
 
