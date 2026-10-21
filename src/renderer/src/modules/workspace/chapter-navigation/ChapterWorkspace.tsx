@@ -1,4 +1,4 @@
-import { useCallback, useContext, useEffect, useMemo, useRef, useState, type JSX } from 'react'
+import { useCallback, useContext, useEffect, useRef, useState, type JSX } from 'react'
 import {
   AltArrowLeftIcon,
   DocumentAddIcon,
@@ -42,17 +42,10 @@ import { usePaneLayoutStore } from '../store/paneLayoutStore'
 import { useWorkspaceStore } from '../store/workspaceStore'
 import { headingTitle } from '../work-detail/chapterList'
 import { contextArea } from '../work-detail/workAreas'
-import { AiPanel } from '../assistant/AiPanel'
 import { PanelResizeHandle } from './PanelResizeHandle'
 import { buildLocation, type PaneCaret } from '../assistant/chatLocation'
-import {
-  AssistantSideDrawer,
-  AssistantSidePanel,
-  type SidePanelTab,
-  useNarrowWindow
-} from './AssistantSidePanel'
+import { AssistantSideDrawer, AssistantSidePanel, useNarrowWindow } from './AssistantSidePanel'
 import { defaultWorkspaceAgentAdapter } from '@renderer/modules/agent/public'
-import type { ChatEditor } from '../assistant/useAiChat'
 import { AiTranslateDialog } from '../translation/AiTranslateDialog'
 import { ChapterStatusBar } from './ChapterStatusBar'
 import { EditorPane } from './EditorPane'
@@ -203,7 +196,6 @@ export function ChapterWorkspace({
   const [aiSourceRange, setAiSourceRange] = useState<TargetRange | null>(null)
   const [aiRange, setAiRange] = useState<TargetRange | null>(null)
   const [aiSide, setAiSide] = useState<'source' | 'target'>('target')
-  const [sideTab, setSideTab] = useState<SidePanelTab>('assistant')
   const narrow = useNarrowWindow()
 
   // Trợ lý chụp tác phẩm, chương, vùng chọn và con trỏ lúc gửi; ref giữ giá trị mới nhất cho getter.
@@ -338,31 +330,6 @@ export function ChapterWorkspace({
     const layout = usePaneLayoutStore.getState()
     layout.setTargetCollapsed(!layout.targetCollapsed)
   }, [])
-  /**
-   * Cung cấp giao diện tương tác với hai khung soạn thảo cho bảng trợ lý AI.
-   * Truy cập giá trị trực tiếp qua ref để đảm bảo luôn phản ánh đúng nội dung đang hiển thị trên màn hình.
-   */
-  const sourceText = useMemo(
-    () => ({
-      getText: (): string => sourceEditor.current?.getText() ?? '',
-      isDirty: (): boolean => sourceEditor.current?.isDirty() ?? false
-    }),
-    []
-  )
-  const targetChat = useMemo<ChatEditor>(
-    () => ({
-      getText: () => targetEditor.current?.getText() ?? '',
-      isDirty: () => targetEditor.current?.isDirty() ?? false,
-      reload: async () => {
-        await targetEditor.current?.discard()
-      },
-      reviewProposal: (range, replacement, onAccept, onDeny, label) =>
-        targetEditor.current?.reviewProposal(range, replacement, onAccept, onDeny, label) ??
-        'stale',
-      endReview: () => targetEditor.current?.endReview()
-    }),
-    []
-  )
   const [translateOpen, setTranslateOpen] = useState(false)
   const translateOpener = useRef<HTMLElement | null>(null)
   const confirmLeave = useConfirmLeave()
@@ -603,42 +570,7 @@ export function ChapterWorkspace({
 
   // Cửa sổ rộng: panel dock cạnh bản dịch. Cửa sổ hẹp: cùng panel nằm trong drawer phủ.
   const dockOpen = aiOpen && !narrow
-  const sidePanel = (
-    <AssistantSidePanel
-      workId={work.id}
-      chapterId={chapter.id}
-      tab={sideTab}
-      onTabChange={setSideTab}
-      onClose={() => setAiOpen(false)}
-      legacy={
-        <AiPanel
-          workId={work.id}
-          chapterId={chapter.id}
-          chapterLabel={headingTitle(chapter)}
-          sourceLang={work.sourceLanguage}
-          source={sourceText}
-          target={targetChat}
-          sourceCaret={
-            aiSourceRange && {
-              from: aiSourceRange.from,
-              to: aiSourceRange.to,
-              selected: aiSourceRange.selected === true
-            }
-          }
-          targetCaret={
-            aiRange && {
-              from: aiRange.from,
-              to: aiRange.to,
-              selected: aiRange.selected === true
-            }
-          }
-          activeSide={aiSide}
-          onClose={() => setAiOpen(false)}
-          onOpenSettings={onOpenSettings}
-        />
-      }
-    />
-  )
+  const sidePanel = <AssistantSidePanel onClose={() => setAiOpen(false)} />
 
   return (
     <div className="flex h-full min-h-0 flex-col">
@@ -1012,8 +944,6 @@ export function ChapterWorkspace({
           translation={translation}
           statuses={[sourceStatus, targetStatus]}
           onOpenProposals={() => {
-            // Proposal chờ duyệt thuộc chat cũ theo tác phẩm.
-            setSideTab('legacy')
             if (!aiOpen) toggleAi()
           }}
         />

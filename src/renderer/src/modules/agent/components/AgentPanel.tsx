@@ -1,5 +1,5 @@
 import { useEffect, type JSX } from 'react'
-import { AltArrowDownIcon, PenNewRoundIcon } from '@renderer/components/ui/reicon'
+import { AltArrowDownIcon, CloseIcon, PenNewRoundIcon } from '@renderer/components/ui/reicon'
 import type { ResolvedTarget } from '../../../../../shared/contracts/agent'
 import { Button } from '../../../components/ui/Button'
 import { CompactButton } from '../../../components/ui/CompactButton'
@@ -11,6 +11,7 @@ import { AgentTranscript } from './AgentTranscript'
 
 export interface AgentPanelProps {
   onOpenTarget?: (target: ResolvedTarget) => void
+  onClose?: () => void
   className?: string
 }
 
@@ -34,7 +35,7 @@ export function useAgentConnection(): void {
 }
 
 /** Trợ lý gọn cho side panel của màn chương: chọn phiên, transcript và ô soạn. */
-export function AgentPanel({ onOpenTarget, className }: AgentPanelProps): JSX.Element {
+export function AgentPanel({ onOpenTarget, onClose, className }: AgentPanelProps): JSX.Element {
   useAgentConnection()
   const sessions = useAgentStore((s) => s.sessions)
   const activeSessionId = useAgentStore((s) => s.activeSessionId)
@@ -43,11 +44,11 @@ export function AgentPanel({ onOpenTarget, className }: AgentPanelProps): JSX.El
 
   return (
     <div className={`flex h-full min-h-0 flex-col ${className ?? ''}`}>
-      <div className="flex h-[34px] shrink-0 items-center gap-2 border-b border-default px-3">
-        <span className="min-w-0 truncate text-body-xs font-semibold">
-          {sessions.find((session) => session.id === activeSessionId)?.title || 'Hội thoại mới'}
+      <div className="flex h-8 shrink-0 items-center gap-2 border-b border-default px-2.5">
+        <span className="min-w-0 truncate text-label-xs font-semibold text-emphasis">
+          {sessions.find((session) => session.id === activeSessionId)?.title || 'Trợ lý'}
         </span>
-        <span className="ml-auto flex shrink-0 items-center gap-0.5">
+        <span className="ml-auto flex shrink-0 items-center gap-1">
           {sessions.length > 0 && (
             <MenuRoot>
               <MenuTrigger
@@ -55,7 +56,7 @@ export function AgentPanel({ onOpenTarget, className }: AgentPanelProps): JSX.El
                   <Button
                     variant="ghost"
                     aria-label="Mở lịch sử hội thoại"
-                    rightIcon={<AltArrowDownIcon size={ICON.sm} aria-hidden="true" />}
+                    rightIcon={<AltArrowDownIcon size={ICON.xs} aria-hidden="true" />}
                   >
                     Lịch sử
                   </Button>
@@ -78,6 +79,14 @@ export function AgentPanel({ onOpenTarget, className }: AgentPanelProps): JSX.El
             onClick={newChat}
             icon={<PenNewRoundIcon size={ICON.sm} />}
           />
+          {onClose && (
+            <CompactButton
+              aria-label="Đóng (Esc)"
+              title="Đóng (Esc)"
+              onClick={onClose}
+              icon={<CloseIcon size={ICON.sm} />}
+            />
+          )}
         </span>
       </div>
       <AgentTranscript onOpenTarget={onOpenTarget} />
