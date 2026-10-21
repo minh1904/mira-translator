@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type JSX } from 'react'
 import type { ResolvedTarget } from '../../../../../shared/contracts/agent'
+import { Button } from '../../../components/ui/Button'
 import { EmptyState } from '../../../components/ui/EmptyState'
 import { SafeMarkdown } from '../../../components/ui/SafeMarkdown'
 import { useAgentStore } from '../store/agentStore'
@@ -21,10 +22,12 @@ export interface AgentTranscriptProps {
  * Lịch sử của phiên đang mở: prompt người dùng, suy nghĩ thu gọn, câu trả lời và câu hỏi phê duyệt.
  * Tinh gọn tối đa theo phong cách VS Code Copilot Agent.
  */
-export function AgentTranscript({ className }: AgentTranscriptProps): JSX.Element {
+export function AgentTranscript({ onOpenTarget, className }: AgentTranscriptProps): JSX.Element {
   const scrollRef = useRef<HTMLDivElement>(null)
   const [showNewPill, setShowNewPill] = useState(false)
   const turns = useAgentStore((s) => s.turns)
+  const operations = useAgentStore((s) => s.operations)
+  const undo = useAgentStore((s) => s.undo)
   const pending = useAgentStore((s) => s.pending)
   const isStreaming = useAgentStore((s) => s.isStreaming)
   const streamingTurnId = useAgentStore((s) => s.streamingTurnId)
@@ -98,6 +101,60 @@ export function AgentTranscript({ className }: AgentTranscriptProps): JSX.Elemen
                   <SafeMarkdown text={live ? DeltaBuffer.safeTailFence(answer) : answer} />
                 </div>
               )}
+              {Object.values(operations)
+                .filter((op) => op.turnId === turn.id)
+                .map((op) => {
+                  const isCompleted = op.state === 'completed' || op.state === 'partially_completed'
+                  const isUndone = op.state === 'undone'
+                  const isRunning = op.state === 'running' || op.state === 'queued'
+                  const target = op.target
+                  const targetLabel =
+                    target?.kind === 'chapter'
+                      ? target.chapterLabel
+                      : target?.kind === 'work'
+                        ? target.workLabel
+                        : 'nội dung'
+                  return (
+                    <div
+                      key={op.id}
+                      className="inline-flex h-[20px] select-none items-center gap-1.5 rounded bg-muted/60 px-2 text-body-xs text-subtle"
+                    >
+                      <span className="font-medium text-default">
+                        {isUndone
+                          ? 'Đã hoàn tác:'
+                          : isCompleted
+                            ? 'Đã sửa:'
+                            : isRunning
+                              ? 'Đang sửa:'
+                              : 'Thao tác:'}
+                      </span>
+                      <span className="max-w-44 truncate">{targetLabel}</span>
+                      {op.progress && op.progress.completed > 0 && (
+                        <span className="text-body-xs text-muted">
+                          (+{op.progress.completed} {op.progress.unit})
+                        </span>
+                      )}
+                      {target && onOpenTarget && (
+                        <Button
+                          variant="ghost"
+                          onClick={() => onOpenTarget(target)}
+                          className="!h-4 !px-1 text-label-xs text-link hover:underline"
+                        >
+                          Xem
+                        </Button>
+                      )}
+                      {isCompleted && (
+                        <Button
+                          variant="ghost"
+                          onClick={() => void undo(op.id)}
+                          className="!h-4 !px-1 text-label-xs text-subtle hover:text-default hover:underline"
+                        >
+                          Hoàn tác
+                        </Button>
+                      )}
+                    </div>
+                  )
+                })}
               {turnPending.map((action) => (
                 <PendingActionCard
                   key={action.toolCallId}

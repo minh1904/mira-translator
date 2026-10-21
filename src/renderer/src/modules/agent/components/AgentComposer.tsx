@@ -1,5 +1,6 @@
 import { useState, useSyncExternalStore, type JSX, type KeyboardEvent } from 'react'
 import { ArrowUpIcon, StopCircleIcon } from '@renderer/components/ui/reicon'
+import { Button } from '../../../components/ui/Button'
 import { CompactButton } from '../../../components/ui/CompactButton'
 import { focusWithinRing } from '../../../components/ui/focus'
 import { cn } from '../../../lib/cn'
@@ -36,6 +37,10 @@ export function AgentComposer({ placeholder }: { placeholder?: string }): JSX.El
   const cancel = useAgentStore((s) => s.cancel)
   const busy = useAgentStore((s) => s.isStreaming)
   const waiting = useAgentStore((s) => s.pending.length > 0)
+  const mode = useAgentStore((s) => s.mode)
+  const setMode = useAgentStore((s) => s.setMode)
+  const permissionLevel = useAgentStore((s) => s.permissionLevel)
+  const setPermissionLevel = useAgentStore((s) => s.setPermissionLevel)
   const model = useAgentModel()
   const ready = draft.trim() !== '' && model.selection !== null
   // Chips follow the workspace as it moves; removals belong to the draft being written.
@@ -53,7 +58,9 @@ export function AgentComposer({ placeholder }: { placeholder?: string }): JSX.El
     if (!text || busy || !model.selection) return
     const sent = await send(text, {
       context: withoutChips(context, removedChips),
-      modelSelection: model.selection
+      modelSelection: model.selection,
+      mode,
+      permissionLevel
     })
     if (sent) setRemoved({ key: draftKey, chips: new Set() })
   }
@@ -106,9 +113,38 @@ export function AgentComposer({ placeholder }: { placeholder?: string }): JSX.El
         </p>
       )}
       <div className="mt-1 flex h-[22px] items-center gap-1.5">
-        <span className="inline-flex h-[20px] select-none items-center rounded bg-muted/60 px-1.5 text-label-xs font-medium text-subtle">
-          Agent
-        </span>
+        <Button
+          variant="ghost"
+          onClick={() => setMode(mode === 'agent' ? 'ask' : 'agent')}
+          title={
+            mode === 'agent'
+              ? 'Chế độ Agent (Đọc và chỉnh sửa) – Bấm để chuyển sang Hỏi đáp'
+              : 'Chế độ Ask (Chỉ hỏi đáp) – Bấm để chuyển sang Agent'
+          }
+          className="h-[20px] px-1.5 text-label-xs font-medium text-subtle hover:text-default"
+        >
+          {mode === 'agent' ? 'Agent' : 'Ask'}
+        </Button>
+        <Button
+          variant="ghost"
+          onClick={() => setPermissionLevel(permissionLevel === 'normal' ? 'autopilot' : 'normal')}
+          title={
+            permissionLevel === 'normal'
+              ? 'Chế độ Normal (Hỏi duyệt trước khi ghi) – Bấm để bật Autopilot'
+              : 'Chế độ Autopilot (Tự động duyệt ghi) – Bấm để chuyển về Normal'
+          }
+          className={cn(
+            'h-[20px] gap-1 px-1.5 text-label-xs font-medium',
+            permissionLevel === 'autopilot'
+              ? 'bg-warning-subtle text-warning-emphasis hover:bg-warning-muted/40'
+              : 'text-subtle hover:text-default'
+          )}
+        >
+          {permissionLevel === 'autopilot' && (
+            <span className="size-1 rounded-full bg-warning-emphasis" />
+          )}
+          {permissionLevel === 'autopilot' ? 'Autopilot' : 'Normal'}
+        </Button>
         <ModelSelectionMenu
           label="Model của Trợ lý"
           className="!h-[20px] !gap-1 !px-1.5 !py-0 max-w-44"
