@@ -81,7 +81,7 @@ export function AgentPanel({ onOpenTarget, className }: AgentPanelProps): JSX.El
         </span>
       </div>
       <AgentTranscript onOpenTarget={onOpenTarget} />
-      <div className="shrink-0 px-sm pb-sm">
+      <div className="shrink-0 p-2">
         <AgentComposer />
       </div>
     </div>

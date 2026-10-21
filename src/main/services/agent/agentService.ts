@@ -105,6 +105,8 @@ export interface AgentSendInput {
   modelSelection?: ModelSelection
   continuesTurnId?: string
   pendingReply?: AgentPendingReply
+  mode?: 'ask' | 'agent'
+  permissionLevel?: 'normal' | 'autopilot'
   onStream?: (event: AgentStreamEvent) => void
   signal?: AbortSignal
   /** Sends the intent to every open window and returns the ids it reached. */
@@ -426,6 +428,8 @@ export class AgentService {
     modelSelection?: AgentSendInput['modelSelection']
     continuesTurnId?: string
     pendingReply?: AgentPendingReply
+    mode?: 'ask' | 'agent'
+    permissionLevel?: 'normal' | 'autopilot'
   }): AgentAcceptedTurn {
     if (this.shuttingDown) throw new StorageError('cancelled', 'Runtime agent đang đóng.')
     if ((input.continuesTurnId === undefined) !== (input.pendingReply === undefined)) {
@@ -548,7 +552,9 @@ export class AgentService {
           context: input.context,
           modelSelection: input.modelSelection,
           continuesTurnId: input.continuesTurnId,
-          pendingReply: input.pendingReply
+          pendingReply: input.pendingReply,
+          mode: input.mode,
+          permissionLevel: input.permissionLevel
         })
     return this.runExistingTurn({ ...input, ...accepted })
   }
@@ -557,11 +563,22 @@ export class AgentService {
     return defaultModelSelection(this.connections)
   }
 
-  private chatCapabilities(): Map<string, CapabilityDefinition> {
+  private chatCapabilities(mode?: 'ask' | 'agent'): Map<string, CapabilityDefinition> {
     return new Map(
       this.registry
         .list()
-        .filter((cap) => cap.parameters !== undefined)
+        .filter((cap) => {
+          if (cap.parameters === undefined) return false
+          if (
+            mode === 'ask' &&
+            (isWriteKind(cap) ||
+              cap.name === CREATE_TRANSLATION_TASK ||
+              cap.name === STEER_TRANSLATION_TASK)
+          ) {
+            return false
+          }
+          return true
+        })
         .map((cap) => [cap.name, cap])
     )
   }
@@ -669,7 +686,7 @@ export class AgentService {
         throw new StorageError('conflict', 'Cấu hình model đã đổi. Vui lòng gửi lại lệnh.')
       }
       const chatModel = model
-      const capabilities = this.chatCapabilities()
+      const capabilities = this.chatCapabilities(input.mode)
       const toolsEnabled = chatModel.info?.toolCall !== false
       const toolDefinitions = [
         resolveTargetDefinition,
@@ -1062,7 +1079,17 @@ export class AgentService {
 
         // Persist every call of the round with its decision before any of them runs.
         const prepared = calls.map((call) =>
-          this.prepareCall(call, roundNo, turnId, handles, chosen, turn, sessionId, capabilities)
+          this.prepareCall(
+            call,
+            roundNo,
+            turnId,
+            handles,
+            chosen,
+            turn,
+            sessionId,
+            capabilities,
+            input.permissionLevel
+          )
         )
         try {
           this.repository.insertToolCalls(prepared)
@@ -1230,7 +1257,8 @@ export class AgentService {
     chosen: ReadonlySet<string>,
     turn: AgentTurn,
     sessionId: string,
-    capabilities: Map<string, CapabilityDefinition>
+    capabilities: Map<string, CapabilityDefinition>,
+    permissionLevel?: 'normal' | 'autopilot'
   ): Omit<AgentToolCall, 'result'> & { result?: ToolCallResult } {
     let args: Record<string, unknown> = {}
     let invalid: string | null = null
@@ -1303,6 +1331,9 @@ export class AgentService {
       )
     }
     if (policy.decision === 'needs_user') {
+      if (permissionLevel === 'autopilot') {
+        return { ...base, decision: 'allow', state: 'pending' }
+      }
       const target = typeof args.target === 'string' ? handles.get(args.target) : undefined
       const label =
         cap.activityAdapter?.({

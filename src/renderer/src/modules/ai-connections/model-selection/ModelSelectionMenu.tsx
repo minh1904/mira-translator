@@ -84,6 +84,7 @@ export interface ModelSelectionMenuProps {
   /** Trạng thái mở menu điều khiển từ bên ngoài (dành cho phím tắt Ctrl+Shift+M). */
   open?: boolean
   onOpenChange?(open: boolean): void
+  className?: string
 }
 
 const FAVORITES_KEY = 'mira.model-favorites'
@@ -192,7 +193,8 @@ export function ModelSelectionMenu({
   onAddCustom,
   onOpenSettings,
   open: openProp,
-  onOpenChange
+  onOpenChange,
+  className
 }: ModelSelectionMenuProps): JSX.Element {
   const [openState, setOpenState] = useState(false)
   const open = openProp ?? openState
@@ -318,6 +320,7 @@ export function ModelSelectionMenu({
             variant={variant === 'field' ? 'field' : 'ghost'}
             value={text}
             tag={tag}
+            className={className}
             mark={
               overridesMain && (
                 <span

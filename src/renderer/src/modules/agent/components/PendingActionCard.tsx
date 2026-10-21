@@ -28,18 +28,19 @@ export function PendingActionCard({ action, onReply }: PendingActionCardProps): 
       role="group"
       aria-label={action.kind === 'choose' ? 'Chọn đích' : 'Cần duyệt'}
       data-pending-call={action.toolCallId}
-      className="flex flex-col gap-xs rounded-md border border-strong bg-surface p-sm"
+      className="my-1 flex flex-col gap-1.5 rounded-md border border-default bg-surface/90 p-2 text-body-xs shadow-xs"
     >
-      <p className="m-0 text-body-sm">
+      <p className="m-0 text-body-sm font-medium text-default">
         {action.kind === 'choose' ? 'Có nhiều đích khớp. Bạn muốn dùng đích nào?' : action.label}
       </p>
-      <div className="flex flex-wrap gap-xs">
+      <div className="flex flex-wrap gap-1.5">
         {action.kind === 'choose' ? (
           action.candidates.map((candidate) => (
             <Button
               key={candidate.handle}
               loading={sending}
               onClick={() => void reply(candidate.handle, candidate.label)}
+              className="!h-6 !px-2"
             >
               {candidate.label}
             </Button>
@@ -50,10 +51,15 @@ export function PendingActionCard({ action, onReply }: PendingActionCardProps): 
               variant="solid"
               loading={sending}
               onClick={() => void reply('approve', 'Duyệt')}
+              className="!h-6 !px-2.5"
             >
               Duyệt
             </Button>
-            <Button loading={sending} onClick={() => void reply('reject', 'Không duyệt')}>
+            <Button
+              loading={sending}
+              onClick={() => void reply('reject', 'Không duyệt')}
+              className="!h-6 !px-2.5"
+            >
               Không duyệt
             </Button>
           </>

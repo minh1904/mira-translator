@@ -294,6 +294,8 @@ export interface AgentSendInput {
   }
   continuesTurnId?: string
   pendingReply?: AgentPendingReply
+  mode?: 'ask' | 'agent'
+  permissionLevel?: 'normal' | 'autopilot'
 }
 
 export const agentSendInputSchema = v.strictObject({
@@ -319,7 +321,9 @@ export const agentSendInputSchema = v.strictObject({
       argsDigest: v.pipe(v.string(), v.minLength(1)),
       choice: v.pipe(v.string(), v.minLength(1))
     })
-  )
+  ),
+  mode: v.optional(v.picklist(['ask', 'agent'])),
+  permissionLevel: v.optional(v.picklist(['normal', 'autopilot']))
 })
 
 export interface AgentSendResult {

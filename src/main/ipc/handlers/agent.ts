@@ -100,6 +100,8 @@ export function agentHandlers(deps: HandlerDeps): AreaHandlers<'agent'> {
                 instruction: input.instruction,
                 context: input.context,
                 modelSelection: input.modelSelection,
+                mode: input.mode,
+                permissionLevel: input.permissionLevel,
                 onStream: (event) => windows.send(EVENT_CHANNELS.agentStreamEvent, event),
                 onWriteIntent: (intent) =>
                   windows.send(EVENT_CHANNELS.agentTargetWriteIntent, intent),

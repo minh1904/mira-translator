@@ -2,7 +2,6 @@ import { useState, useSyncExternalStore, type JSX, type KeyboardEvent } from 're
 import { ArrowUpIcon, StopCircleIcon } from '@renderer/components/ui/reicon'
 import { CompactButton } from '../../../components/ui/CompactButton'
 import { focusWithinRing } from '../../../components/ui/focus'
-import { ICON } from '../../../components/ui/icon'
 import { cn } from '../../../lib/cn'
 import { Tag } from '../../../components/ui/Tag'
 import { Textarea } from '../../../components/ui/Textarea'
@@ -69,14 +68,11 @@ export function AgentComposer({ placeholder }: { placeholder?: string }): JSX.El
   return (
     <div
       className={cn(
-        'flex flex-col gap-2xs rounded-lg border border-input bg-surface p-xs shadow-xs',
+        'flex flex-col rounded-lg border border-input bg-surface p-1.5 shadow-xs transition-shadow duration-150',
         focusWithinRing
       )}
     >
-      <ul
-        aria-label="Ngữ cảnh gửi kèm"
-        className="m-0 flex list-none flex-wrap gap-2xs p-0 empty:hidden"
-      >
+      <ul aria-label="Ngữ cảnh gửi kèm" className="hidden">
         {chips.map((chip) => (
           <li key={chip.key} className="flex min-w-0">
             <Tag
@@ -96,22 +92,26 @@ export function AgentComposer({ placeholder }: { placeholder?: string }): JSX.El
         onChange={(event) => setDraft(event.target.value)}
         onKeyDown={onKeyDown}
         rows={2}
-        className="min-h-0 resize-none border-0 bg-transparent px-2xs hover:bg-transparent focus-visible:outline-none"
+        className="min-h-[38px] max-h-[160px] resize-none border-0 bg-transparent px-1.5 py-1 text-body-sm leading-normal text-default hover:bg-transparent focus-visible:outline-none placeholder:text-muted"
         placeholder={
           placeholder ??
           (waiting ? 'Trả lời câu hỏi ở trên, hoặc gửi yêu cầu mới…' : 'Hỏi, nhờ dịch hoặc sửa…')
         }
       />
       {(model.loadError ?? model.modelNotice) && (
-        <p role="alert" className="m-0 px-xs text-body-xs text-error">
+        <p role="alert" className="m-0 px-1 py-0.5 text-body-xs text-error">
           {model.loadError
             ? `Không đọc được danh sách kết nối: ${model.loadError}`
             : model.modelNotice}
         </p>
       )}
-      <div className="flex items-center gap-2xs">
+      <div className="mt-1 flex h-[22px] items-center gap-1.5">
+        <span className="inline-flex h-[20px] select-none items-center rounded bg-muted/60 px-1.5 text-label-xs font-medium text-subtle">
+          Agent
+        </span>
         <ModelSelectionMenu
           label="Model của Trợ lý"
+          className="!h-[20px] !gap-1 !px-1.5 !py-0 max-w-44"
           connections={model.usable}
           selected={model.selection}
           onSelect={model.selectModel}
@@ -130,18 +130,22 @@ export function AgentComposer({ placeholder }: { placeholder?: string }): JSX.El
           <CompactButton
             variant="outline"
             tone="danger"
+            round
             aria-label="Dừng lượt đang chạy"
-            icon={<StopCircleIcon size={ICON.sm} />}
+            icon={<StopCircleIcon size={12} />}
             onClick={() => void cancel()}
+            className="!size-[22px] !min-h-[22px] !min-w-[22px] p-0"
           />
         ) : (
           <CompactButton
             variant="dark"
+            round
             aria-label="Gửi"
             title={ready ? 'Gửi (Enter)' : 'Cần câu hỏi và một model'}
             disabled={!ready}
-            icon={<ArrowUpIcon size={ICON.sm} />}
+            icon={<ArrowUpIcon size={12} />}
             onClick={() => void submit()}
+            className="!size-[22px] !min-h-[22px] !min-w-[22px] p-0"
           />
         )}
       </div>

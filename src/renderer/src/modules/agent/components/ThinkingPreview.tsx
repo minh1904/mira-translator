@@ -1,5 +1,8 @@
 import { useState, type JSX } from 'react'
+import { AltArrowRightIcon } from '@renderer/components/ui/reicon'
 import { Button } from '../../../components/ui/Button'
+import { ICON } from '../../../components/ui/icon'
+import { cn } from '../../../lib/cn'
 
 export interface ThinkingPreviewProps {
   reasoning: string | null | undefined
@@ -11,7 +14,7 @@ export interface ThinkingPreviewProps {
 export function formatThinkingDuration(ms?: number): string | null {
   if (ms === undefined || ms === null || ms <= 0) return null
   const seconds = (ms / 1000).toFixed(1)
-  return `Suy nghĩ trong ${seconds}s`
+  return `${seconds}s`
 }
 
 export function ThinkingPreview({
@@ -29,34 +32,42 @@ export function ThinkingPreview({
 
   // Auto-collapse if answer started and user hasn't manually opened
   const isOpen = userOpened ?? (isThinking && !isAnswerStarted)
-
   const durationLabel = formatThinkingDuration(durationMs)
 
+  const title = isThinking
+    ? 'Thinking...'
+    : durationLabel
+      ? `Thinking - ${durationLabel}`
+      : 'Thinking'
+
   return (
-    <div className="my-2 rounded-md border border-neutral-200 bg-neutral-50/60 p-2 text-body-xs text-neutral-600 dark:border-neutral-800 dark:bg-neutral-900/40 dark:text-neutral-400">
+    <div className="my-1 flex flex-col text-body-xs text-subtle">
       <Button
         variant="ghost"
         aria-expanded={isOpen}
         onClick={() => setUserOpened(!isOpen)}
-        className="flex w-full items-center justify-between font-medium text-neutral-700 hover:text-neutral-900 dark:text-neutral-300 dark:hover:text-neutral-100"
+        className="h-5 w-fit gap-1.5 px-1 text-left text-subtle select-none hover:text-default"
       >
-        <div className="flex items-center gap-1.5">
-          <span className="text-label-xs font-semibold uppercase tracking-wider text-neutral-500">
-            {isThinking ? 'Đang suy nghĩ...' : 'Suy nghĩ'}
-          </span>
-          {durationLabel && (
-            <span className="text-label-xs text-neutral-400">({durationLabel})</span>
+        <span
+          className={cn(
+            'flex shrink-0 items-center text-muted transition-transform duration-150',
+            isOpen && 'rotate-90'
           )}
-        </div>
-        <span className="text-label-xs text-neutral-400">{isOpen ? 'Thu gọn ▲' : 'Mở rộng ▼'}</span>
+        >
+          <AltArrowRightIcon size={ICON['2xs']} />
+        </span>
+        <span
+          className={cn(
+            'text-label-xs font-medium tracking-tight',
+            isThinking ? 'text-emphasis motion-safe:animate-pulse' : 'text-subtle'
+          )}
+        >
+          {title}
+        </span>
       </Button>
 
-      {isOpen ? (
-        <div className="mt-2 whitespace-pre-wrap border-t border-neutral-200/60 pt-2 font-mono text-body-xs leading-relaxed dark:border-neutral-800/60">
-          {reasoning}
-        </div>
-      ) : (
-        <div className="mt-1 line-clamp-2 overflow-hidden text-ellipsis font-mono text-body-xs leading-relaxed text-neutral-500 dark:text-neutral-400">
+      {isOpen && (
+        <div className="mt-1 ml-1.5 border-l border-default/70 pl-2.5 font-mono text-body-xs leading-normal text-subtle whitespace-pre-wrap">
           {reasoning}
         </div>
       )}

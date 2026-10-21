@@ -38,7 +38,7 @@ export function ActivityTimeline({ activities }: ActivityTimelineProps): JSX.Ele
   return (
     <ol
       aria-label={`Dòng hoạt động (${sorted.length})`}
-      className="m-0 flex list-none flex-col gap-2xs p-0"
+      className="m-0 my-0.5 ml-1.5 flex list-none flex-col gap-1 border-l border-default/70 p-0 pl-2.5"
     >
       {sorted.map((act) => {
         const badge = stateBadge(act.state)
@@ -50,11 +50,11 @@ export function ActivityTimeline({ activities }: ActivityTimelineProps): JSX.Ele
             key={act.id}
             data-activity-id={act.id}
             data-activity-state={act.state}
-            className="flex flex-col gap-2xs text-body-xs"
+            className="flex flex-col gap-1 text-body-xs"
           >
-            <div className="flex items-center justify-between gap-xs">
+            <div className="flex items-center justify-between gap-1.5">
               <span className="min-w-0 truncate text-subtle">{act.label}</span>
-              <span className="flex shrink-0 items-center gap-2xs">
+              <span className="flex shrink-0 items-center gap-1.5">
                 <Badge color={badge.color} variant="plain" dot>
                   {badge.text}
                 </Badge>
@@ -63,6 +63,7 @@ export function ActivityTimeline({ activities }: ActivityTimelineProps): JSX.Ele
                     variant="ghost"
                     aria-expanded={isExpanded}
                     onClick={() => toggleExpand(act.id)}
+                    className="!h-4 !px-1 text-muted hover:text-default"
                   >
                     {isExpanded ? 'Ẩn' : 'Chi tiết'}
                   </Button>
@@ -70,7 +71,7 @@ export function ActivityTimeline({ activities }: ActivityTimelineProps): JSX.Ele
               </span>
             </div>
             {isExpanded && detailStr && (
-              <pre className="max-h-40 overflow-auto rounded-sm bg-subtle p-xs font-mono text-body-xs text-subtle">
+              <pre className="m-0 max-h-40 overflow-auto rounded bg-muted/40 p-1.5 font-mono text-body-xs text-subtle">
                 {detailStr}
               </pre>
             )}

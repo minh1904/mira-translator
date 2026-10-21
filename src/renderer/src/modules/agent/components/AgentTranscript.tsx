@@ -1,28 +1,16 @@
 import { useEffect, useRef, useState, type JSX } from 'react'
-import type { AgentTurnView, ResolvedTarget } from '../../../../../shared/contracts/agent'
-import { Badge, type BadgeColor } from '../../../components/ui/Badge'
+import type { ResolvedTarget } from '../../../../../shared/contracts/agent'
 import { EmptyState } from '../../../components/ui/EmptyState'
 import { SafeMarkdown } from '../../../components/ui/SafeMarkdown'
 import { useAgentStore } from '../store/agentStore'
-import { ActivityTimeline } from './ActivityTimeline'
 import { useAgentModel } from './AgentComposer'
 import { AutoScrollSentinel, getScrollBehavior, shouldAutoScroll } from './AutoScrollSentinel'
 import { DeltaBuffer } from './DeltaBuffer'
-import { OperationCard } from './OperationCard'
 import { PendingActionCard } from './PendingActionCard'
 import { ThinkingPreview } from './ThinkingPreview'
-import { UsageDisplay } from './UsageDisplay'
 
 const reducedMotion = (): boolean =>
   typeof window !== 'undefined' && !!window.matchMedia?.('(prefers-reduced-motion: reduce)').matches
-
-const ENDED: Partial<Record<AgentTurnView['status'], { label: string; color: BadgeColor }>> = {
-  failed: { label: 'Lỗi', color: 'error' },
-  cancelled: { label: 'Đã dừng', color: 'neutral' },
-  interrupted: { label: 'Bị gián đoạn', color: 'warning' },
-  expired: { label: 'Đã bỏ qua', color: 'neutral' },
-  waiting_user: { label: 'Đang chờ bạn', color: 'warning' }
-}
 
 export interface AgentTranscriptProps {
   onOpenTarget?: (target: ResolvedTarget) => void
@@ -30,23 +18,19 @@ export interface AgentTranscriptProps {
 }
 
 /**
- * Lịch sử của phiên đang mở: lệnh, hoạt động, thao tác ghi, câu hỏi đang chờ và câu trả lời. Chỉ tự cuộn
- * khi người dùng đang ở cuối; đang đọc lịch sử thì hiện nút về nội dung mới.
+ * Lịch sử của phiên đang mở: prompt người dùng, suy nghĩ thu gọn, câu trả lời và câu hỏi phê duyệt.
+ * Tinh gọn tối đa theo phong cách VS Code Copilot Agent.
  */
-export function AgentTranscript({ onOpenTarget, className }: AgentTranscriptProps): JSX.Element {
+export function AgentTranscript({ className }: AgentTranscriptProps): JSX.Element {
   const scrollRef = useRef<HTMLDivElement>(null)
   const [showNewPill, setShowNewPill] = useState(false)
   const turns = useAgentStore((s) => s.turns)
-  const activities = useAgentStore((s) => s.activities)
-  const operations = useAgentStore((s) => s.operations)
   const pending = useAgentStore((s) => s.pending)
   const isStreaming = useAgentStore((s) => s.isStreaming)
   const streamingTurnId = useAgentStore((s) => s.streamingTurnId)
   const streamingAnswer = useAgentStore((s) => s.streamingAnswer)
   const streamingReasoning = useAgentStore((s) => s.streamingReasoning)
   const lastError = useAgentStore((s) => s.lastError)
-  const cancel = useAgentStore((s) => s.cancel)
-  const undo = useAgentStore((s) => s.undo)
   const reply = useAgentStore((s) => s.reply)
   // The continuation runs on the model the composer shows, not on the main process default.
   const model = useAgentModel().selection ?? undefined
@@ -80,7 +64,7 @@ export function AgentTranscript({ onOpenTarget, className }: AgentTranscriptProp
       onScroll={() => nearBottom() && setShowNewPill(false)}
       className={`min-h-0 flex-1 overflow-y-auto ${className ?? ''}`}
     >
-      <div className="mx-auto flex w-full max-w-[720px] flex-col gap-4 px-3 py-3">
+      <div className="mx-auto flex w-full max-w-[760px] flex-col gap-2.5 px-2.5 py-2">
         {turns.length === 0 && !isStreaming && (
           <EmptyState title="Trợ lý sẵn sàng">
             Hỏi về truyện, nhờ dịch hoặc sửa một chương.
@@ -89,7 +73,6 @@ export function AgentTranscript({ onOpenTarget, className }: AgentTranscriptProp
 
         {turns.map((turn) => {
           const live = turn.id === streamingTurnId
-          const ended = ENDED[turn.status]
           const turnPending = pending.filter((item) => item.turnId === turn.id)
           const answer = live && streamingAnswer ? streamingAnswer : turn.answer
           return (
@@ -98,7 +81,7 @@ export function AgentTranscript({ onOpenTarget, className }: AgentTranscriptProp
               aria-label={`Lượt: ${turn.instruction}`}
               className="flex flex-col gap-1.5"
             >
-              <div className="rounded-lg border border-default bg-muted/50 px-3 py-2">
+              <div className="rounded-md bg-muted/40 px-2.5 py-1.5">
                 <p className="selectable m-0 whitespace-pre-wrap wrap-anywhere text-body-sm leading-normal text-default">
                   {turn.instruction}
                 </p>
@@ -110,19 +93,11 @@ export function AgentTranscript({ onOpenTarget, className }: AgentTranscriptProp
                   isAnswerStarted={answer.length > 0}
                 />
               )}
-              <ActivityTimeline activities={activities[turn.id] ?? []} />
-              {Object.values(operations)
-                .filter((operation) => operation.turnId === turn.id)
-                .map((operation) => (
-                  <OperationCard
-                    key={operation.id}
-                    operation={operation}
-                    onOpenTarget={onOpenTarget}
-                    onCancel={() => void cancel(turn.id)}
-                    onUndo={(id) => void undo(id)}
-                  />
-                ))}
-              {answer && <SafeMarkdown text={live ? DeltaBuffer.safeTailFence(answer) : answer} />}
+              {answer && (
+                <div className="text-body-sm leading-normal">
+                  <SafeMarkdown text={live ? DeltaBuffer.safeTailFence(answer) : answer} />
+                </div>
+              )}
               {turnPending.map((action) => (
                 <PendingActionCard
                   key={action.toolCallId}
@@ -130,16 +105,6 @@ export function AgentTranscript({ onOpenTarget, className }: AgentTranscriptProp
                   onReply={(item, choice, label) => reply(item, choice, label, model)}
                 />
               ))}
-              <div className="flex flex-wrap items-center gap-xs">
-                {ended && (
-                  <Badge color={ended.color} dot>
-                    {ended.label}
-                  </Badge>
-                )}
-                {(turn.status === 'completed' || turn.status === 'failed') && (
-                  <UsageDisplay usage={turn.usage} costUsd={turn.costUsd} />
-                )}
-              </div>
             </article>
           )
         })}

@@ -35,6 +35,8 @@ export interface AgentState {
   drafts: Record<string, string>
   /** Model the user picked in the composer for every session; `null` follows Settings. */
   model: ModelSelection | null
+  mode: 'agent' | 'ask'
+  permissionLevel: 'normal' | 'autopilot'
   streamingTurnId: string | null
   streamingAnswer: string
   streamingReasoning: string
@@ -52,9 +54,16 @@ export interface AgentState {
   createSession: (title?: string) => Promise<string>
   setDraft: (text: string) => void
   setModel: (model: ModelSelection | null) => void
+  setMode: (mode: 'agent' | 'ask') => void
+  setPermissionLevel: (permissionLevel: 'normal' | 'autopilot') => void
   send: (
     instruction: string,
-    options?: { context?: AgentContext; modelSelection?: SendModel }
+    options?: {
+      context?: AgentContext
+      modelSelection?: SendModel
+      mode?: 'agent' | 'ask'
+      permissionLevel?: 'normal' | 'autopilot'
+    }
   ) => Promise<boolean>
   reply: (
     action: AgentPendingAction,
@@ -162,6 +171,8 @@ export const useAgentStore = create<AgentState>((set, get) => {
     pending: [],
     drafts: {},
     model: null,
+    mode: 'agent',
+    permissionLevel: 'normal',
     streamingTurnId: null,
     streamingAnswer: '',
     streamingReasoning: '',
@@ -250,6 +261,8 @@ export const useAgentStore = create<AgentState>((set, get) => {
     },
 
     setModel: (model) => set({ model }),
+    setMode: (mode) => set({ mode }),
+    setPermissionLevel: (permissionLevel) => set({ permissionLevel }),
 
     send: async (instruction, options) => {
       const state = get()
@@ -268,6 +281,8 @@ export const useAgentStore = create<AgentState>((set, get) => {
         clientCommandId: crypto.randomUUID(),
         instruction,
         context,
+        mode: options?.mode ?? state.mode,
+        permissionLevel: options?.permissionLevel ?? state.permissionLevel,
         ...(options?.modelSelection ? { modelSelection: options.modelSelection } : {})
       })
       if (!res.ok) {
@@ -428,6 +443,8 @@ export const useAgentStore = create<AgentState>((set, get) => {
         pending: [],
         drafts: {},
         model: null,
+        mode: 'agent',
+        permissionLevel: 'normal',
         streamingTurnId: null,
         streamingAnswer: '',
         streamingReasoning: '',

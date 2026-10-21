@@ -70,11 +70,11 @@ export function OperationCard({
     <div
       data-operation-id={operation.id}
       data-operation-state={operation.state}
-      className="flex flex-col gap-xs rounded-md border border-default bg-surface p-sm"
+      className="my-1 flex flex-col gap-1.5 rounded-md border border-default bg-surface/90 p-2 text-body-xs shadow-xs"
     >
-      <div className="flex items-center justify-between gap-xs">
-        <div className="flex min-w-0 items-center gap-xs">
-          <span className="text-label-xs font-semibold">
+      <div className="flex items-center justify-between gap-1.5">
+        <div className="flex min-w-0 items-center gap-1.5">
+          <span className="text-label-xs font-semibold text-emphasis">
             {CAPABILITY_LABELS[operation.capability] ?? operation.capability}
           </span>
           <span className="truncate text-body-xs text-subtle">{targetLabel}</span>
@@ -85,8 +85,8 @@ export function OperationCard({
       </div>
 
       {progress && (
-        <div className="flex flex-col gap-2xs">
-          <div className="flex justify-between text-label-xs text-muted">
+        <div className="flex flex-col gap-1">
+          <div className="flex justify-between text-body-xs text-muted">
             <span>Tiến độ:</span>
             <span className="tabular-nums">
               {progress.completed} / {progress.total} {progress.unit} ({percent}%)
@@ -100,20 +100,25 @@ export function OperationCard({
         </div>
       )}
 
-      <div className="flex items-center justify-between gap-xs border-t border-subtle pt-xs">
-        <div className="flex items-center gap-2xs">
+      <div className="flex items-center justify-between gap-1.5 border-t border-subtle pt-1.5">
+        <div className="flex items-center gap-1">
           {target && onOpenTarget && (
-            <Button variant="ghost" onClick={() => onOpenTarget(target)}>
+            <Button variant="ghost" onClick={() => onOpenTarget(target)} className="!h-6 !px-2">
               Mở đích
             </Button>
           )}
           {isRunning && onCancel && (
-            <Button variant="ghost" color="danger" onClick={() => onCancel(operation.id)}>
+            <Button
+              variant="ghost"
+              color="danger"
+              onClick={() => onCancel(operation.id)}
+              className="!h-6 !px-2"
+            >
               Dừng
             </Button>
           )}
           {canUndo && onUndo && (
-            <Button variant="ghost" onClick={() => onUndo(operation.id)}>
+            <Button variant="ghost" onClick={() => onUndo(operation.id)} className="!h-6 !px-2">
               Hoàn tác
             </Button>
           )}
@@ -122,8 +127,9 @@ export function OperationCard({
           variant="ghost"
           aria-expanded={showDetail}
           onClick={() => setShowDetail(!showDetail)}
+          className="!h-6 !px-2 text-muted hover:text-default"
         >
-          {showDetail ? 'Ẩn chi tiết' : 'Xem chi tiết'}
+          {showDetail ? 'Ẩn' : 'Chi tiết'}
         </Button>
       </div>
 

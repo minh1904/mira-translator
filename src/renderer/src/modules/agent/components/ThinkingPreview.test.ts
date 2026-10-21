@@ -11,7 +11,7 @@ describe('ThinkingPreview (Task 6.4)', () => {
     expect(renderToStaticMarkup(createElement(ThinkingPreview, { reasoning: undefined }))).toBe('')
   })
 
-  it('renders line-clamp preview when answer started and user has not expanded', () => {
+  it('renders collapsed thinking header when answer started and user has not expanded', () => {
     const html = renderToStaticMarkup(
       createElement(ThinkingPreview, {
         reasoning:
@@ -21,29 +21,29 @@ describe('ThinkingPreview (Task 6.4)', () => {
       })
     )
 
-    expect(html).toContain('line-clamp-2')
-    expect(html).toContain('Mở rộng ▼')
-    expect(html).toContain('Suy nghĩ')
+    expect(html).toContain('Thinking')
+    expect(html).toContain('aria-expanded="false"')
   })
 
   it('formats duration correctly and hides duration label when durationMs is missing or <= 0', () => {
-    expect(formatThinkingDuration(2400)).toBe('Suy nghĩ trong 2.4s')
+    expect(formatThinkingDuration(2400)).toBe('2.4s')
     expect(formatThinkingDuration(undefined)).toBeNull()
     expect(formatThinkingDuration(0)).toBeNull()
 
     const withDuration = renderToStaticMarkup(
       createElement(ThinkingPreview, {
-        reasoning: 'Đang suy nghĩ...',
+        reasoning: 'Analyzing context...',
         durationMs: 3500
       })
     )
-    expect(withDuration).toContain('(Suy nghĩ trong 3.5s)')
+    expect(withDuration).toContain('Thinking - 3.5s')
 
     const withoutDuration = renderToStaticMarkup(
       createElement(ThinkingPreview, {
-        reasoning: 'Đang suy nghĩ...'
+        reasoning: 'Analyzing context...'
       })
     )
-    expect(withoutDuration).not.toContain('(Suy nghĩ trong')
+    expect(withoutDuration).toContain('Thinking')
+    expect(withoutDuration).not.toContain('Thinking -')
   })
 })
