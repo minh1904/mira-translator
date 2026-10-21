@@ -9,6 +9,7 @@ export const STEER_TRANSLATION_TASK = 'steer_translation_task'
 export const RESOLVE_TARGET = 'resolve_target'
 export const UNDO_OPERATION = 'undo_operation'
 export const ASK_QUESTIONS = 'ask_questions'
+export const RUN_SUBAGENT = 'run_subagent'
 /** Handle of the context snapshot's target. */
 export const CONTEXT_HANDLE = 'ctx'
 

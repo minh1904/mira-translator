@@ -27,6 +27,10 @@ const samples: Record<string, { valid: unknown; invalid: unknown }> = {
     valid: { question: 'Bạn muốn chọn phong cách nào?', options: ['Thuần Việt', 'Convert'] },
     invalid: { question: '', options: [] }
   },
+  run_subagent: {
+    valid: { task: 'Tìm kiếm nhân vật', description: 'Tìm kiếm nhân vật' },
+    invalid: { task: '', description: '' }
+  },
   list_works: { valid: {}, invalid: null },
   list_chapters: { valid: {}, invalid: null },
   read_chapter: { valid: { side: 'source', offset: 20000 }, invalid: { offset: -1 } },

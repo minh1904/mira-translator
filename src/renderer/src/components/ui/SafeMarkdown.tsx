@@ -1,4 +1,5 @@
 import { Fragment, type JSX, type ReactNode } from 'react'
+import { CodeBlockPart } from './CodeBlockPart'
 
 type Block =
   | { kind: 'paragraph' | 'quote'; text: string }
@@ -130,14 +131,7 @@ export function SafeMarkdown({ text }: { text: string }): JSX.Element {
     <div className="selectable space-y-2 text-body-sm leading-normal text-default">
       {parseSafeMarkdown(text).map((block, index) => {
         if (block.kind === 'code')
-          return (
-            <pre
-              key={index}
-              className="overflow-x-auto rounded-sm bg-surface p-2 text-body-xs whitespace-pre-wrap"
-            >
-              <code>{block.text}</code>
-            </pre>
-          )
+          return <CodeBlockPart key={index} text={block.text} language={block.language} />
         if (block.kind === 'heading') {
           const content = inline(block.text)
           if (block.level === 1)

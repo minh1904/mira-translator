@@ -26,6 +26,7 @@ export function AgentTranscript({ onOpenTarget, className }: AgentTranscriptProp
   const scrollRef = useRef<HTMLDivElement>(null)
   const [showNewPill, setShowNewPill] = useState(false)
   const turns = useAgentStore((s) => s.turns)
+  const activities = useAgentStore((s) => s.activities)
   const operations = useAgentStore((s) => s.operations)
   const undo = useAgentStore((s) => s.undo)
   const pending = useAgentStore((s) => s.pending)
@@ -96,6 +97,25 @@ export function AgentTranscript({ onOpenTarget, className }: AgentTranscriptProp
                   isAnswerStarted={answer.length > 0}
                 />
               )}
+              {(activities[turn.id] ?? [])
+                .filter((act) => act.label.startsWith('Subagent:'))
+                .map((act) => (
+                  <div
+                    key={act.id}
+                    className="inline-flex h-[20px] select-none items-center gap-1.5 rounded bg-muted/60 px-2 text-body-xs text-subtle"
+                  >
+                    <span className="font-medium text-default">🤖 {act.label}</span>
+                    <span className="text-label-xs text-muted">
+                      (
+                      {act.state === 'running'
+                        ? 'Đang chạy…'
+                        : act.state === 'completed'
+                          ? 'Hoàn tất'
+                          : 'Lỗi'}
+                      )
+                    </span>
+                  </div>
+                ))}
               {answer && (
                 <div className="text-body-sm leading-normal">
                   <SafeMarkdown text={live ? DeltaBuffer.safeTailFence(answer) : answer} />

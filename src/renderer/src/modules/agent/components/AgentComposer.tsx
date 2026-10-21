@@ -4,7 +4,6 @@ import { Button } from '../../../components/ui/Button'
 import { CompactButton } from '../../../components/ui/CompactButton'
 import { focusWithinRing } from '../../../components/ui/focus'
 import { cn } from '../../../lib/cn'
-import { Tag } from '../../../components/ui/Tag'
 import { Textarea } from '../../../components/ui/Textarea'
 import {
   ModelSelectionMenu,
@@ -40,7 +39,6 @@ export function AgentComposer({ placeholder }: { placeholder?: string }): JSX.El
   const mode = useAgentStore((s) => s.mode)
   const setMode = useAgentStore((s) => s.setMode)
   const permissionLevel = useAgentStore((s) => s.permissionLevel)
-  const setPermissionLevel = useAgentStore((s) => s.setPermissionLevel)
   const model = useAgentModel()
   const ready = draft.trim() !== '' && model.selection !== null
   // Chips follow the workspace as it moves; removals belong to the draft being written.
@@ -81,15 +79,16 @@ export function AgentComposer({ placeholder }: { placeholder?: string }): JSX.El
     >
       <ul aria-label="Ngữ cảnh gửi kèm" className="hidden">
         {chips.map((chip) => (
-          <li key={chip.key} className="flex min-w-0">
-            <Tag
-              removeLabel={`Bỏ ngữ cảnh ${chip.label}`}
-              onRemove={() =>
+          <li key={chip.key}>
+            <Button
+              variant="ghost"
+              aria-label={`Bỏ ngữ cảnh ${chip.label}`}
+              onClick={() =>
                 setRemoved({ key: draftKey, chips: new Set([...removedChips, chip.key]) })
               }
             >
               {chip.label}
-            </Tag>
+            </Button>
           </li>
         ))}
       </ul>
@@ -112,7 +111,7 @@ export function AgentComposer({ placeholder }: { placeholder?: string }): JSX.El
             : model.modelNotice}
         </p>
       )}
-      <div className="mt-1 flex h-[22px] items-center gap-1.5">
+      <div className="mt-1 flex h-[22px] items-center gap-1.5 overflow-hidden">
         <Button
           variant="ghost"
           onClick={() => setMode(mode === 'agent' ? 'ask' : 'agent')}
@@ -121,33 +120,13 @@ export function AgentComposer({ placeholder }: { placeholder?: string }): JSX.El
               ? 'Chế độ Agent (Đọc và chỉnh sửa) – Bấm để chuyển sang Hỏi đáp'
               : 'Chế độ Ask (Chỉ hỏi đáp) – Bấm để chuyển sang Agent'
           }
-          className="h-[20px] px-1.5 text-label-xs font-medium text-subtle hover:text-default"
+          className="h-[20px] shrink-0 px-1.5 text-label-xs font-medium text-subtle hover:text-default"
         >
           {mode === 'agent' ? 'Agent' : 'Ask'}
         </Button>
-        <Button
-          variant="ghost"
-          onClick={() => setPermissionLevel(permissionLevel === 'normal' ? 'autopilot' : 'normal')}
-          title={
-            permissionLevel === 'normal'
-              ? 'Chế độ Normal (Hỏi duyệt trước khi ghi) – Bấm để bật Autopilot'
-              : 'Chế độ Autopilot (Tự động duyệt ghi) – Bấm để chuyển về Normal'
-          }
-          className={cn(
-            'h-[20px] gap-1 px-1.5 text-label-xs font-medium',
-            permissionLevel === 'autopilot'
-              ? 'bg-warning-subtle text-warning-emphasis hover:bg-warning-muted/40'
-              : 'text-subtle hover:text-default'
-          )}
-        >
-          {permissionLevel === 'autopilot' && (
-            <span className="size-1 rounded-full bg-warning-emphasis" />
-          )}
-          {permissionLevel === 'autopilot' ? 'Autopilot' : 'Normal'}
-        </Button>
         <ModelSelectionMenu
           label="Model của Trợ lý"
-          className="!h-[20px] !gap-1 !px-1.5 !py-0 max-w-44"
+          className="!h-[20px] !gap-1 !px-1.5 !py-0 max-w-36 shrink truncate"
           connections={model.usable}
           selected={model.selection}
           onSelect={model.selectModel}
@@ -170,7 +149,7 @@ export function AgentComposer({ placeholder }: { placeholder?: string }): JSX.El
             aria-label="Dừng lượt đang chạy"
             icon={<StopCircleIcon size={12} />}
             onClick={() => void cancel()}
-            className="!size-[22px] !min-h-[22px] !min-w-[22px] p-0"
+            className="!size-[22px] !min-h-[22px] !min-w-[22px] shrink-0 p-0"
           />
         ) : (
           <CompactButton
@@ -181,7 +160,7 @@ export function AgentComposer({ placeholder }: { placeholder?: string }): JSX.El
             disabled={!ready}
             icon={<ArrowUpIcon size={12} />}
             onClick={() => void submit()}
-            className="!size-[22px] !min-h-[22px] !min-w-[22px] p-0"
+            className="!size-[22px] !min-h-[22px] !min-w-[22px] shrink-0 p-0"
           />
         )}
       </div>

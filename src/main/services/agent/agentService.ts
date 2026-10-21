@@ -55,6 +55,7 @@ import {
   RESOLVE_TARGET,
   UNDO_OPERATION,
   ASK_QUESTIONS,
+  RUN_SUBAGENT,
   decideToolCall,
   type PolicyDecision
 } from './policy'
@@ -839,6 +840,36 @@ export class AgentService {
           }
         }
 
+        if (row.name === RUN_SUBAGENT) {
+          const task = String(args.task ?? '')
+          const description = String(args.description ?? 'Nhiệm vụ phụ')
+          const finish = activity({
+            kind: 'read',
+            label: `Subagent: ${description}`
+          })
+          try {
+            const subResult = await this.executeSubagent({
+              task,
+              description,
+              chatModel,
+              context: turn.context,
+              signal,
+              sessionId
+            })
+            finish('completed', { summary: subResult.summary })
+            return {
+              state: 'completed',
+              result: {
+                ok: true,
+                value: { summary: subResult.summary }
+              }
+            }
+          } catch (error) {
+            finish('failed')
+            return { state: 'failed', result: { ok: false, error: errorInfo(error) } }
+          }
+        }
+
         const cap = capabilities.get(row.name)!
         if (row.name === CREATE_TRANSLATION_TASK && this.tasks) {
           // Runs only after the user approved this exact call; the task then lives on its own.
@@ -1558,6 +1589,165 @@ export class AgentService {
         ? { ok: true, value: { operationId, ...(res.value as object) } }
         : { ok: false, error: res.error }
     }
+  }
+
+  private async executeSubagent(input: {
+    task: string
+    description: string
+    chatModel: AgentChatModel
+    context?: AgentContext
+    signal: AbortSignal
+    sessionId?: string
+  }): Promise<{ summary: string }> {
+    const messages: ChatMessage[] = [
+      {
+        role: 'system',
+        content:
+          'Bạn là một Subagent hỗ trợ tra cứu và phân tích chuyên sâu cho tiểu thuyết. Hãy sử dụng các công cụ tra cứu được cấp để hoàn thành nhiệm vụ và trả về bản tóm tắt kết quả chính xác, súc tích.'
+      },
+      {
+        role: 'user',
+        content: input.task
+      }
+    ]
+
+    const subCapabilities = new Map(
+      this.registry
+        .list()
+        .filter(
+          (cap) =>
+            cap.parameters !== undefined &&
+            cap.kind === 'read' &&
+            cap.name !== RUN_SUBAGENT &&
+            cap.name !== ASK_QUESTIONS
+        )
+        .map((cap) => [cap.name, cap])
+    )
+    const subToolDefinitions = [
+      resolveTargetDefinition,
+      ...[...subCapabilities.values()].map((cap) => ({
+        type: 'function' as const,
+        function: {
+          name: cap.name,
+          description: cap.description,
+          parameters: cap.parameters!
+        }
+      }))
+    ]
+
+    const handles = new Map<string, ResolvedTarget>()
+    let issuedHandles = 0
+    const nextHandle = () => 'sub-t' + ++issuedHandles
+
+    let summaryText = ''
+    const maxRounds = 3
+
+    for (let roundNo = 1; roundNo <= maxRounds; roundNo++) {
+      if (input.signal.aborted) throw new StorageError('cancelled', 'Subagent đã bị hủy.')
+      const isFinal = roundNo === maxRounds
+      let text = ''
+      let calls: AssembledToolCall[] = []
+
+      for await (const event of input.chatModel.chat(messages, {
+        signal: input.signal,
+        tools: isFinal ? undefined : subToolDefinitions,
+        turnRound: roundNo - 1,
+        sessionId: input.sessionId ?? 'subagent'
+      })) {
+        if (event.kind === 'delta') {
+          text += event.text
+        } else if (event.kind === 'tool-calls') {
+          calls = event.calls
+        }
+      }
+      summaryText += text
+      if (isFinal || calls.length === 0) break
+
+      messages.push({
+        role: 'assistant',
+        content: text,
+        tool_calls: calls.map((c) => ({
+          id: c.id,
+          type: 'function',
+          function: { name: c.name, arguments: c.arguments }
+        }))
+      })
+
+      // Execute read calls
+      for (const call of calls) {
+        let args: Record<string, unknown> = {}
+        try {
+          args = JSON.parse(call.arguments || '{}')
+        } catch {
+          args = {}
+        }
+
+        if (call.name === RESOLVE_TARGET) {
+          const description = String(args.description ?? '')
+          const found = this.resolver.resolve(description, input.context)
+          if (found.status === 'resolved') {
+            const handle = nextHandle()
+            handles.set(handle, found.target)
+            messages.push({
+              role: 'tool',
+              content: JSON.stringify({
+                ok: true,
+                value: { status: 'resolved', handle, label: targetLabel(found.target) }
+              }),
+              tool_call_id: call.id
+            })
+          } else {
+            messages.push({
+              role: 'tool',
+              content: JSON.stringify({
+                ok: false,
+                error: { code: 'not_found', message: 'Không tìm thấy đích.' }
+              }),
+              tool_call_id: call.id
+            })
+          }
+          continue
+        }
+
+        const cap = subCapabilities.get(call.name)
+        if (!cap) {
+          messages.push({
+            role: 'tool',
+            content: JSON.stringify({
+              ok: false,
+              error: { code: 'not_allowed', message: 'Công cụ không được phép cho subagent.' }
+            }),
+            tool_call_id: call.id
+          })
+          continue
+        }
+
+        const { target: handle, ...rest } = args
+        const target = typeof handle === 'string' ? handles.get(handle) : undefined
+        try {
+          const res = await this.registry.execute(cap.name, rest, {
+            turnId: 'subagent',
+            commandId: call.id,
+            target,
+            library: this.library,
+            now: this.now()
+          })
+          messages.push({
+            role: 'tool',
+            content: JSON.stringify(res),
+            tool_call_id: call.id
+          })
+        } catch (err) {
+          messages.push({
+            role: 'tool',
+            content: JSON.stringify({ ok: false, error: errorInfo(err) }),
+            tool_call_id: call.id
+          })
+        }
+      }
+    }
+
+    return { summary: summaryText.trim() || 'Subagent đã hoàn thành nhiệm vụ.' }
   }
 }
 

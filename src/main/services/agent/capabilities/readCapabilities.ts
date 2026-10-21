@@ -324,6 +324,41 @@ export const askQuestionsCapability: CapabilityDefinition<{
   })
 }
 
+export const runSubagentCapability: CapabilityDefinition<{
+  task: string
+  description: string
+}> = {
+  name: 'run_subagent',
+  description:
+    'Ủy quyền cho một Subagent độc lập thực hiện nhiệm vụ nghiên cứu, đối chiếu hoặc tìm kiếm chuyên sâu trong tác phẩm mà không làm tràn ngữ cảnh của phiên chính. Subagent chỉ trả về bản tóm tắt kết quả.',
+  kind: 'read',
+  schema: v.object({
+    task: v.pipe(v.string(), v.minLength(1, 'task không được để trống.')),
+    description: v.pipe(v.string(), v.minLength(1, 'description không được để trống.'))
+  }),
+  parameters: {
+    type: 'object',
+    properties: {
+      task: {
+        type: 'string',
+        description:
+          'Chỉ dẫn chi tiết, rõ ràng và đầy đủ cho subagent thực hiện tự trị và trả về kết quả tóm tắt.'
+      },
+      description: {
+        type: 'string',
+        description: 'Mô tả ngắn gọn (3-7 từ) về nhiệm vụ để hiển thị trên giao diện.'
+      }
+    },
+    required: ['task', 'description']
+  },
+  targetPolicy: 'no_target',
+  handler: async () => ({ ok: true, value: {} }),
+  activityAdapter: ({ args }) => ({
+    label: `Subagent: ${(args as { description?: string }).description ?? 'Nhiệm vụ phụ'}`,
+    kind: 'read'
+  })
+}
+
 export const defaultReadCapabilities: CapabilityDefinition[] = [
   listWorksCapability,
   listChaptersCapability,
@@ -332,5 +367,6 @@ export const defaultReadCapabilities: CapabilityDefinition[] = [
   searchWorkCapability,
   listGlossaryCapability,
   listAddressingCapability,
-  askQuestionsCapability
+  askQuestionsCapability,
+  runSubagentCapability
 ]

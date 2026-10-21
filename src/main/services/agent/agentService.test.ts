@@ -543,6 +543,35 @@ describe('AgentService waiting_user and continuation', () => {
     expect(res.answer).toBe('Tự động chọn Thuần Việt.')
   })
 
+  it('delegates research task to subagent and incorporates its summary into parent answer', async () => {
+    const { agent, model, modelSelection } = setupAgent()
+    model.script(
+      callTools({
+        name: 'run_subagent',
+        args: {
+          task: 'Tra cứu danh sách tác phẩm',
+          description: 'Liệt kê tác phẩm'
+        }
+      }),
+      callTools({ name: 'list_works', args: {} }),
+      say('Thư viện có 2 tác phẩm là Đại Đạo Triều Thiên và Phàm Nhân Tu Tiên.'),
+      say('Theo báo cáo từ Subagent, thư viện hiện có 2 tác phẩm.')
+    )
+
+    const res = await agent.send({
+      instruction: 'thư viện có những truyện nào?',
+      modelSelection
+    })
+
+    expect(res.status).toBe('completed')
+    expect(res.answer).toBe('Theo báo cáo từ Subagent, thư viện hiện có 2 tác phẩm.')
+
+    const activities = agent.getSessionDetail(res.sessionId).activities
+    const subActivity = activities.find((a) => a.label === 'Subagent: Liệt kê tác phẩm')
+    expect(subActivity).toBeDefined()
+    expect(subActivity?.state).toBe('completed')
+  })
+
   it('keeps a waiting turn across shutdown and startup, then expires it on a new command', async () => {
     const kit = await ambiguous()
     kit.agent.shutdown()
