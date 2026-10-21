@@ -443,6 +443,106 @@ describe('AgentService waiting_user and continuation', () => {
     expect(next[0].toolCallId).not.toBe(pending.toolCallId)
   })
 
+  it('automatically approves write operations when permissionLevel is autopilot', async () => {
+    const { agent, model, modelSelection, library, work1, ch1_1, work2, ch2_1 } = setupAgent()
+    model.script(
+      callTools({ name: 'resolve_target', args: { description: 'Phàm Nhân Tu Tiên chương 1' } }),
+      callTools({ name: 'translate_chapter', args: { target: 't1' } }),
+      say('Đã dịch xong.')
+    )
+    const res = await agent.send({
+      instruction: 'tóm tắt chương này',
+      context: { workId: work1.id, chapterId: ch1_1.id },
+      modelSelection,
+      permissionLevel: 'autopilot'
+    })
+    expect(res.status).toBe('completed')
+    expect(agent.getSessionDetail(res.sessionId).pending).toHaveLength(0)
+    expect(library.readText(work2.id, ch2_1.id, 'target').content).toContain('Dịch:')
+  })
+
+  it('filters out write tools when mode is ask', async () => {
+    const { agent, model, modelSelection, work1, ch1_1 } = setupAgent()
+    model.script(say('Chỉ trả lời câu hỏi tra cứu.'))
+    const res = await agent.send({
+      instruction: 'chương này nói về gì?',
+      context: { workId: work1.id, chapterId: ch1_1.id },
+      modelSelection,
+      mode: 'ask'
+    })
+    expect(res.status).toBe('completed')
+    const toolDefs = (model.requests[0].tools ?? []) as Array<{ function: { name: string } }>
+    const toolNames = toolDefs.map((t) => t.function.name)
+    expect(toolNames).not.toContain('translate_chapter')
+    expect(toolNames).not.toContain('edit_translation')
+    expect(toolNames).toContain('resolve_target')
+  })
+
+  it('prompts user with interactive question and continues with chosen answer', async () => {
+    const { agent, model, modelSelection } = setupAgent()
+    model.script(
+      callTools({
+        name: 'ask_questions',
+        args: {
+          question: 'Bạn muốn dịch theo phong cách nào?',
+          options: ['Thuần Việt', 'Hán Việt / Convert']
+        }
+      })
+    )
+    const res = await agent.send({
+      instruction: 'dịch chương này',
+      modelSelection
+    })
+    expect(res.status).toBe('waiting_user')
+    const [pending] = agent.getSessionDetail(res.sessionId).pending
+    expect(pending).toMatchObject({
+      kind: 'question',
+      name: 'ask_questions',
+      label: 'Bạn muốn dịch theo phong cách nào?'
+    })
+    expect(pending.candidates).toEqual([
+      { handle: 'opt-1', label: 'Thuần Việt' },
+      { handle: 'opt-2', label: 'Hán Việt / Convert' }
+    ])
+
+    model.script(say('Sẽ dịch theo phong cách Thuần Việt.'))
+    const resumed = await agent.send({
+      continuesTurnId: res.turnId,
+      pendingReply: {
+        toolCallId: pending.toolCallId,
+        argsDigest: pending.argsDigest,
+        choice: 'opt-1'
+      },
+      instruction: 'Thuần Việt',
+      modelSelection
+    })
+    expect(resumed.status).toBe('completed')
+    expect(agent.getSessionDetail(res.sessionId).pending).toHaveLength(0)
+    expect(resumed.answer).toBe('Sẽ dịch theo phong cách Thuần Việt.')
+  })
+
+  it('automatically resolves question with default option in autopilot mode', async () => {
+    const { agent, model, modelSelection } = setupAgent()
+    model.script(
+      callTools({
+        name: 'ask_questions',
+        args: {
+          question: 'Bạn muốn dịch theo phong cách nào?',
+          options: ['Thuần Việt', 'Hán Việt / Convert']
+        }
+      }),
+      say('Tự động chọn Thuần Việt.')
+    )
+    const res = await agent.send({
+      instruction: 'dịch chương này',
+      modelSelection,
+      permissionLevel: 'autopilot'
+    })
+    expect(res.status).toBe('completed')
+    expect(agent.getSessionDetail(res.sessionId).pending).toHaveLength(0)
+    expect(res.answer).toBe('Tự động chọn Thuần Việt.')
+  })
+
   it('keeps a waiting turn across shutdown and startup, then expires it on a new command', async () => {
     const kit = await ambiguous()
     kit.agent.shutdown()

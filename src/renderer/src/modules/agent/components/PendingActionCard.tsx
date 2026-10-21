@@ -23,24 +23,28 @@ export function PendingActionCard({ action, onReply }: PendingActionCardProps): 
     }
   }
 
+  const isQuestion = action.kind === 'question'
+  const isChoose = action.kind === 'choose'
+
   return (
     <div
       role="group"
-      aria-label={action.kind === 'choose' ? 'Chọn đích' : 'Cần duyệt'}
+      aria-label={isQuestion ? 'Câu hỏi của Trợ lý' : isChoose ? 'Chọn đích' : 'Cần duyệt'}
       data-pending-call={action.toolCallId}
       className="my-1 flex flex-col gap-1.5 rounded-md border border-default bg-surface/90 p-2 text-body-xs shadow-xs"
     >
       <p className="m-0 text-body-sm font-medium text-default">
-        {action.kind === 'choose' ? 'Có nhiều đích khớp. Bạn muốn dùng đích nào?' : action.label}
+        {isChoose ? 'Có nhiều đích khớp. Bạn muốn dùng đích nào?' : action.label}
       </p>
       <div className="flex flex-wrap gap-1.5">
-        {action.kind === 'choose' ? (
+        {isQuestion || isChoose ? (
           action.candidates.map((candidate) => (
             <Button
               key={candidate.handle}
+              variant={isQuestion ? 'outline' : 'ghost'}
               loading={sending}
               onClick={() => void reply(candidate.handle, candidate.label)}
-              className="!h-6 !px-2"
+              className="!h-6 !px-2.5 text-label-xs"
             >
               {candidate.label}
             </Button>

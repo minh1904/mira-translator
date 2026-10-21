@@ -8,6 +8,7 @@ export const CREATE_TRANSLATION_TASK = 'create_translation_task'
 export const STEER_TRANSLATION_TASK = 'steer_translation_task'
 export const RESOLVE_TARGET = 'resolve_target'
 export const UNDO_OPERATION = 'undo_operation'
+export const ASK_QUESTIONS = 'ask_questions'
 /** Handle of the context snapshot's target. */
 export const CONTEXT_HANDLE = 'ctx'
 
@@ -81,6 +82,9 @@ export function decideToolCall(input: PolicyInput): PolicyDecision {
       decision: 'deny',
       reason: 'Đích không do lượt này cấp. Gọi resolve_target để lấy handle, không dùng ID.'
     }
+  }
+  if (input.name === ASK_QUESTIONS) {
+    return { decision: 'needs_user', reason: 'Cần người dùng chọn câu trả lời.' }
   }
   if (input.name === RESOLVE_TARGET || input.kind === 'read') {
     return { decision: 'allow', reason: 'Chỉ đọc.' }

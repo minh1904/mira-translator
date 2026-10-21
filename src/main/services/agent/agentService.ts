@@ -54,6 +54,7 @@ import {
   STEER_TRANSLATION_TASK,
   RESOLVE_TARGET,
   UNDO_OPERATION,
+  ASK_QUESTIONS,
   decideToolCall,
   type PolicyDecision
 } from './policy'
@@ -521,6 +522,14 @@ export class AgentService {
           targets: { [chosen.handle]: chosen.target },
           reply
         } satisfies ToolCallResult)
+      } else if (call.name === ASK_QUESTIONS) {
+        const chosen = pending.candidates?.find((item) => item.handle === input.reply.choice)
+        const choiceText = chosen ? chosen.label : input.reply.choice
+        this.repository.updateToolCall(call.id, 'completed', {
+          ok: true,
+          value: { answer: choiceText },
+          reply
+        } satisfies ToolCallResult)
       } else if (input.reply.choice === 'reject') {
         this.repository.updateToolCall(call.id, 'failed', {
           ok: false,
@@ -796,6 +805,36 @@ export class AgentService {
             result: {
               ok: true,
               value: { status: 'not_found', reason: 'reason' in found ? found.reason : '' }
+            }
+          }
+        }
+
+        if (row.name === ASK_QUESTIONS) {
+          const question = String(args.question ?? '')
+          const options = Array.isArray(args.options) ? (args.options as string[]) : []
+          if (input.permissionLevel === 'autopilot') {
+            const defaultChoice = options[0] ?? 'Tự quyết định'
+            return {
+              state: 'completed',
+              result: {
+                ok: true,
+                value: {
+                  answer: defaultChoice,
+                  note: 'Người dùng đang ở chế độ Autopilot; đã tự động chọn phương án đầu tiên.'
+                }
+              }
+            }
+          }
+          const candidates = options.map((label, index) => ({
+            handle: `opt-${index + 1}`,
+            label,
+            target: undefined as unknown as ResolvedTarget
+          }))
+          return {
+            state: 'pending',
+            result: {
+              label: question,
+              candidates
             }
           }
         }
@@ -1334,6 +1373,24 @@ export class AgentService {
       if (permissionLevel === 'autopilot') {
         return { ...base, decision: 'allow', state: 'pending' }
       }
+      if (call.name === ASK_QUESTIONS) {
+        const question = String(args.question ?? '')
+        const options = Array.isArray(args.options) ? (args.options as string[]) : []
+        const candidates = options.map((label, index) => ({
+          handle: `opt-${index + 1}`,
+          label,
+          target: undefined as unknown as ResolvedTarget
+        }))
+        return {
+          ...base,
+          decision: 'needs_user',
+          state: 'pending',
+          result: {
+            label: question,
+            candidates
+          }
+        }
+      }
       const target = typeof args.target === 'string' ? handles.get(args.target) : undefined
       const label =
         cap.activityAdapter?.({
@@ -1537,12 +1594,14 @@ function roundMessages(rows: AgentToolCall[]): ChatMessage[] {
 
 function pendingActionOf(row: AgentToolCall): AgentPendingAction {
   const result = (row.result ?? {}) as ToolCallResult
+  const kind: AgentPendingAction['kind'] =
+    row.name === RESOLVE_TARGET ? 'choose' : row.name === ASK_QUESTIONS ? 'question' : 'approve'
   return {
     turnId: row.turnId,
     toolCallId: row.id,
     argsDigest: row.argsDigest,
     name: row.name,
-    kind: row.name === RESOLVE_TARGET ? 'choose' : 'approve',
+    kind,
     label: result.label ?? row.name,
     candidates: (result.candidates ?? []).map(({ handle, label }) => ({ handle, label })),
     createdAt: row.createdAt

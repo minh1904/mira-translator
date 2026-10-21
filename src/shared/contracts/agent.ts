@@ -261,7 +261,7 @@ export interface AgentPendingAction {
   toolCallId: string
   argsDigest: string
   name: string
-  kind: 'approve' | 'choose'
+  kind: 'approve' | 'choose' | 'question'
   label: string
   candidates: Array<{ handle: string; label: string }>
   createdAt: number

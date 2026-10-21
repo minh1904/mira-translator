@@ -289,6 +289,41 @@ export const listAddressingCapability: CapabilityDefinition<Record<string, never
   })
 }
 
+export const askQuestionsCapability: CapabilityDefinition<{
+  question: string
+  options: string[]
+}> = {
+  name: 'ask_questions',
+  description:
+    'Đặt câu hỏi trắc nghiệm hoặc gợi ý phương án cho người dùng khi cần làm rõ yêu cầu hoặc cần người dùng lựa chọn hướng xử lý.',
+  kind: 'read',
+  schema: v.object({
+    question: v.pipe(v.string(), v.minLength(1, 'Câu hỏi không được để trống.')),
+    options: v.pipe(v.array(v.string()), v.minLength(1, 'Cần ít nhất 1 lựa chọn.'))
+  }),
+  parameters: {
+    type: 'object',
+    properties: {
+      question: {
+        type: 'string',
+        description: 'Nội dung câu hỏi ngắn gọn gửi tới người dùng.'
+      },
+      options: {
+        type: 'array',
+        items: { type: 'string' },
+        description: 'Danh sách các lựa chọn để người dùng bấm chọn.'
+      }
+    },
+    required: ['question', 'options']
+  },
+  targetPolicy: 'no_target',
+  handler: async () => ({ ok: true, value: {} }),
+  activityAdapter: ({ args }) => ({
+    label: `Hỏi: ${(args as { question?: string }).question ?? ''}`,
+    kind: 'read'
+  })
+}
+
 export const defaultReadCapabilities: CapabilityDefinition[] = [
   listWorksCapability,
   listChaptersCapability,
@@ -296,5 +331,6 @@ export const defaultReadCapabilities: CapabilityDefinition[] = [
   readSegmentsCapability,
   searchWorkCapability,
   listGlossaryCapability,
-  listAddressingCapability
+  listAddressingCapability,
+  askQuestionsCapability
 ]
