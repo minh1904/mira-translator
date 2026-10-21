@@ -1,18 +1,10 @@
 import { useEffect, useState, type JSX, type ReactNode } from 'react'
-import {
-  MinimalisticMagnifierIcon,
-  MoonIcon,
-  SettingsIcon,
-  SunIcon
-} from '@renderer/components/ui/reicon'
-
-import { Button } from '../components/ui/Button'
-import { CompactButton } from '../components/ui/CompactButton'
 import { cn } from '../lib/cn'
-import { ICON } from '../components/ui/icon'
-import { Kbd } from '../components/ui/Input'
-import { Tip } from '../components/ui/Tooltip'
-import { TopBarSlotContext, TopBarTitleSlotContext } from '../components/ui/topBarSlot'
+import {
+  StatusBarSlotContext,
+  TopBarSlotContext,
+  TopBarTitleSlotContext
+} from '../components/ui/topBarSlot'
 import type { Theme } from './useTheme'
 
 export interface AppShellProps {
@@ -22,13 +14,10 @@ export interface AppShellProps {
   sidebar: ReactNode | null
   sidebarOpen: boolean
   onToggleSidebar(): void
-  theme: Theme
-  onToggleTheme(): void
-  /** Mở màn cài đặt. Nút ở mọi màn, nên đường vào không phụ thuộc đang đứng ở đâu. */
-  onOpenSettings(): void
-  /** Mở bảng lệnh tìm kiếm trung tâm (như Command Center của VS Code). */
+  theme?: Theme
+  onToggleTheme?: () => void
+  onOpenSettings?: () => void
   onOpenPalette?(): void
-  /** Đang ở màn cài đặt: nút sáng lên và không mở lại chính nó. */
   settingsOpen?: boolean
   /** Thanh trạng thái toàn cục ở đáy cửa sổ (chiều cao 22px chuẩn VS Code). */
   footer?: ReactNode
@@ -42,31 +31,24 @@ export interface AppShellProps {
 const BAR_END_PADDING =
   'max(10px, calc(100vw - env(titlebar-area-x, 0px) - env(titlebar-area-width, 100vw)))'
 
-const BAR_ICON = ICON.sm
-
 /**
- * Khung cửa sổ ứng dụng: thanh tiêu đề chung ở trên cùng, phía dưới gồm thanh điều hướng ứng dụng và cột nội dung trang.
- * Cột trang gồm thanh công cụ trên cùng, cột danh sách tùy chọn và vùng làm việc chính.
- * Cài đặt và đổi theme đặt ở chân thanh bên hoặc cuối thanh công cụ trang. Ctrl+B dùng để đóng/mở thanh bên.
+ * Khung cửa sổ ứng dụng theo phong cách VS Code:
+ * 1. Thanh tiêu đề duy nhất chuẩn desktop (35px): Chỉ hiển thị logo và tiêu đề trang, kéo cửa sổ tự nhiên, không chứa nút bấm.
+ * 2. Vùng làm việc chính: Activity Bar cố định bên trái, Sidebar (danh sách chương), và vùng nội dung chính.
+ * 3. Thanh trạng thái (Status Bar) 22px cố định ở đáy cửa sổ.
  */
 export function AppShell({
   nav,
   sidebar,
   sidebarOpen,
   onToggleSidebar,
-  theme,
-  onToggleTheme,
-  onOpenSettings,
-  onOpenPalette,
-  settingsOpen = false,
   footer,
   children
 }: AppShellProps): JSX.Element {
-  // Phần tử để gắn các nút điều khiển của màn hình hiện tại (xem `TopBarActions`). Sử dụng state để cập nhật lại khi phần tử tồn tại.
-  const [slot, setSlot] = useState<HTMLElement | null>(null)
+  const [slot] = useState<HTMLElement | null>(null)
   const [titleSlot, setTitleSlot] = useState<HTMLElement | null>(null)
+  const [bottomSlot, setBottomSlot] = useState<HTMLElement | null>(null)
 
-  // Trình xử lý phím tắt toàn cục; nếu các phần tử bên trong (như ô soạn thảo) đã xử lý và gọi preventDefault(), sự kiện sẽ được bỏ qua.
   useEffect(() => {
     function onKeyDown(event: KeyboardEvent): void {
       if (event.defaultPrevented) return
@@ -81,64 +63,21 @@ export function AppShell({
     return () => window.removeEventListener('keydown', onKeyDown)
   }, [onToggleSidebar])
 
-  const themeLabel = theme === 'dark' ? 'Chuyển sang nền sáng' : 'Chuyển sang nền tối'
-
   return (
     <div className="flex h-screen flex-col overflow-hidden bg-default">
-      {/* 1. Thanh tiêu đề duy nhất chuẩn VS Code: cao 35px, logo + breadcrumb + command center + actions */}
+      {/* 1. Thanh tiêu đề duy nhất chuẩn VS Code: chỉ hiển thị tiêu đề và là vùng kéo cửa sổ, không chứa các nút bấm */}
       <header
         data-slot="app-titlebar"
-        className="window-drag flex h-(--mira-header-height) shrink-0 min-w-0 items-center justify-between border-b border-default bg-subtle px-2 pr-sm text-body-sm"
+        className="window-drag flex h-(--mira-header-height) shrink-0 min-w-0 select-none items-center justify-between border-b border-default bg-subtle px-3 pr-sm text-body-xs text-subtle"
         style={{ paddingRight: BAR_END_PADDING }}
       >
-        {/* Mép trái: Logo Mira + Breadcrumb / Tiêu đề màn hình */}
         <div className="flex min-w-0 items-center gap-2">
-          <span className="text-label-sm font-semibold tracking-heading select-none text-emphasis">
-            Mira
-          </span>
-          <span className="h-3.5 w-px bg-line" aria-hidden="true" />
-          <div ref={setTitleSlot} className="flex min-w-0 items-center gap-xs" />
-        </div>
-
-        {/* Chính giữa: Command Center tìm kiếm nhanh theo phong cách VS Code */}
-        {onOpenPalette && (
-          <div className="mx-2 flex min-w-0 flex-1 max-w-sm justify-center">
-            <Button
-              variant="outline"
-              onClick={onOpenPalette}
-              title="Tìm kiếm tác phẩm, chương… (Ctrl+K / Ctrl+P)"
-              className="window-no-drag !h-6 w-full max-w-sm justify-between rounded-xs px-2 text-label-xs text-muted hover:border-strong hover:bg-surface hover:text-default shadow-2xs"
-            >
-              <span className="flex items-center gap-1.5 truncate">
-                <MinimalisticMagnifierIcon size={12} className="text-muted" />
-                <span className="truncate">Tìm kiếm tác phẩm, chương…</span>
-              </span>
-              <Kbd>Ctrl K</Kbd>
-            </Button>
-          </div>
-        )}
-
-        {/* Mép phải: Các nút hành động gắn theo màn hình + Đổi theme + Cài đặt */}
-        <div className="window-no-drag flex shrink-0 items-center gap-1">
-          <div ref={setSlot} className="flex shrink-0 items-center gap-1 empty:hidden" />
-          <span className="h-3.5 w-px bg-line [:not(:empty)+&]:block" aria-hidden="true" />
-          <div className="flex shrink-0 items-center gap-0.5">
-            <Tip label={themeLabel}>
-              <CompactButton
-                aria-label={themeLabel}
-                onClick={onToggleTheme}
-                icon={theme === 'dark' ? <SunIcon size={BAR_ICON} /> : <MoonIcon size={BAR_ICON} />}
-              />
-            </Tip>
-            <Tip label="Cài đặt">
-              <CompactButton
-                aria-label="Cài đặt"
-                aria-pressed={settingsOpen}
-                onClick={onOpenSettings}
-                icon={<SettingsIcon size={BAR_ICON} />}
-              />
-            </Tip>
-          </div>
+          <span className="font-semibold tracking-heading text-emphasis">Mira</span>
+          <span className="h-3 w-px bg-line" aria-hidden="true" />
+          <div
+            ref={setTitleSlot}
+            className="flex min-w-0 items-center gap-xs truncate text-muted"
+          />
         </div>
       </header>
 
@@ -163,16 +102,27 @@ export function AppShell({
         )}
 
         <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
-          <TopBarTitleSlotContext.Provider value={titleSlot}>
-            <TopBarSlotContext.Provider value={slot}>
-              <main className="min-h-0 flex-1 overflow-y-auto">{children}</main>
-            </TopBarSlotContext.Provider>
-          </TopBarTitleSlotContext.Provider>
+          <StatusBarSlotContext.Provider value={bottomSlot}>
+            <TopBarTitleSlotContext.Provider value={titleSlot}>
+              <TopBarSlotContext.Provider value={slot}>
+                <main className="min-h-0 flex-1 overflow-y-auto">{children}</main>
+              </TopBarSlotContext.Provider>
+            </TopBarTitleSlotContext.Provider>
+          </StatusBarSlotContext.Provider>
         </div>
       </div>
 
-      {/* 3. Thanh trạng thái đáy (Status Bar) 22px */}
-      {footer}
+      {/* 3. Thanh trạng thái đáy (Status Bar) 22px chuẩn VS Code */}
+      <footer
+        data-slot="app-statusbar"
+        className="flex h-[22px] shrink-0 items-center justify-between border-t border-default bg-subtle px-2 text-body-xs text-subtle select-none tabular-nums"
+      >
+        <div
+          ref={setBottomSlot}
+          className="flex min-w-0 flex-1 items-center justify-between gap-2 empty:hidden"
+        />
+        {footer}
+      </footer>
     </div>
   )
 }

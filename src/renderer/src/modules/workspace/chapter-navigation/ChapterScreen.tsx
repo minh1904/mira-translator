@@ -8,7 +8,6 @@ import {
 import type { WorkSummary } from '../../../../../shared/contracts/library'
 import type { TextSide } from '../../../../../shared/contracts/text'
 import { TopBarTitle } from '../../../components/ui/TopBarActions'
-import { Breadcrumb } from '../../../components/ui/Breadcrumb'
 import { Button } from '../../../components/ui/Button'
 import { cn } from '../../../lib/cn'
 import type { TextStore } from '../chapter-editor/editorSession'
@@ -170,13 +169,10 @@ export function ChapterScreen({
   // Giữ nguyên khung giao diện đồng nhất với màn hình đã có bản gốc.
   return (
     <div className="flex h-full min-h-0 flex-col">
-      <TopBarTitle onBack={onBackToWork} backLabel={`Về tác phẩm: ${work.title}`} size="sm">
-        <Breadcrumb
-          items={[
-            { label: work.title, onClick: onBackToWork, title: `Về tác phẩm: ${work.title}` },
-            { label: headingTitle(chapter) }
-          ]}
-        />
+      <TopBarTitle size="sm">
+        <span className="font-medium text-default">
+          {work.title} <span className="text-muted">/</span> {headingTitle(chapter)}
+        </span>
       </TopBarTitle>
 
       {fileInput}
