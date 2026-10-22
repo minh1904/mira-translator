@@ -269,7 +269,6 @@ export const useAgentStore = create<AgentState>((set, get) => {
     set({ isStreaming: false, streamingTurnId: null, live: {} })
   }
 
-  /** Merges a snapshot without dropping rows that events added while it was being read. */
   /** Resumes a waiting turn with the user's answer to its pending call. */
   const continueTurn = async (
     action: AgentPendingAction,
@@ -335,6 +334,7 @@ export const useAgentStore = create<AgentState>((set, get) => {
     }))
   }
 
+  /** Merges a snapshot without dropping rows that events added while it was being read. */
   const merge = (detail: AgentSessionDetailView) => {
     set((s) => {
       if (s.activeSessionId !== detail.session.id) return s
