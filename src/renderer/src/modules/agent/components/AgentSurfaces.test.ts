@@ -101,6 +101,8 @@ describe('assistant surfaces', () => {
   })
 
   it('sends each turn of one session with the context of where it was sent from', async () => {
+    // Ask adds the open chapter by itself; Agent leaves it dimmed until the user adds it.
+    useAgentStore.getState().setMode('ask')
     const send = bridge({
       session,
       turns: [],
@@ -129,7 +131,7 @@ describe('assistant surfaces', () => {
     ])
   })
 
-  it('shows chips for the context it will send and a status for screen readers', async () => {
+  it('dims the open chapter in Agent, shows what is sent and a status for screen readers', async () => {
     bridge({
       session,
       turns: [turn('t1', { instruction: 'dịch', status: 'waiting_user' })],
@@ -159,9 +161,15 @@ describe('assistant surfaces', () => {
       () => ({ workId: 'w', chapterId: 'c' }),
       () => ({ work: 'Đại Đạo', chapter: 'Chương 1' })
     )
-    const composer = render(createElement(AgentComposer))
-    expect(composer).toContain('Bỏ ngữ cảnh Đại Đạo')
-    expect(composer).toContain('Bỏ ngữ cảnh Chương 1')
+    let composer = render(createElement(AgentComposer))
+    expect(composer).toContain('aria-label="Thêm Chương 1 vào ngữ cảnh"')
+    expect(composer).toContain('data-suggested="true"')
+    expect(composer).toContain('placeholder="Mô tả việc cần làm"')
+
+    useAgentStore.getState().setImplicitAdded(true)
+    composer = render(createElement(AgentComposer))
+    expect(composer).toContain('aria-label="Bỏ Chương 1 khỏi ngữ cảnh"')
+    expect(composer).not.toContain('data-suggested')
 
     const transcript = render(createElement(AgentTranscript))
     expect(transcript).toContain('role="status"')

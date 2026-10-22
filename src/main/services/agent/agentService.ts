@@ -4,6 +4,8 @@ import type {
   AgentActivity,
   AgentChatMode,
   AgentContext,
+  AgentContextSearchGroup,
+  AgentContextSearchInput,
   AgentOperation,
   AgentPendingAction,
   AgentPendingReply,
@@ -58,7 +60,7 @@ import {
   steerTranslationTaskCapability
 } from './capabilities/taskCapabilities'
 import {
-  CONTEXT_HANDLE,
+  contextHandle,
   CREATE_TRANSLATION_TASK,
   STEER_TRANSLATION_TASK,
   RESOLVE_TARGET,
@@ -69,6 +71,7 @@ import {
   decideToolCall,
   type PolicyDecision
 } from './policy'
+import { describeAttachedEntries, searchContext, snapshotContext } from './contextAttachments'
 import { assembleTurnContext, contextLimitChars } from './turnContext'
 import type { CapabilityDefinition, CapabilityExecutionResult } from './types'
 
@@ -393,6 +396,24 @@ function targetLabel(target: ResolvedTarget): string {
     : target.workLabel
 }
 
+function sideLabel(side: 'source' | 'target'): string {
+  return side === 'source' ? 'gốc' : 'dịch'
+}
+
+/** A target for the prompt, with the paragraphs of a pinned selection. */
+function describeTarget(target: ResolvedTarget): string {
+  const label = targetLabel(target)
+  if (target.kind !== 'chapter' || !target.range) return label
+  return `${label}, đoạn ${target.range.from}–${target.range.to} bản ${sideLabel(target.side ?? 'source')}`
+}
+
+/** The works and chapters of a turn's context, each with its handle. */
+interface ContextTargets {
+  /** `label` is the chip's label for an attachment, null for the main context. */
+  targets: Array<{ handle: string; target: ResolvedTarget; label: string | null }>
+  notes: string[]
+}
+
 function errorInfo(error: unknown): { code: string; message: string } {
   if (error instanceof TurnStop) return { code: error.code, message: error.message }
   if (error instanceof ProviderError) {
@@ -542,6 +563,11 @@ export class AgentService {
   }
 
   /** One stored call with its full result, for the transcript's Input/Output section. */
+  /** Rows of the composer's + picker. */
+  searchContext(input: AgentContextSearchInput): AgentContextSearchGroup[] {
+    return searchContext(this.library, input)
+  }
+
   getToolCallDetail(toolCallId: string): AgentToolCallDetailView {
     const row = this.repository.getToolCall(toolCallId)
     if (!row) throw new StorageError('not_found', 'Không tìm thấy tool call.')
@@ -678,7 +704,7 @@ export class AgentService {
         modelSelection: input.modelSelection
       }),
       instruction: input.instruction.trim(),
-      context: input.context ?? {},
+      context: snapshotContext(this.library, input.context ?? {}),
       mode: input.mode,
       now: this.now()
     })
@@ -934,8 +960,8 @@ export class AgentService {
 
       // Handles of this turn: the snapshot's target and every resolved `resolve_target` result.
       const handles = new Map<string, ResolvedTarget>()
-      const contextTarget = this.contextTarget(turn.context)
-      if (contextTarget) handles.set(CONTEXT_HANDLE, contextTarget)
+      const contextTargets = this.contextTargets(turn.context)
+      for (const { handle, target } of contextTargets.targets) handles.set(handle, target)
       // Handles the user picked among candidates count as named by the user (policy D4).
       const chosen = new Set<string>()
       let issuedHandles = 0
@@ -1330,7 +1356,7 @@ export class AgentService {
           system: SYSTEM_PROMPT,
           toolChars: final ? 0 : toolChars,
           history,
-          current: this.describeTurn(turn, contextTarget),
+          current: this.describeTurn(turn, contextTargets),
           rounds: roundMessages(rows),
           limitChars: contextLimitChars(chatModel.info)
         })
@@ -1527,33 +1553,76 @@ export class AgentService {
     }
   }
 
-  /** The context snapshot's target, if the turn kept a work or chapter chip. */
-  private contextTarget(context: AgentContext): ResolvedTarget | undefined {
-    if (!context.workId) return undefined
-    const found = resolveTarget(this.library, {
-      selector: {
-        relative: context.chapterId ? 'current_chapter' : 'current_work',
-        ...(context.selection
-          ? {
-              side: context.selection.side,
-              range: { from: context.selection.from, to: context.selection.to }
-            }
-          : {})
-      },
-      context
-    })
-    return found.status === 'resolved' ? found.target : undefined
+  /**
+   * Handles for the works and chapters in the context snapshot: `ctx` for the main context (the chapter,
+   * or the work without one), then `ctx2`, `ctx3`… for attachments in chip order. An attachment whose
+   * work or chapter was deleted gets no handle and a note for the model instead.
+   */
+  private contextTargets(context: AgentContext): ContextTargets {
+    const result: ContextTargets = { targets: [], notes: [] }
+    const seen = new Set<string>()
+    const add = (target: ResolvedTarget, label: string | null) => {
+      const key =
+        target.kind === 'chapter'
+          ? `${target.chapterId}:${JSON.stringify(target.range ?? null)}`
+          : target.workId
+      if (seen.has(key)) return
+      seen.add(key)
+      result.targets.push({ handle: contextHandle(result.targets.length + 1), target, label })
+    }
+    if (context.workId) {
+      const found = resolveTarget(this.library, {
+        selector: {
+          relative: context.chapterId ? 'current_chapter' : 'current_work',
+          ...(context.selection
+            ? {
+                side: context.selection.side,
+                range: { from: context.selection.from, to: context.selection.to }
+              }
+            : {})
+        },
+        context
+      })
+      if (found.status === 'resolved') add(found.target, null)
+    }
+    for (const attachment of context.attachments ?? []) {
+      if (attachment.kind !== 'work' && attachment.kind !== 'chapter') continue
+      const found = resolveTarget(this.library, {
+        selector: {
+          relative: attachment.kind === 'chapter' ? 'current_chapter' : 'current_work',
+          ...(attachment.kind === 'chapter' && attachment.range
+            ? {
+                side: attachment.range.side,
+                range: { from: attachment.range.from, to: attachment.range.to }
+              }
+            : {})
+        },
+        context: {
+          workId: attachment.workId,
+          ...(attachment.kind === 'chapter' ? { chapterId: attachment.chapterId } : {})
+        }
+      })
+      if (found.status === 'resolved') add(found.target, attachment.label)
+      else result.notes.push(`"${attachment.label}" không còn tồn tại; đã bỏ khỏi ngữ cảnh.`)
+    }
+    return result
   }
 
-  private describeTurn(turn: AgentTurn, contextTarget: ResolvedTarget | undefined): string {
+  private describeTurn(turn: AgentTurn, context: ContextTargets): string {
     const lines = [turn.instruction]
-    if (contextTarget) {
-      lines.push('', `Ngữ cảnh (handle "${CONTEXT_HANDLE}"): ${targetLabel(contextTarget)}.`)
+    const [main, ...attached] = context.targets
+    if (main) {
+      // The main context's range is the live selection, described on its own line below.
+      const label = main.label === null ? targetLabel(main.target) : describeTarget(main.target)
+      lines.push('', `Ngữ cảnh (handle "${main.handle}"): ${label}.`)
       const selection = turn.context.selection
-      if (selection) {
+      if (selection && main.label === null) {
         lines.push(
-          `Người dùng đang chọn đoạn ${selection.from}–${selection.to} ở bản ${selection.side === 'source' ? 'gốc' : 'dịch'}.`
+          `Người dùng đang chọn đoạn ${selection.from}–${selection.to} ở bản ${sideLabel(selection.side)}.`
         )
+      }
+      for (const { handle, target } of attached) {
+        lines.push(`Đích người dùng đính kèm (handle "${handle}"): ${describeTarget(target)}.`)
       }
     } else {
       lines.push(
@@ -1561,6 +1630,7 @@ export class AgentService {
         'Không có tác phẩm hay chương trong ngữ cảnh; dùng resolve_target khi cần đích.'
       )
     }
+    lines.push(...context.notes, ...describeAttachedEntries(turn.context))
     return lines.join('\n')
   }
 

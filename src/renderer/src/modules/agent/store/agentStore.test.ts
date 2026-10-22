@@ -198,6 +198,40 @@ describe('agentStore', () => {
     expect(useAgentStore.getState().drafts).toEqual({ [NEW_CHAT]: 'chưa có phiên' })
   })
 
+  it('sends the chips of the draft and clears them only once the turn is accepted', async () => {
+    const api = bridge(async () => ({ ok: true, value: detail({ turns: [turn()] }) }))
+    await useAgentStore.getState().selectSession('s1')
+    useAgentStore.setState({ isStreaming: false, streamingTurnId: null })
+    const store = useAgentStore.getState()
+    store.adapter.setActiveContextGetter(
+      () => ({ workId: 'w', chapterId: 'c12' }),
+      () => ({ chapter: 'Chương 12' })
+    )
+    const chapter13 = {
+      kind: 'chapter' as const,
+      workId: 'w',
+      chapterId: 'c13',
+      label: 'Chương 13'
+    }
+    expect(store.addAttachment(chapter13)).toMatchObject({ ok: true })
+    expect(store.addAttachment(chapter13)).toEqual({ ok: false, reason: 'duplicate' })
+
+    api.turn.send.mockResolvedValueOnce({
+      ok: false,
+      error: { code: 'conflict', message: 'Phiên đang bận.' }
+    } as never)
+    expect(await useAgentStore.getState().send('so sánh')).toBe(false)
+    expect(useAgentStore.getState().composer.s1?.attachments).toEqual([chapter13])
+
+    // The open chapter is still dimmed in Agent, so only the added chip goes.
+    expect(await useAgentStore.getState().send('so sánh')).toBe(true)
+    expect(api.turn.send).toHaveBeenLastCalledWith(
+      expect.objectContaining({ context: { attachments: [chapter13] } })
+    )
+    expect(useAgentStore.getState().composer.s1).toBeUndefined()
+    store.adapter.setActiveContextGetter(() => null)
+  })
+
   it('sends the model chosen in the composer, and none when the composer has none', async () => {
     const api = bridge(async () => ({ ok: true, value: detail({ turns: [turn()] }) }))
     await useAgentStore.getState().selectSession('s1')

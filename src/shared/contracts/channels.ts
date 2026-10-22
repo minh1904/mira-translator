@@ -117,6 +117,7 @@ export const CHANNELS = {
   agentTurnSend: 'agent:turn:send',
   agentTurnCancel: 'agent:turn:cancel',
   agentToolCallGet: 'agent:tool-call:get',
+  agentContextSearch: 'agent:context:search',
   agentOperationList: 'agent:operation:list',
   agentOperationGet: 'agent:operation:get',
   agentOperationUndo: 'agent:operation:undo',

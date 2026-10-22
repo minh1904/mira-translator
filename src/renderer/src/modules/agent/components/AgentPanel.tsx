@@ -91,7 +91,7 @@ export function AgentPanel({ onOpenTarget, onClose, className }: AgentPanelProps
       </div>
       <AgentTranscript onOpenTarget={onOpenTarget} />
       <div className="shrink-0 p-2">
-        <AgentComposer />
+        <AgentComposer onOpenTarget={onOpenTarget} />
       </div>
     </div>
   )

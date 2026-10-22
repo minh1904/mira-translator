@@ -36,6 +36,34 @@ describe('agent contracts', () => {
     ).toThrow()
   })
 
+  it('accepts up to ten attachments of the known kinds', () => {
+    const chapter = (n: number) => ({
+      kind: 'chapter' as const,
+      workId: id(1),
+      chapterId: id(n),
+      label: `Chương ${n}`
+    })
+    expect(
+      v.parse(agentContextSchema, {
+        attachments: [
+          { kind: 'work', workId: id(1), label: 'A' },
+          { ...chapter(2), range: { side: 'source', from: 3, to: 5 } },
+          { kind: 'glossary', workId: id(1), entryId: id(9), label: 'Lâm Động' }
+        ]
+      }).attachments
+    ).toHaveLength(3)
+    const eleven = Array.from({ length: 11 }, (_, n) => chapter(n + 2))
+    expect(() => v.parse(agentContextSchema, { attachments: eleven })).toThrow()
+    expect(() =>
+      v.parse(agentContextSchema, { attachments: [{ kind: 'image', workId: id(1), label: 'x' }] })
+    ).toThrow()
+    expect(() =>
+      v.parse(agentContextSchema, {
+        attachments: [{ ...chapter(2), range: { side: 'source', from: 5, to: 3 } }]
+      })
+    ).toThrow()
+  })
+
   it('accepts only resolved targets with the identifiers their kind requires', () => {
     expect(
       v.parse(resolvedTargetSchema, {

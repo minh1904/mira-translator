@@ -18,6 +18,7 @@ import type {
   AgentSessionDetailView,
   AgentSessionView,
   AgentToolCallDetailView,
+  AgentContextSearchGroup,
   AgentStreamEvent,
   AgentTargetChanged,
   AgentUndoResult,
@@ -564,6 +565,12 @@ const desktopApi: DesktopApi = {
       get: (toolCallId) =>
         ipcRenderer.invoke(CHANNELS.agentToolCallGet, { toolCallId }) as Promise<
           Result<AgentToolCallDetailView>
+        >
+    },
+    context: {
+      search: (input) =>
+        ipcRenderer.invoke(CHANNELS.agentContextSearch, input) as Promise<
+          Result<AgentContextSearchGroup[]>
         >
     },
     operations: {

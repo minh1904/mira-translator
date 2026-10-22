@@ -1,6 +1,7 @@
 import { create } from 'zustand'
 import type {
   AgentActivity,
+  AgentAttachment,
   AgentChatMode,
   AgentContext,
   AgentOperation,
@@ -21,6 +22,13 @@ import {
   type WorkspaceAgentAdapter,
   type TargetRef
 } from '../adapter/workspaceAdapter'
+import {
+  addAttachment,
+  attachmentKey,
+  composeContext,
+  type AddAttachmentResult,
+  type ComposedContext
+} from '../components/composeContext'
 
 /** What one model round of the streaming turn has drawn before Main stored it as parts. */
 export interface LiveRound {
@@ -33,6 +41,27 @@ export interface LiveRound {
 /** Draft key of a chat that has no session yet. */
 export const NEW_CHAT = 'new'
 
+/** Context chips of one unsent draft. */
+export interface ComposerDraft {
+  /** The user's choice for the suggested chip; `null` follows the mode. */
+  implicitAdded: boolean | null
+  attachments: AgentAttachment[]
+}
+
+const EMPTY_COMPOSER: ComposerDraft = { implicitAdded: null, attachments: [] }
+
+/** The chips of the active draft and the context they send, from what the workspace has open. */
+export function composeActive(state: AgentState): ComposedContext {
+  const draft = state.composer[state.activeSessionId ?? NEW_CHAT] ?? EMPTY_COMPOSER
+  return composeContext({
+    active: state.adapter.captureContext(),
+    labels: state.adapter.contextLabels(),
+    mode: state.mode,
+    implicitAdded: draft.implicitAdded,
+    attachments: draft.attachments
+  })
+}
+
 type SendModel = AgentSendInput['modelSelection']
 
 export interface AgentState {
@@ -44,6 +73,8 @@ export interface AgentState {
   pending: AgentPendingAction[]
   /** Unsent composer text per session (`NEW_CHAT` before the first send); renderer only. */
   drafts: Record<string, string>
+  /** Context chips per draft, keyed like `drafts`; renderer only. */
+  composer: Record<string, ComposerDraft>
   /** Model the user picked in the composer for every session; `null` follows Settings. */
   model: ModelSelection | null
   /** Mode of the next turn; a turn keeps the mode it was sent with. */
@@ -74,6 +105,12 @@ export interface AgentState {
   newChat: () => void
   createSession: (title?: string) => Promise<string>
   setDraft: (text: string) => void
+  /** Adds or dims the suggested chip of the active draft. */
+  setImplicitAdded: (added: boolean) => void
+  addAttachment: (attachment: AgentAttachment) => AddAttachmentResult
+  removeAttachment: (key: string) => void
+  /** Replaces the active draft's chips, as when recalling an earlier instruction. */
+  setAttachments: (attachments: AgentAttachment[]) => void
   setModel: (model: ModelSelection | null) => void
   setMode: (mode: AgentChatMode) => void
   /** Changes the level of the active session in Main; before the first send it is kept here. */
@@ -176,6 +213,14 @@ export const useAgentStore = create<AgentState>((set, get) => {
     deltaTimer ??= setTimeout(flushDeltas, DELTA_INTERVAL_MS)
   }
 
+  /** Changes the chips of the active draft. */
+  const updateComposer = (change: (draft: ComposerDraft) => ComposerDraft) => {
+    const key = get().activeSessionId ?? NEW_CHAT
+    set((s) => ({
+      composer: { ...s.composer, [key]: change(s.composer[key] ?? EMPTY_COMPOSER) }
+    }))
+  }
+
   const startStreaming = (turnId: string) => {
     if (get().streamingTurnId === turnId) return
     resetBuffers()
@@ -237,6 +282,7 @@ export const useAgentStore = create<AgentState>((set, get) => {
     operations: {},
     pending: [],
     drafts: {},
+    composer: {},
     model: null,
     mode: 'agent',
     permissionLevel: 'default',
@@ -360,6 +406,20 @@ export const useAgentStore = create<AgentState>((set, get) => {
       set((s) => ({ drafts: { ...s.drafts, [key]: text } }))
     },
 
+    setImplicitAdded: (added) => updateComposer((draft) => ({ ...draft, implicitAdded: added })),
+    addAttachment: (attachment) => {
+      const key = get().activeSessionId ?? NEW_CHAT
+      const result = addAttachment(get().composer[key]?.attachments ?? [], attachment)
+      if (result.ok) updateComposer((draft) => ({ ...draft, attachments: result.attachments }))
+      return result
+    },
+    removeAttachment: (removed) =>
+      updateComposer((draft) => ({
+        ...draft,
+        attachments: draft.attachments.filter((item) => attachmentKey(item) !== removed)
+      })),
+    setAttachments: (attachments) => updateComposer((draft) => ({ ...draft, attachments })),
+
     setModel: (model) => set({ model }),
     setMode: (mode) => set({ mode }),
     setPermissionLevel: async (level) => {
@@ -386,7 +446,7 @@ export const useAgentStore = create<AgentState>((set, get) => {
       if (state.isStreaming) return false
       const api = bridge()
       const draftKey = state.activeSessionId ?? NEW_CHAT
-      const context = options?.context ?? state.adapter.captureContext()
+      const context = options?.context ?? composeActive(state).context
       set({ lastError: null })
       if (!api?.turn?.send) {
         // Isolated unit tests without the Electron bridge.
@@ -425,7 +485,9 @@ export const useAgentStore = create<AgentState>((set, get) => {
       set((s) => {
         const drafts = { ...s.drafts }
         delete drafts[draftKey]
-        return { drafts, activeSessionId: res.value.sessionId }
+        const composer = { ...s.composer }
+        delete composer[draftKey]
+        return { drafts, composer, activeSessionId: res.value.sessionId }
       })
       startStreaming(res.value.turnId)
       if (draftKey === NEW_CHAT) void get().loadSessions()
@@ -601,6 +663,7 @@ export const useAgentStore = create<AgentState>((set, get) => {
         operations: {},
         pending: [],
         drafts: {},
+        composer: {},
         model: null,
         mode: 'agent',
         permissionLevel: 'default',

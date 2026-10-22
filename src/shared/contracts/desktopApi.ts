@@ -21,6 +21,8 @@ import type {
   AgentSessionDetailView,
   AgentSessionView,
   AgentToolCallDetailView,
+  AgentContextSearchGroup,
+  AgentContextSearchInput,
   AgentSetPermissionLevelInput,
   AgentStreamEvent,
   AgentTargetChanged,
@@ -496,6 +498,10 @@ export interface AgentApi {
   toolCalls: {
     /** One stored call with its full result, read when the transcript opens it. */
     get(toolCallId: string): Promise<Result<AgentToolCallDetailView>>
+  }
+  context: {
+    /** Rows of the + picker; entries waiting for review never appear. */
+    search(input: AgentContextSearchInput): Promise<Result<AgentContextSearchGroup[]>>
   }
   operations: {
     /** The latest operations of every chat and task, newest change first. */

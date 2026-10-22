@@ -6,12 +6,66 @@ import type { TokenUsage } from './usage'
 const paragraphSchema = v.pipe(v.number(), v.integer(), v.minValue(1))
 const sequenceSchema = v.pipe(v.number(), v.integer(), v.minValue(1))
 
+export interface AgentSelection {
+  side: 'source' | 'target'
+  from: number
+  to: number
+}
+
+/** Most attachments a turn carries besides its main context. */
+export const AGENT_ATTACHMENT_LIMIT = 10
+
+/**
+ * A chip the user added with + or by pinning a selection. Main fills `content` of a glossary or
+ * addressing attachment when it accepts the turn (null once the entry is no longer approved), so the
+ * turn keeps what it sent; whatever the renderer passes there is overwritten.
+ */
+export type AgentAttachment =
+  | { kind: 'work'; workId: string; label: string }
+  | { kind: 'chapter'; workId: string; chapterId: string; label: string; range?: AgentSelection }
+  | {
+      kind: 'glossary' | 'addressing'
+      workId: string
+      entryId: string
+      label: string
+      content?: string | null
+    }
+
 export interface AgentContext {
   workId?: string
   chapterId?: string
   caret?: { source: number | null; target: number | null }
-  selection?: { side: 'source' | 'target'; from: number; to: number }
+  selection?: AgentSelection
+  attachments?: AgentAttachment[]
 }
+
+const selectionSchema = v.pipe(
+  v.strictObject({
+    side: v.picklist(['source', 'target']),
+    from: paragraphSchema,
+    to: paragraphSchema
+  }),
+  v.check((selection) => selection.from <= selection.to, 'Vùng chọn bị ngược.')
+)
+const attachmentLabelSchema = v.pipe(v.string(), v.maxLength(200))
+
+export const agentAttachmentSchema = v.variant('kind', [
+  v.strictObject({ kind: v.literal('work'), workId: idSchema, label: attachmentLabelSchema }),
+  v.strictObject({
+    kind: v.literal('chapter'),
+    workId: idSchema,
+    chapterId: idSchema,
+    label: attachmentLabelSchema,
+    range: v.optional(selectionSchema)
+  }),
+  v.strictObject({
+    kind: v.picklist(['glossary', 'addressing']),
+    workId: idSchema,
+    entryId: idSchema,
+    label: attachmentLabelSchema,
+    content: v.optional(v.nullable(v.pipe(v.string(), v.maxLength(4000))))
+  })
+])
 
 export const agentContextSchema = v.pipe(
   v.strictObject({
@@ -23,14 +77,11 @@ export const agentContextSchema = v.pipe(
         target: v.nullable(paragraphSchema)
       })
     ),
-    selection: v.optional(
+    selection: v.optional(selectionSchema),
+    attachments: v.optional(
       v.pipe(
-        v.strictObject({
-          side: v.picklist(['source', 'target']),
-          from: paragraphSchema,
-          to: paragraphSchema
-        }),
-        v.check((selection) => selection.from <= selection.to, 'Vùng chọn bị ngược.')
+        v.array(agentAttachmentSchema),
+        v.maxLength(AGENT_ATTACHMENT_LIMIT, 'Tối đa 10 ngữ cảnh đính kèm.')
       )
     )
   }),
@@ -239,6 +290,26 @@ export interface AgentToolCallDetailView {
 }
 
 export const agentToolCallGetInputSchema = v.strictObject({ toolCallId: idSchema })
+
+/** One row of the + picker: what is attached when picked, and a dimmer second line. */
+export interface AgentContextSearchItem {
+  attachment: AgentAttachment
+  detail: string | null
+}
+
+export interface AgentContextSearchGroup {
+  kind: AgentAttachment['kind']
+  items: AgentContextSearchItem[]
+}
+
+/** Most rows the picker shows for one query. */
+export const AGENT_CONTEXT_SEARCH_LIMIT = 50
+
+export const agentContextSearchInputSchema = v.strictObject({
+  query: v.pipe(v.string(), v.maxLength(200)),
+  workId: v.optional(idSchema)
+})
+export type AgentContextSearchInput = v.InferOutput<typeof agentContextSearchInputSchema>
 
 const streamBase = {
   requestId: idSchema,

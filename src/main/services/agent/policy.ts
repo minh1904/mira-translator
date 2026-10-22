@@ -14,8 +14,18 @@ export const RESOLVE_TARGET = 'resolve_target'
 export const UNDO_OPERATION = 'undo_operation'
 export const ASK_QUESTIONS = 'ask_questions'
 export const RUN_SUBAGENT = 'run_subagent'
-/** Handle of the context snapshot's target. */
+/** Handle of the context snapshot's main target; attached works and chapters get `ctx2`, `ctx3`… */
 export const CONTEXT_HANDLE = 'ctx'
+
+/** Handle `n` (1-based) of the targets the user put in the turn's context. */
+export function contextHandle(n: number): string {
+  return n === 1 ? CONTEXT_HANDLE : CONTEXT_HANDLE + n
+}
+
+/** Whether a handle names a target the user put in the turn's context, so they named it. */
+export function isContextHandle(handle: string | undefined): boolean {
+  return handle !== undefined && /^ctx\d*$/.test(handle)
+}
 
 export interface PolicyInput {
   name: string
@@ -115,7 +125,7 @@ export function decideToolCall(input: PolicyInput): PolicyDecision {
     }
   }
   if (input.kind === 'reversible-write') {
-    if (input.handle === CONTEXT_HANDLE || input.chosenByUser || namedByUser(input)) {
+    if (isContextHandle(input.handle) || input.chosenByUser || namedByUser(input)) {
       return { decision: 'allow', reason: 'Đích do người dùng nêu; có thể hoàn tác.' }
     }
     return {

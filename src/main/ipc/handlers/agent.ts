@@ -6,12 +6,14 @@ import {
 } from '../../../shared/contracts/taskQuality'
 import {
   agentCancelInputSchema,
+  agentContextSearchInputSchema,
   agentSendInputSchema,
   agentSetPermissionLevelInputSchema,
   agentToolCallGetInputSchema,
   agentUndoInputSchema,
   agentWriteIntentAckSchema,
   type AgentCancelResult,
+  type AgentContextSearchGroup,
   type AgentOperation,
   type AgentOperationDetailView,
   type AgentSendResult,
@@ -132,6 +134,11 @@ export function agentHandlers(deps: HandlerDeps): AreaHandlers<'agent'> {
     [CHANNELS.agentToolCallGet]: createHandler(
       agentToolCallGetInputSchema,
       ({ toolCallId }): AgentToolCallDetailView => agentOf(deps).getToolCallDetail(toolCallId)
+    ),
+
+    [CHANNELS.agentContextSearch]: createHandler(
+      agentContextSearchInputSchema,
+      (input): AgentContextSearchGroup[] => agentOf(deps).searchContext(input)
     ),
 
     [CHANNELS.agentTurnCancel]: createHandler(

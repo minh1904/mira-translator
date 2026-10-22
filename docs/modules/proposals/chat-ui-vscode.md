@@ -186,7 +186,7 @@ Yêu cầu được tách thành bốn change, apply theo thứ tự (mỗi chan
 | --- | --- | --- | --- |
 | 1 | [`fix-agent-chat-permissions`](../../../openspec/changes/fix-agent-chat-permissions/proposal.md) | C22: chế độ trên turn, ba mức quyền, cổng rủi ro Autopilot, duyệt trong phiên; sửa lỗi 1–2 | Đã triển khai 2026-10-22, chưa archive |
 | 2 | [`add-agent-response-parts`](../../../openspec/changes/add-agent-response-parts/proposal.md) | Nền 1–3, 5; C9–C17, C19, C21 | Đã triển khai 2026-10-22, chưa archive |
-| 3 | [`add-agent-composer-context`](../../../openspec/changes/add-agent-composer-context/proposal.md) | Nền 4; C1–C8 | Đã đặc tả, chưa làm |
+| 3 | [`add-agent-composer-context`](../../../openspec/changes/add-agent-composer-context/proposal.md) | Nền 4; C1–C8 | Đã triển khai 2026-10-22, chưa archive |
 | 4 | [`add-agent-questions-and-checkpoints`](../../../openspec/changes/add-agent-questions-and-checkpoints/proposal.md) | C18, C20, C24 | Đã đặc tả, chưa làm |
 
 Ghi chú về phạm vi đặc tả so với yêu cầu: không stream tham số tool (provider trả tool call nguyên khối), không có gợi ý
@@ -198,10 +198,10 @@ Bảng ban đầu ghi theo commit `d209122`; các dòng được cập nhật kh
 
 | Mã | Trạng thái | Ghi chú |
 | --- | --- | --- |
-| C1–C5 | Chưa đạt | Chip tính đúng nhưng danh sách bị `className="hidden"` (`AgentComposer.tsx`); không có nút +, không có picker, không có trạng thái mờ |
-| C6 | Một phần | Có chế độ, model, Gửi/Dừng; thiếu nút + |
-| C7 | Một phần | Enter/Shift+Enter có; chưa có lịch sử bằng mũi tên |
-| C8 | Một phần | Placeholder không đổi theo chế độ |
+| C1–C5 | Đạt | Hàng chip trên chỗ gõ, ẩn khi rỗng; chương đang mở là chip gợi ý (Ask thêm sẵn, Agent mờ, bấm để thêm); vùng chọn luôn gửi kèm chương và ghim được; nút + (Ctrl+/) mở picker tác phẩm, chương của tác phẩm đang mở, glossary và xưng hô đã duyệt, tối đa 10 chip. Bấm chip glossary/xưng hô hiện chỉ mở trang tác phẩm vì chưa có route tới mục trong khu Ngữ cảnh |
+| C6 | Đạt | Thanh dưới: + · chế độ · model · Gửi/Dừng, model co lại trước; mức quyền ở thanh phụ dưới khung |
+| C7 | Đạt | Enter gửi, Shift+Enter xuống dòng; Lên/Xuống ở đầu/cuối ô duyệt lệnh của session, khôi phục cả chip, trả lại bản nháp |
+| C8 | Đạt | Placeholder theo chế độ: Ask "Hỏi về truyện, chương hoặc bản dịch", Agent "Mô tả việc cần làm" |
 | C9 | Đạt | Bong bóng căn phải, tối đa 90% |
 | C10 | Đạt | Câu trả lời dựng từ `agent_turn_part` (library v16) theo thứ tự xảy ra; lượt cũ được dựng lại gần đúng |
 | C11 | Đạt | Chữ hiện theo tốc độ từ (8 từ/s ban đầu, kẹp 40–2000, xả tối thiểu 80); fence mở được tự đóng, fence rỗng ẩn |

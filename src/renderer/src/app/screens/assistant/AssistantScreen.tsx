@@ -31,7 +31,7 @@ export function AssistantScreen({
       <div className="flex min-w-0 flex-1 flex-col bg-default">
         <AgentTranscript onOpenTarget={onOpenTarget} />
         <div className="mx-auto w-full max-w-[720px] shrink-0 px-md pb-lg">
-          <AgentComposer />
+          <AgentComposer onOpenTarget={onOpenTarget} />
         </div>
       </div>
     </div>
