@@ -498,6 +498,28 @@ CREATE TABLE agent_task_steering (
 CREATE INDEX agent_task_steering_task ON agent_task_steering (task_id, created_at, id);
 `
 
+/**
+ * Chế độ và mức quyền của chat (change `fix-agent-chat-permissions`): turn lưu chế độ và chụp mức quyền
+ * của session lúc được chấp nhận; `approval` ghi vì sao một call `needs_user` được chạy hoặc bị bỏ qua.
+ */
+const version15 = `
+ALTER TABLE agent_turn ADD COLUMN mode TEXT NOT NULL DEFAULT 'agent'
+  CHECK (mode IN ('ask', 'agent'));
+ALTER TABLE agent_turn ADD COLUMN permission_level TEXT NOT NULL DEFAULT 'default'
+  CHECK (permission_level IN ('default', 'allow_all', 'autopilot'));
+ALTER TABLE agent_session ADD COLUMN permission_level TEXT NOT NULL DEFAULT 'default'
+  CHECK (permission_level IN ('default', 'allow_all', 'autopilot'));
+ALTER TABLE agent_tool_call ADD COLUMN approval TEXT
+  CHECK (approval IN ('user_once', 'user_session', 'level_allow_all', 'level_autopilot',
+    'autopilot_skip'));
+CREATE TABLE agent_session_approval (
+  session_id TEXT NOT NULL REFERENCES agent_session (id) ON DELETE CASCADE,
+  capability TEXT NOT NULL,
+  created_at INTEGER NOT NULL,
+  PRIMARY KEY (session_id, capability)
+);
+`
+
 export const librarySchema: SchemaSpec = {
   applicationId: LIBRARY_APPLICATION_ID,
   migrations: [
@@ -584,6 +606,12 @@ export const librarySchema: SchemaSpec = {
       version: 14,
       up(db) {
         db.exec('ALTER TABLE agent_tool_call ADD COLUMN extra_json TEXT')
+      }
+    },
+    {
+      version: 15,
+      up(db) {
+        db.exec(version15)
       }
     }
   ]

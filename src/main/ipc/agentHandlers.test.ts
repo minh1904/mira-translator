@@ -98,6 +98,50 @@ describe('agent IPC handlers', () => {
     expect(detail.turns).toHaveLength(0)
   })
 
+  it('sets a session permission level and refuses one on the send command', () => {
+    const { call } = setup()
+    const created = value(call<AgentSessionView>(CHANNELS.agentSessionsCreate, { title: 'Quyền' }))
+    expect(created.permissionLevel).toBe('default')
+
+    const raised = value(
+      call<AgentSessionView>(CHANNELS.agentSessionsSetPermissionLevel, {
+        sessionId: created.id,
+        level: 'autopilot'
+      })
+    )
+    expect(raised.permissionLevel).toBe('autopilot')
+    const unknown = call(CHANNELS.agentSessionsSetPermissionLevel, {
+      sessionId: created.id,
+      level: 'normal'
+    })
+    expect(unknown.ok).toBe(false)
+
+    // The level belongs to the session: a send command cannot carry one.
+    const sent = call(CHANNELS.agentTurnSend, {
+      sessionId: created.id,
+      clientCommandId: randomUUID(),
+      instruction: 'Dịch chương 1',
+      permissionLevel: 'autopilot'
+    })
+    expect(sent.ok).toBe(false)
+    if (sent.ok) return
+    expect(sent.error.code).toBe('validation')
+
+    const accepted = value(
+      call<AgentSendResult>(CHANNELS.agentTurnSend, {
+        sessionId: created.id,
+        clientCommandId: randomUUID(),
+        instruction: 'Dịch chương 1',
+        mode: 'ask'
+      } satisfies AgentSendInput)
+    )
+    const detail = value<AgentSessionDetailView>(
+      call(CHANNELS.agentSessionsGet, { sessionId: accepted.sessionId })
+    )
+    expect(detail.turns[0]).toMatchObject({ mode: 'ask', permissionLevel: 'autopilot' })
+    expect(detail.sessionApprovals).toEqual([])
+  })
+
   it('rejects an invalid session id when getting session detail', () => {
     const { call } = setup()
     const result = call(CHANNELS.agentSessionsGet, { sessionId: 'not-a-uuid' })

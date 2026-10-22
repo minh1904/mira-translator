@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { ResolvedTarget } from '../../../shared/contracts/agent'
-import { decideToolCall, type PolicyInput } from './policy'
+import { applyPermission, decideToolCall, type PolicyDecision, type PolicyInput } from './policy'
 
 const workA = 'work-a'
 const chapter = (workId: string, workLabel: string, chapterLabel: string): ResolvedTarget => ({
@@ -86,5 +86,77 @@ describe('decideToolCall', () => {
     expect(
       decide({ name: 'create_translation_task', handle: 'ctx', target: chapter(workA, 'A', 'B') })
     ).toBe('needs_user')
+  })
+})
+
+describe('risk of a needs_user decision', () => {
+  it('marks a translation task and a write to a target the user did not name as high risk', () => {
+    expect(
+      decideToolCall({
+        ...base,
+        name: 'create_translation_task',
+        handle: 'ctx',
+        target: chapter(workA, 'A', 'B')
+      }).risk
+    ).toBe('high')
+    const other = chapter('work-b', 'Kiếm Lai', 'Chương 1')
+    expect(decideToolCall({ ...base, handle: 't2', target: other }).risk).toBe('high')
+    expect(decideToolCall({ ...base, name: 'steer_translation_task' }).risk).toBeUndefined()
+  })
+})
+
+describe('applyPermission', () => {
+  const needsUser: PolicyDecision = { decision: 'needs_user', reason: 'cần duyệt' }
+  const highRisk: PolicyDecision = { ...needsUser, risk: 'high' }
+  const deny: PolicyDecision = { decision: 'deny', reason: 'không' }
+  const apply = (
+    decision: PolicyDecision,
+    level: 'default' | 'allow_all' | 'autopilot',
+    extra: { name?: string; sessionApproved?: boolean } = {}
+  ) =>
+    applyPermission({
+      name: extra.name ?? 'translate_chapter',
+      decision,
+      level,
+      sessionApproved: extra.sessionApproved ?? false
+    })
+
+  it('never runs a denied call, whatever the level or approval', () => {
+    for (const level of ['default', 'allow_all', 'autopilot'] as const) {
+      expect(apply(deny, level, { sessionApproved: true })).toEqual({ run: 'deny' })
+    }
+  })
+
+  it('asks at the default level and approves at allow_all', () => {
+    expect(apply(highRisk, 'default')).toEqual({ run: 'needs_user' })
+    expect(apply(highRisk, 'allow_all')).toEqual({ run: 'allow', approval: 'level_allow_all' })
+  })
+
+  it('skips high-risk calls in Autopilot and approves the rest', () => {
+    expect(apply(highRisk, 'autopilot')).toEqual({ run: 'skip', approval: 'autopilot_skip' })
+    expect(apply(needsUser, 'autopilot')).toEqual({ run: 'allow', approval: 'level_autopilot' })
+  })
+
+  it('lets a session approval run the call at any level, past the Autopilot gate', () => {
+    for (const level of ['default', 'allow_all', 'autopilot'] as const) {
+      expect(apply(highRisk, level, { sessionApproved: true })).toEqual({
+        run: 'allow',
+        approval: 'user_session'
+      })
+    }
+  })
+
+  it('answers a question for the user only in Autopilot', () => {
+    const question = { name: 'ask_questions', sessionApproved: true }
+    expect(apply(needsUser, 'default', question)).toEqual({ run: 'needs_user' })
+    expect(apply(needsUser, 'allow_all', question)).toEqual({ run: 'needs_user' })
+    expect(apply(needsUser, 'autopilot', question)).toEqual({
+      run: 'allow',
+      approval: 'level_autopilot'
+    })
+  })
+
+  it('leaves an allowed call alone', () => {
+    expect(apply({ decision: 'allow', reason: 'đọc' }, 'default')).toEqual({ run: 'allow' })
   })
 })

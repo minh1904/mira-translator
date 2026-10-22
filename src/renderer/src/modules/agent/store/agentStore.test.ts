@@ -9,7 +9,13 @@ import type {
 import { resetAllStores } from '../../../lib/testing/resetStores'
 import { NEW_CHAT, useAgentStore } from './agentStore'
 
-const session = { id: 's1', title: 'Phiên', createdAt: 1, updatedAt: 1 }
+const session = {
+  id: 's1',
+  title: 'Phiên',
+  permissionLevel: 'default' as const,
+  createdAt: 1,
+  updatedAt: 1
+}
 const turn = (patch: Partial<AgentTurnView> = {}): AgentTurnView => ({
   id: 't1',
   sessionId: 's1',
@@ -17,6 +23,8 @@ const turn = (patch: Partial<AgentTurnView> = {}): AgentTurnView => ({
   answer: '',
   reasoning: '',
   context: {},
+  mode: 'agent',
+  permissionLevel: 'default',
   status: 'running',
   usage: null,
   costUsd: null,
@@ -61,6 +69,7 @@ const detail = (patch: Partial<AgentSessionDetailView> = {}): AgentSessionDetail
   activities: [],
   operations: [],
   pending: [],
+  sessionApprovals: [],
   ...patch
 })
 const event = (patch: Record<string, unknown>): AgentStreamEvent =>
@@ -71,7 +80,16 @@ function bridge(get: () => Promise<{ ok: true; value: AgentSessionDetailView }>)
     sessions: {
       get: vi.fn(get),
       list: vi.fn(async () => ({ ok: true, value: { sessions: [session] } })),
-      create: vi.fn()
+      create: vi.fn(async (title?: string) => ({
+        ok: true,
+        value: { ...session, id: 's2', title: title ?? '' }
+      })),
+      setPermissionLevel: vi.fn(
+        async (input: { sessionId: string; level: 'default' | 'allow_all' | 'autopilot' }) => ({
+          ok: true,
+          value: { ...session, id: input.sessionId, permissionLevel: input.level }
+        })
+      )
     },
     turn: {
       send: vi.fn(async () => ({
@@ -219,5 +237,62 @@ describe('agentStore', () => {
         instruction: 'B'
       })
     )
+  })
+
+  it('changes the level of the active session in Main and shows what Main stored', async () => {
+    const api = bridge(async () => ({ ok: true, value: detail() }))
+    await useAgentStore.getState().selectSession('s1')
+    expect(useAgentStore.getState().permissionLevel).toBe('default')
+    await useAgentStore.getState().setPermissionLevel('allow_all')
+    expect(api.sessions.setPermissionLevel).toHaveBeenCalledWith({
+      sessionId: 's1',
+      level: 'allow_all'
+    })
+    expect(useAgentStore.getState().permissionLevel).toBe('allow_all')
+    expect(useAgentStore.getState().sessions[0].permissionLevel).toBe('allow_all')
+  })
+
+  it('creates the session at the chosen level before the first turn of a new chat', async () => {
+    const api = bridge(async () => ({ ok: true, value: detail() }))
+    useAgentStore.getState().newChat()
+    await useAgentStore.getState().setPermissionLevel('autopilot')
+    expect(api.sessions.setPermissionLevel).not.toHaveBeenCalled()
+    await useAgentStore.getState().send('dịch chương này', { modelSelection: model, mode: 'ask' })
+    expect(api.sessions.create).toHaveBeenCalledWith('dịch chương này')
+    expect(api.sessions.setPermissionLevel).toHaveBeenCalledWith({
+      sessionId: 's2',
+      level: 'autopilot'
+    })
+    const [sent] = api.turn.send.mock.calls[0] as unknown as [Record<string, unknown>]
+    expect(sent).toMatchObject({ sessionId: 's2', mode: 'ask' })
+    expect(sent).not.toHaveProperty('permissionLevel')
+    expect(api.sessions.setPermissionLevel.mock.invocationCallOrder[0]).toBeLessThan(
+      api.turn.send.mock.invocationCallOrder[0]!
+    )
+  })
+
+  it('starts a new chat at the default level and sends no mode with an answer', async () => {
+    const api = bridge(async () => ({
+      ok: true,
+      value: detail({ session: { ...session, permissionLevel: 'autopilot' } })
+    }))
+    await useAgentStore.getState().selectSession('s1')
+    expect(useAgentStore.getState().permissionLevel).toBe('autopilot')
+    const pending = {
+      turnId: 't1',
+      toolCallId: 'call',
+      argsDigest: 'sha256:x',
+      name: 'translate_chapter',
+      kind: 'approve' as const,
+      label: 'Dịch',
+      candidates: [],
+      createdAt: 1
+    }
+    await useAgentStore.getState().reply(pending, 'approve_session', 'Cho phép trong phiên này')
+    const [sent] = api.turn.send.mock.calls[0] as unknown as [Record<string, unknown>]
+    expect(sent).not.toHaveProperty('mode')
+    expect(sent).not.toHaveProperty('permissionLevel')
+    useAgentStore.getState().newChat()
+    expect(useAgentStore.getState().permissionLevel).toBe('default')
   })
 })

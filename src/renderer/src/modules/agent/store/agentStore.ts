@@ -1,9 +1,11 @@
 import { create } from 'zustand'
 import type {
   AgentActivity,
+  AgentChatMode,
   AgentContext,
   AgentOperation,
   AgentPendingAction,
+  AgentPermissionLevel,
   AgentSendInput,
   AgentSessionDetailView,
   AgentSessionView,
@@ -35,8 +37,12 @@ export interface AgentState {
   drafts: Record<string, string>
   /** Model the user picked in the composer for every session; `null` follows Settings. */
   model: ModelSelection | null
-  mode: 'agent' | 'ask'
-  permissionLevel: 'normal' | 'autopilot'
+  /** Mode of the next turn; a turn keeps the mode it was sent with. */
+  mode: AgentChatMode
+  /** Level of the active session, or of the chat about to be created when there is none. */
+  permissionLevel: AgentPermissionLevel
+  /** Capabilities the user allowed for the whole active session. */
+  sessionApprovals: string[]
   streamingTurnId: string | null
   streamingAnswer: string
   streamingReasoning: string
@@ -54,15 +60,15 @@ export interface AgentState {
   createSession: (title?: string) => Promise<string>
   setDraft: (text: string) => void
   setModel: (model: ModelSelection | null) => void
-  setMode: (mode: 'agent' | 'ask') => void
-  setPermissionLevel: (permissionLevel: 'normal' | 'autopilot') => void
+  setMode: (mode: AgentChatMode) => void
+  /** Changes the level of the active session in Main; before the first send it is kept here. */
+  setPermissionLevel: (level: AgentPermissionLevel) => Promise<boolean>
   send: (
     instruction: string,
     options?: {
       context?: AgentContext
       modelSelection?: SendModel
-      mode?: 'agent' | 'ask'
-      permissionLevel?: 'normal' | 'autopilot'
+      mode?: AgentChatMode
     }
   ) => Promise<boolean>
   reply: (
@@ -153,7 +159,9 @@ export const useAgentStore = create<AgentState>((set, get) => {
         turns: sortTurns(upsertList(s.turns, detail.turns)),
         activities,
         operations,
-        pending: detail.pending
+        pending: detail.pending,
+        permissionLevel: detail.session.permissionLevel,
+        sessionApprovals: detail.sessionApprovals
       }
     })
     const state = get()
@@ -172,7 +180,8 @@ export const useAgentStore = create<AgentState>((set, get) => {
     drafts: {},
     model: null,
     mode: 'agent',
-    permissionLevel: 'normal',
+    permissionLevel: 'default',
+    sessionApprovals: [],
     streamingTurnId: null,
     streamingAnswer: '',
     streamingReasoning: '',
@@ -195,7 +204,16 @@ export const useAgentStore = create<AgentState>((set, get) => {
       if (get().activeSessionId !== sessionId) {
         stopStreaming()
         foreignTurns.clear()
-        set({ activeSessionId: sessionId, turns: [], activities: {}, operations: {}, pending: [] })
+        const session = get().sessions.find((item) => item.id === sessionId)
+        set({
+          activeSessionId: sessionId,
+          turns: [],
+          activities: {},
+          operations: {},
+          pending: [],
+          permissionLevel: session?.permissionLevel ?? 'default',
+          sessionApprovals: []
+        })
       }
       await get().refresh()
     },
@@ -224,7 +242,16 @@ export const useAgentStore = create<AgentState>((set, get) => {
     newChat: () => {
       stopStreaming()
       foreignTurns.clear()
-      set({ activeSessionId: null, turns: [], activities: {}, operations: {}, pending: [] })
+      // A new chat always starts at the default level, as a new session does in Main.
+      set({
+        activeSessionId: null,
+        turns: [],
+        activities: {},
+        operations: {},
+        pending: [],
+        permissionLevel: 'default',
+        sessionApprovals: []
+      })
     },
 
     createSession: async (title?: string) => {
@@ -233,7 +260,13 @@ export const useAgentStore = create<AgentState>((set, get) => {
         const id = `mock-session-${Date.now()}`
         set((s) => ({
           sessions: [
-            { id, title: title ?? 'Phiên mới', createdAt: Date.now(), updatedAt: Date.now() },
+            {
+              id,
+              title: title ?? 'Phiên mới',
+              permissionLevel: 'default',
+              createdAt: Date.now(),
+              updatedAt: Date.now()
+            },
             ...s.sessions
           ],
           activeSessionId: id,
@@ -250,7 +283,9 @@ export const useAgentStore = create<AgentState>((set, get) => {
         turns: [],
         activities: {},
         operations: {},
-        pending: []
+        pending: [],
+        permissionLevel: session.permissionLevel,
+        sessionApprovals: []
       }))
       return session.id
     },
@@ -262,7 +297,24 @@ export const useAgentStore = create<AgentState>((set, get) => {
 
     setModel: (model) => set({ model }),
     setMode: (mode) => set({ mode }),
-    setPermissionLevel: (permissionLevel) => set({ permissionLevel }),
+    setPermissionLevel: async (level) => {
+      const sessionId = get().activeSessionId
+      const api = bridge()
+      if (!sessionId || !api?.sessions?.setPermissionLevel) {
+        set({ permissionLevel: level })
+        return true
+      }
+      const res = await api.sessions.setPermissionLevel({ sessionId, level })
+      if (!res.ok) {
+        set({ lastError: res.error.message })
+        return false
+      }
+      set((s) => ({
+        permissionLevel: res.value.permissionLevel,
+        sessions: s.sessions.map((item) => (item.id === sessionId ? res.value : item))
+      }))
+      return true
+    },
 
     send: async (instruction, options) => {
       const state = get()
@@ -276,13 +328,28 @@ export const useAgentStore = create<AgentState>((set, get) => {
         startStreaming(`mock-turn-${Date.now()}`)
         return true
       }
+      let sessionId = state.activeSessionId
+      if (!sessionId && state.permissionLevel !== 'default' && api.sessions?.create) {
+        // The first turn takes the session's level when accepted, so the session needs it first.
+        const level = state.permissionLevel
+        const created = await api.sessions.create(instruction.slice(0, 30))
+        if (!created.ok) {
+          set({ lastError: created.error.message })
+          return false
+        }
+        sessionId = created.value.id
+        const raised = await api.sessions.setPermissionLevel({ sessionId, level })
+        if (!raised.ok) {
+          set({ lastError: raised.error.message })
+          return false
+        }
+      }
       const res = await api.turn.send({
-        ...(state.activeSessionId ? { sessionId: state.activeSessionId } : {}),
+        ...(sessionId ? { sessionId } : {}),
         clientCommandId: crypto.randomUUID(),
         instruction,
         context,
         mode: options?.mode ?? state.mode,
-        permissionLevel: options?.permissionLevel ?? state.permissionLevel,
         ...(options?.modelSelection ? { modelSelection: options.modelSelection } : {})
       })
       if (!res.ok) {
@@ -444,7 +511,8 @@ export const useAgentStore = create<AgentState>((set, get) => {
         drafts: {},
         model: null,
         mode: 'agent',
-        permissionLevel: 'normal',
+        permissionLevel: 'default',
+        sessionApprovals: [],
         streamingTurnId: null,
         streamingAnswer: '',
         streamingReasoning: '',

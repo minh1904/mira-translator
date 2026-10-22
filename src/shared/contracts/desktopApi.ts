@@ -20,6 +20,7 @@ import type {
   AgentSendResult,
   AgentSessionDetailView,
   AgentSessionView,
+  AgentSetPermissionLevelInput,
   AgentStreamEvent,
   AgentTargetChanged,
   AgentUndoInput,
@@ -485,6 +486,7 @@ export interface AgentApi {
     list(options?: { limit?: number }): Promise<Result<{ sessions: AgentSessionView[] }>>
     get(sessionId: string): Promise<Result<AgentSessionDetailView>>
     create(title?: string): Promise<Result<AgentSessionView>>
+    setPermissionLevel(input: AgentSetPermissionLevelInput): Promise<Result<AgentSessionView>>
   }
   turn: {
     send(input: AgentSendInput): Promise<Result<AgentSendResult>>

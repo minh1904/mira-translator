@@ -11,6 +11,8 @@ const makeTurn = (instruction: string): AgentTurnView => ({
   answer: 'Done.',
   reasoning: '',
   context: {},
+  mode: 'agent',
+  permissionLevel: 'default',
   status: 'completed',
   usage: null,
   costUsd: null,

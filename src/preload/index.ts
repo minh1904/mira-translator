@@ -548,6 +548,10 @@ const desktopApi: DesktopApi = {
       create: (title) =>
         ipcRenderer.invoke(CHANNELS.agentSessionsCreate, { title }) as Promise<
           Result<AgentSessionView>
+        >,
+      setPermissionLevel: (input) =>
+        ipcRenderer.invoke(CHANNELS.agentSessionsSetPermissionLevel, input) as Promise<
+          Result<AgentSessionView>
         >
     },
     turn: {

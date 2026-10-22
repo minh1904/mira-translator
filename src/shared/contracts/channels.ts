@@ -113,6 +113,7 @@ export const CHANNELS = {
   agentSessionsList: 'agent:sessions:list',
   agentSessionsGet: 'agent:sessions:get',
   agentSessionsCreate: 'agent:sessions:create',
+  agentSessionsSetPermissionLevel: 'agent:sessions:set-permission-level',
   agentTurnSend: 'agent:turn:send',
   agentTurnCancel: 'agent:turn:cancel',
   agentOperationList: 'agent:operation:list',

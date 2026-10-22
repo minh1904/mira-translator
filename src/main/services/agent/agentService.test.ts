@@ -443,24 +443,6 @@ describe('AgentService waiting_user and continuation', () => {
     expect(next[0].toolCallId).not.toBe(pending.toolCallId)
   })
 
-  it('automatically approves write operations when permissionLevel is autopilot', async () => {
-    const { agent, model, modelSelection, library, work1, ch1_1, work2, ch2_1 } = setupAgent()
-    model.script(
-      callTools({ name: 'resolve_target', args: { description: 'Phàm Nhân Tu Tiên chương 1' } }),
-      callTools({ name: 'translate_chapter', args: { target: 't1' } }),
-      say('Đã dịch xong.')
-    )
-    const res = await agent.send({
-      instruction: 'tóm tắt chương này',
-      context: { workId: work1.id, chapterId: ch1_1.id },
-      modelSelection,
-      permissionLevel: 'autopilot'
-    })
-    expect(res.status).toBe('completed')
-    expect(agent.getSessionDetail(res.sessionId).pending).toHaveLength(0)
-    expect(library.readText(work2.id, ch2_1.id, 'target').content).toContain('Dịch:')
-  })
-
   it('filters out write tools when mode is ask', async () => {
     const { agent, model, modelSelection, work1, ch1_1 } = setupAgent()
     model.script(say('Chỉ trả lời câu hỏi tra cứu.'))
@@ -521,28 +503,6 @@ describe('AgentService waiting_user and continuation', () => {
     expect(resumed.answer).toBe('Sẽ dịch theo phong cách Thuần Việt.')
   })
 
-  it('automatically resolves question with default option in autopilot mode', async () => {
-    const { agent, model, modelSelection } = setupAgent()
-    model.script(
-      callTools({
-        name: 'ask_questions',
-        args: {
-          question: 'Bạn muốn dịch theo phong cách nào?',
-          options: ['Thuần Việt', 'Hán Việt / Convert']
-        }
-      }),
-      say('Tự động chọn Thuần Việt.')
-    )
-    const res = await agent.send({
-      instruction: 'dịch chương này',
-      modelSelection,
-      permissionLevel: 'autopilot'
-    })
-    expect(res.status).toBe('completed')
-    expect(agent.getSessionDetail(res.sessionId).pending).toHaveLength(0)
-    expect(res.answer).toBe('Tự động chọn Thuần Việt.')
-  })
-
   it('delegates research task to subagent and incorporates its summary into parent answer', async () => {
     const { agent, model, modelSelection } = setupAgent()
     model.script(
@@ -597,5 +557,235 @@ describe('AgentService waiting_user and continuation', () => {
     expect(restarted.getTurn(kit.res.turnId)?.status).toBe('expired')
     expect(restarted.listToolCalls(kit.res.turnId)[0].state).toBe('expired')
     expect(restarted.getSessionDetail(kit.res.sessionId).pending).toEqual([])
+  })
+})
+
+describe('AgentService chat modes and permission levels', () => {
+  /** A session at `level` that the next `send` continues. */
+  function sessionAt(
+    agent: ReturnType<typeof setupAgent>['agent'],
+    level: 'default' | 'allow_all' | 'autopilot'
+  ): string {
+    const session = agent.createSession('Quyền')
+    agent.setPermissionLevel(session.id, level)
+    return session.id
+  }
+  const toolNames = (request: { tools?: unknown }) =>
+    ((request.tools ?? []) as Array<{ function: { name: string } }>).map((t) => t.function.name)
+  const question = callTools({
+    name: 'ask_questions',
+    args: { question: 'Phong cách nào?', options: ['Thuần Việt', 'Hán Việt'] }
+  })
+
+  it('keeps Ask on the turn after the user answers, so a write is still refused', async () => {
+    const { agent, model, modelSelection, library, work1, ch1_1 } = setupAgent()
+    model.script(question)
+    const res = await agent.send({
+      instruction: 'chương này nói về gì?',
+      context: { workId: work1.id, chapterId: ch1_1.id },
+      modelSelection,
+      mode: 'ask'
+    })
+    expect(res.status).toBe('waiting_user')
+    expect(agent.getTurn(res.turnId)?.mode).toBe('ask')
+    const [pending] = agent.getSessionDetail(res.sessionId).pending
+
+    model.script(callTools({ name: 'translate_chapter', args: { target: 'ctx' } }), say('Xong.'))
+    await agent.send({
+      continuesTurnId: res.turnId,
+      pendingReply: {
+        toolCallId: pending.toolCallId,
+        argsDigest: pending.argsDigest,
+        choice: 'opt-1'
+      },
+      instruction: 'Thuần Việt',
+      modelSelection,
+      // A resumed turn ignores the mode its command carries.
+      mode: 'agent'
+    })
+    expect(toolNames(model.requests[1])).not.toContain('translate_chapter')
+    const write = agent.listToolCalls(res.turnId).find((call) => call.name === 'translate_chapter')
+    expect(write).toMatchObject({ decision: 'deny', state: 'failed' })
+    expect(library.readText(work1.id, ch1_1.id, 'target').content).toBe('')
+  })
+
+  it('starts every new session at the default level', () => {
+    const { agent } = setupAgent()
+    const first = sessionAt(agent, 'autopilot')
+    expect(agent.getSessionDetail(first).session.permissionLevel).toBe('autopilot')
+    expect(agent.createSession('Mới').permissionLevel).toBe('default')
+  })
+
+  it('runs a waiting turn at the level it was accepted with, and the next turn at the new one', async () => {
+    const { agent, model, modelSelection, library, work1, ch1_1, work2, ch2_1 } = setupAgent()
+    const sessionId = sessionAt(agent, 'allow_all')
+    model.script(question)
+    const res = await agent.send({
+      sessionId,
+      instruction: 'tóm tắt chương này',
+      context: { workId: work1.id, chapterId: ch1_1.id },
+      modelSelection
+    })
+    // Allow all approves writes but never answers a question for the user.
+    expect(res.status).toBe('waiting_user')
+    agent.setPermissionLevel(sessionId, 'default')
+    const [pending] = agent.getSessionDetail(sessionId).pending
+
+    model.script(
+      callTools({ name: 'resolve_target', args: { description: 'Phàm Nhân Tu Tiên chương 1' } }),
+      callTools({ name: 'translate_chapter', args: { target: 't1' } }),
+      say('Đã dịch.')
+    )
+    const resumed = await agent.send({
+      continuesTurnId: res.turnId,
+      pendingReply: {
+        toolCallId: pending.toolCallId,
+        argsDigest: pending.argsDigest,
+        choice: 'opt-1'
+      },
+      instruction: 'Thuần Việt',
+      modelSelection
+    })
+    expect(resumed.status).toBe('completed')
+    expect(library.readText(work2.id, ch2_1.id, 'target').content).toContain('Dịch:')
+    const write = agent.listToolCalls(res.turnId).find((call) => call.name === 'translate_chapter')
+    expect(write).toMatchObject({ decision: 'needs_user', approval: 'level_allow_all' })
+
+    model.script(
+      callTools({ name: 'resolve_target', args: { description: 'Phàm Nhân Tu Tiên chương 1' } }),
+      callTools({ name: 'translate_chapter', args: { target: 't1' } })
+    )
+    const next = await agent.send({
+      sessionId,
+      instruction: 'tóm tắt chương này',
+      context: { workId: work1.id, chapterId: ch1_1.id },
+      modelSelection
+    })
+    expect(next.status).toBe('waiting_user')
+  })
+
+  it('skips a write to a work the user did not name in Autopilot', async () => {
+    const { agent, model, modelSelection, library, work1, ch1_1, work2, ch2_1 } = setupAgent()
+    const sessionId = sessionAt(agent, 'autopilot')
+    model.script(
+      callTools({ name: 'resolve_target', args: { description: 'Phàm Nhân Tu Tiên chương 1' } }),
+      callTools({ name: 'translate_chapter', args: { target: 't1' } }),
+      say('Không dịch được.')
+    )
+    const res = await agent.send({
+      sessionId,
+      instruction: 'tóm tắt chương này',
+      context: { workId: work1.id, chapterId: ch1_1.id },
+      modelSelection
+    })
+    expect(res.status).toBe('completed')
+    expect(library.readText(work2.id, ch2_1.id, 'target').content).toBe('')
+    const write = agent.listToolCalls(res.turnId).find((call) => call.name === 'translate_chapter')
+    expect(write).toMatchObject({
+      state: 'failed',
+      approval: 'autopilot_skip',
+      result: { ok: false, error: { code: 'autopilot_skipped' } }
+    })
+    // The model was told, through the stored result, not to retry as is.
+    expect(JSON.stringify(model.requests[2].messages)).toContain('autopilot_skipped')
+  })
+
+  it('writes the context chapter in Autopilot as it would by default', async () => {
+    const { agent, model, modelSelection, library, work1, ch1_1 } = setupAgent()
+    const sessionId = sessionAt(agent, 'autopilot')
+    model.script(callTools({ name: 'translate_chapter', args: { target: 'ctx' } }), say('Xong.'))
+    const res = await agent.send({
+      sessionId,
+      instruction: 'dịch chương này',
+      context: { workId: work1.id, chapterId: ch1_1.id },
+      modelSelection
+    })
+    expect(res.status).toBe('completed')
+    expect(library.readText(work1.id, ch1_1.id, 'target').content).toContain('Dịch:')
+  })
+
+  it('answers a question with its first option in Autopilot', async () => {
+    const { agent, model, modelSelection } = setupAgent()
+    const sessionId = sessionAt(agent, 'autopilot')
+    model.script(question, say('Tự động chọn Thuần Việt.'))
+    const res = await agent.send({ sessionId, instruction: 'dịch chương này', modelSelection })
+    expect(res.status).toBe('completed')
+    expect(agent.getSessionDetail(sessionId).pending).toHaveLength(0)
+    const asked = agent.listToolCalls(res.turnId)[0]
+    expect(asked).toMatchObject({
+      approval: 'level_autopilot',
+      result: { ok: true, value: { answer: 'Thuần Việt' } }
+    })
+  })
+
+  it('still refuses a denied call at allow_all', async () => {
+    const { agent, model, modelSelection, library, work1, ch1_1 } = setupAgent()
+    model.script(callTools({ name: 'translate_chapter', args: { target: 'ctx' } }), say('Xong.'))
+    const translated = await agent.send({
+      instruction: 'dịch chương này',
+      context: { workId: work1.id, chapterId: ch1_1.id },
+      modelSelection
+    })
+    const [operation] = agent.listOperations(translated.turnId)
+    const text = library.readText(work1.id, ch1_1.id, 'target').content
+
+    model.script(
+      callTools({ name: 'undo_operation', args: { operationId: operation.id } }),
+      say('Không được.')
+    )
+    const other = await agent.send({
+      sessionId: sessionAt(agent, 'allow_all'),
+      instruction: 'hoàn tác',
+      modelSelection
+    })
+    expect(agent.listToolCalls(other.turnId)[0]).toMatchObject({
+      decision: 'deny',
+      state: 'failed'
+    })
+    expect(library.readText(work1.id, ch1_1.id, 'target').content).toBe(text)
+  })
+
+  it('remembers an approval for the session only', async () => {
+    const { agent, model, modelSelection, library, work1, ch1_1, work2, ch2_1 } = setupAgent()
+    const unnamedWrite = () => [
+      callTools({ name: 'resolve_target', args: { description: 'Phàm Nhân Tu Tiên chương 1' } }),
+      callTools({ name: 'translate_chapter', args: { target: 't1' } })
+    ]
+    const ask = (sessionId?: string) =>
+      agent.send({
+        sessionId,
+        instruction: 'tóm tắt chương này',
+        context: { workId: work1.id, chapterId: ch1_1.id },
+        modelSelection
+      })
+    model.script(...unnamedWrite())
+    const first = await ask()
+    const [pending] = agent.getSessionDetail(first.sessionId).pending
+    model.script(say('Đã dịch.'))
+    await agent.send({
+      continuesTurnId: first.turnId,
+      pendingReply: {
+        toolCallId: pending.toolCallId,
+        argsDigest: pending.argsDigest,
+        choice: 'approve_session'
+      },
+      instruction: 'Cho phép trong phiên này',
+      modelSelection
+    })
+    expect(library.readText(work2.id, ch2_1.id, 'target').content).toContain('Dịch:')
+    expect(agent.getSessionDetail(first.sessionId).sessionApprovals).toEqual(['translate_chapter'])
+
+    model.script(...unnamedWrite(), say('Dịch lại.'))
+    const again = await ask(first.sessionId)
+    expect(again.status).toBe('completed')
+    const write = agent
+      .listToolCalls(again.turnId)
+      .find((call) => call.name === 'translate_chapter')
+    expect(write?.approval).toBe('user_session')
+
+    model.script(...unnamedWrite())
+    const other = await ask()
+    expect(other.sessionId).not.toBe(first.sessionId)
+    expect(other.status).toBe('waiting_user')
   })
 })

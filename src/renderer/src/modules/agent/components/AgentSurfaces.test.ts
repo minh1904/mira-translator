@@ -13,7 +13,13 @@ function render(element: ReactElement): string {
   return renderToStaticMarkup(element)
 }
 
-const session = { id: 's1', title: 'Phiên chung', createdAt: 1, updatedAt: 1 }
+const session = {
+  id: 's1',
+  title: 'Phiên chung',
+  permissionLevel: 'default' as const,
+  createdAt: 1,
+  updatedAt: 1
+}
 const turn = (id: string, patch: Partial<AgentTurnView>): AgentTurnView => ({
   id,
   sessionId: 's1',
@@ -21,6 +27,8 @@ const turn = (id: string, patch: Partial<AgentTurnView>): AgentTurnView => ({
   answer: '',
   reasoning: '',
   context: {},
+  mode: 'agent',
+  permissionLevel: 'default',
   status: 'completed',
   usage: null,
   costUsd: null,
@@ -61,7 +69,8 @@ describe('assistant surfaces', () => {
       turns: [turn('t1', { instruction: 'chào', answer: 'Chào bạn.' })],
       activities: [],
       operations: [],
-      pending: []
+      pending: [],
+      sessionApprovals: []
     })
     await useAgentStore.getState().selectSession('s1')
     useAgentStore.getState().setDraft('dịch giúp chương này')
@@ -75,7 +84,14 @@ describe('assistant surfaces', () => {
   })
 
   it('sends each turn of one session with the context of where it was sent from', async () => {
-    const send = bridge({ session, turns: [], activities: [], operations: [], pending: [] })
+    const send = bridge({
+      session,
+      turns: [],
+      activities: [],
+      operations: [],
+      pending: [],
+      sessionApprovals: []
+    })
     await useAgentStore.getState().selectSession('s1')
     const { adapter } = useAgentStore.getState()
 
@@ -100,6 +116,7 @@ describe('assistant surfaces', () => {
       turns: [turn('t1', { instruction: 'dịch', status: 'waiting_user' })],
       activities: [],
       operations: [],
+      sessionApprovals: [],
       pending: [
         {
           turnId: 't1',

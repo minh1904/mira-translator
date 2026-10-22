@@ -2,13 +2,16 @@ import { createHash, randomUUID } from 'node:crypto'
 import * as v from 'valibot'
 import type {
   AgentActivity,
+  AgentChatMode,
   AgentContext,
   AgentOperation,
   AgentPendingAction,
   AgentPendingReply,
+  AgentPermissionLevel,
   AgentSessionDetailView,
   AgentStreamEvent,
   AgentTargetChanged,
+  AgentToolApproval,
   AgentTurnState,
   AgentWriteIntent,
   AgentWriteIntentAck,
@@ -56,6 +59,7 @@ import {
   UNDO_OPERATION,
   ASK_QUESTIONS,
   RUN_SUBAGENT,
+  applyPermission,
   decideToolCall,
   type PolicyDecision
 } from './policy'
@@ -107,8 +111,8 @@ export interface AgentSendInput {
   modelSelection?: ModelSelection
   continuesTurnId?: string
   pendingReply?: AgentPendingReply
-  mode?: 'ask' | 'agent'
-  permissionLevel?: 'normal' | 'autopilot'
+  /** Only read when a new turn is accepted; a continuation runs in the turn's stored mode. */
+  mode?: AgentChatMode
   onStream?: (event: AgentStreamEvent) => void
   signal?: AbortSignal
   /** Sends the intent to every open window and returns the ids it reached. */
@@ -217,6 +221,16 @@ const SYSTEM_PROMPT = [
 
 const isWriteKind = (cap: CapabilityDefinition | undefined): boolean =>
   cap?.kind === 'reversible-write'
+
+/** A `needs_user` call with one of these approvals runs without waiting for the user. */
+const runsWithoutUser = (approval: AgentToolApproval | null): boolean =>
+  approval === 'level_allow_all' || approval === 'level_autopilot' || approval === 'user_session'
+
+/** A call ready to be stored: its approval is set only when the permission level decided it. */
+type PreparedCall = Omit<AgentToolCall, 'result' | 'approval'> & {
+  result?: ToolCallResult
+  approval?: AgentToolApproval | null
+}
 
 function targetLabel(target: ResolvedTarget): string {
   return target.kind === 'chapter'
@@ -341,8 +355,14 @@ export class AgentService {
       turns: this.repository.listTurns(sessionId),
       activities: this.repository.listSessionActivities(sessionId),
       operations: this.repository.listSessionOperations(sessionId),
-      pending: this.repository.listSessionPendingToolCalls(sessionId).map(pendingActionOf)
+      pending: this.repository.listSessionPendingToolCalls(sessionId).map(pendingActionOf),
+      sessionApprovals: this.repository.listSessionApprovals(sessionId)
     }
+  }
+
+  /** The level a session's next turns run at; a turn already accepted keeps its own. */
+  setPermissionLevel(sessionId: string, level: AgentPermissionLevel): AgentSession {
+    return this.repository.setSessionPermissionLevel(sessionId, level, this.now())
   }
 
   cancelTurn(turnId: string): AgentTurnState {
@@ -430,8 +450,7 @@ export class AgentService {
     modelSelection?: AgentSendInput['modelSelection']
     continuesTurnId?: string
     pendingReply?: AgentPendingReply
-    mode?: 'ask' | 'agent'
-    permissionLevel?: 'normal' | 'autopilot'
+    mode?: AgentChatMode
   }): AgentAcceptedTurn {
     if (this.shuttingDown) throw new StorageError('cancelled', 'Runtime agent đang đóng.')
     if ((input.continuesTurnId === undefined) !== (input.pendingReply === undefined)) {
@@ -461,6 +480,7 @@ export class AgentService {
       }),
       instruction: input.instruction.trim(),
       context: input.context ?? {},
+      mode: input.mode,
       now: this.now()
     })
     return {
@@ -538,9 +558,15 @@ export class AgentService {
           reply
         } satisfies ToolCallResult)
       } else if (input.reply.choice === 'approve') {
-        this.repository.updateToolCall(call.id, 'pending', { ...pending, reply })
+        this.repository.updateToolCall(call.id, 'pending', { ...pending, reply }, 'user_once')
+      } else if (input.reply.choice === 'approve_session') {
+        this.repository.updateToolCall(call.id, 'pending', { ...pending, reply }, 'user_session')
+        this.repository.addSessionApproval(turn.sessionId, call.name, this.now())
       } else {
-        throw new StorageError('validation', 'Lựa chọn phải là approve hoặc reject.')
+        throw new StorageError(
+          'validation',
+          'Lựa chọn phải là approve, approve_session hoặc reject.'
+        )
       }
       this.repository.transitionTurn(turn.id, 'running', this.now())
       return { ...accepted, created: true }
@@ -563,8 +589,7 @@ export class AgentService {
           modelSelection: input.modelSelection,
           continuesTurnId: input.continuesTurnId,
           pendingReply: input.pendingReply,
-          mode: input.mode,
-          permissionLevel: input.permissionLevel
+          mode: input.mode
         })
     return this.runExistingTurn({ ...input, ...accepted })
   }
@@ -573,22 +598,12 @@ export class AgentService {
     return defaultModelSelection(this.connections)
   }
 
-  private chatCapabilities(mode?: 'ask' | 'agent'): Map<string, CapabilityDefinition> {
+  /** Ask offers read capabilities only, so a write the model still calls is denied by policy. */
+  private chatCapabilities(mode: AgentChatMode): Map<string, CapabilityDefinition> {
     return new Map(
       this.registry
         .list()
-        .filter((cap) => {
-          if (cap.parameters === undefined) return false
-          if (
-            mode === 'ask' &&
-            (isWriteKind(cap) ||
-              cap.name === CREATE_TRANSLATION_TASK ||
-              cap.name === STEER_TRANSLATION_TASK)
-          ) {
-            return false
-          }
-          return true
-        })
+        .filter((cap) => cap.parameters !== undefined && (mode !== 'ask' || cap.kind === 'read'))
         .map((cap) => [cap.name, cap])
     )
   }
@@ -696,7 +711,9 @@ export class AgentService {
         throw new StorageError('conflict', 'Cấu hình model đã đổi. Vui lòng gửi lại lệnh.')
       }
       const chatModel = model
-      const capabilities = this.chatCapabilities(input.mode)
+      // Mode and level come from the turn, never from the command that resumes it.
+      const capabilities = this.chatCapabilities(turn.mode)
+      const sessionApprovals = new Set(this.repository.listSessionApprovals(sessionId))
       const toolsEnabled = chatModel.info?.toolCall !== false
       const toolDefinitions = [
         resolveTargetDefinition,
@@ -811,31 +828,16 @@ export class AgentService {
         }
 
         if (row.name === ASK_QUESTIONS) {
-          const question = String(args.question ?? '')
+          // Only Autopilot runs a question; otherwise the call waits for the user's answer.
           const options = Array.isArray(args.options) ? (args.options as string[]) : []
-          if (input.permissionLevel === 'autopilot') {
-            const defaultChoice = options[0] ?? 'Tự quyết định'
-            return {
-              state: 'completed',
-              result: {
-                ok: true,
-                value: {
-                  answer: defaultChoice,
-                  note: 'Người dùng đang ở chế độ Autopilot; đã tự động chọn phương án đầu tiên.'
-                }
-              }
-            }
-          }
-          const candidates = options.map((label, index) => ({
-            handle: `opt-${index + 1}`,
-            label,
-            target: undefined as unknown as ResolvedTarget
-          }))
           return {
-            state: 'pending',
+            state: 'completed',
             result: {
-              label: question,
-              candidates
+              ok: true,
+              value: {
+                answer: options[0] ?? 'Tự quyết định',
+                note: 'Người dùng đang ở chế độ Autopilot; đã tự động chọn phương án đầu tiên.'
+              }
             }
           }
         }
@@ -1047,7 +1049,12 @@ export class AgentService {
             }
             countCall(row)
           }
-          if (row.state !== 'pending' || (row.decision === 'needs_user' && !result?.reply)) continue
+          if (
+            row.state !== 'pending' ||
+            (row.decision === 'needs_user' && !result?.reply && !runsWithoutUser(row.approval))
+          ) {
+            continue
+          }
           // An approved call is judged again: the approval never outranks a deny.
           const decision = this.decide(row, handles, chosen, turn, sessionId, capabilities)
           if (decision.decision === 'deny') {
@@ -1158,7 +1165,8 @@ export class AgentService {
             turn,
             sessionId,
             capabilities,
-            input.permissionLevel
+            turn.permissionLevel,
+            sessionApprovals
           )
         )
         try {
@@ -1328,8 +1336,9 @@ export class AgentService {
     turn: AgentTurn,
     sessionId: string,
     capabilities: Map<string, CapabilityDefinition>,
-    permissionLevel?: 'normal' | 'autopilot'
-  ): Omit<AgentToolCall, 'result'> & { result?: ToolCallResult } {
+    permissionLevel: AgentPermissionLevel,
+    sessionApprovals: ReadonlySet<string>
+  ): PreparedCall {
     let args: Record<string, unknown> = {}
     let invalid: string | null = null
     try {
@@ -1401,8 +1410,24 @@ export class AgentService {
       )
     }
     if (policy.decision === 'needs_user') {
-      if (permissionLevel === 'autopilot') {
-        return { ...base, decision: 'allow', state: 'pending' }
+      const permission = applyPermission({
+        name: call.name,
+        decision: policy,
+        level: permissionLevel,
+        sessionApproved: sessionApprovals.has(call.name)
+      })
+      if (permission.run === 'allow') {
+        return { ...base, decision: 'needs_user', approval: permission.approval, state: 'pending' }
+      }
+      if (permission.run === 'skip') {
+        return {
+          ...failed(
+            'autopilot_skipped',
+            `Autopilot đã bỏ qua thao tác rủi ro cao: ${policy.reason} Thao tác không được thực hiện. ` +
+              'Đừng gọi lại nguyên dạng; chọn cách an toàn hơn hoặc để người dùng tự làm.'
+          ),
+          approval: permission.approval
+        }
       }
       if (call.name === ASK_QUESTIONS) {
         const question = String(args.question ?? '')

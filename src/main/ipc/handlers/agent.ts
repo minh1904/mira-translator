@@ -7,6 +7,7 @@ import {
 import {
   agentCancelInputSchema,
   agentSendInputSchema,
+  agentSetPermissionLevelInputSchema,
   agentUndoInputSchema,
   agentWriteIntentAckSchema,
   type AgentCancelResult,
@@ -82,6 +83,11 @@ export function agentHandlers(deps: HandlerDeps): AreaHandlers<'agent'> {
       }
     ),
 
+    [CHANNELS.agentSessionsSetPermissionLevel]: createHandler(
+      agentSetPermissionLevelInputSchema,
+      ({ sessionId, level }): AgentSessionView => agentOf(deps).setPermissionLevel(sessionId, level)
+    ),
+
     [CHANNELS.agentTurnSend]: createSinkHandler(
       agentSendInputSchema,
       (input, sink): AgentSendResult => {
@@ -100,8 +106,6 @@ export function agentHandlers(deps: HandlerDeps): AreaHandlers<'agent'> {
                 instruction: input.instruction,
                 context: input.context,
                 modelSelection: input.modelSelection,
-                mode: input.mode,
-                permissionLevel: input.permissionLevel,
                 onStream: (event) => windows.send(EVENT_CHANNELS.agentStreamEvent, event),
                 onWriteIntent: (intent) =>
                   windows.send(EVENT_CHANNELS.agentTargetWriteIntent, intent),

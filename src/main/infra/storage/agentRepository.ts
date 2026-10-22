@@ -1,10 +1,13 @@
 import type {
   AgentActivity,
   AgentActivityState,
+  AgentChatMode,
   AgentContext,
   AgentOperation,
   AgentOperationState,
+  AgentPermissionLevel,
   AgentProgress,
+  AgentToolApproval,
   AgentTurnState,
   ResolvedTarget
 } from '../../../shared/contracts/agent'
@@ -21,6 +24,7 @@ import type { Db } from './sqlite'
 export interface AgentSession {
   id: string
   title: string
+  permissionLevel: AgentPermissionLevel
   createdAt: number
   updatedAt: number
 }
@@ -38,6 +42,8 @@ export interface AgentTurn {
   answer: string
   reasoning: string
   context: AgentContext
+  mode: AgentChatMode
+  permissionLevel: AgentPermissionLevel
   status: AgentTurnState
   usage: TokenUsage | null
   costUsd: number | null
@@ -51,6 +57,7 @@ export interface AgentTurn {
 interface SessionRow {
   id: string
   title: string
+  permission_level: AgentPermissionLevel
   created_at: number
   updated_at: number
 }
@@ -62,6 +69,8 @@ interface TurnRow {
   answer: string
   reasoning: string
   context_json: string
+  mode: AgentChatMode
+  permission_level: AgentPermissionLevel
   status: AgentTurnState
   usage_json: string | null
   cost_usd: number | null
@@ -116,6 +125,8 @@ export interface AgentToolCall {
   extra?: unknown
   argsDigest: string
   decision: AgentToolDecision
+  /** Vì sao call `needs_user` được chạy hoặc bị Autopilot bỏ qua; `null` khi chưa ai duyệt. */
+  approval: AgentToolApproval | null
   state: AgentToolCallState
   result: unknown | null
   createdAt: number
@@ -131,13 +142,19 @@ interface ToolCallRow {
   extra_json: string | null
   args_digest: string
   decision: AgentToolDecision
+  approval: AgentToolApproval | null
   state: AgentToolCallState
   result_json: string | null
   created_at: number
 }
 
 const TOOL_CALL_COLUMNS = `id, turn_id, round, call_id, name, args_json, args_digest, decision, state,
-  result_json, created_at, extra_json`
+  result_json, created_at, extra_json, approval`
+
+const SESSION_COLUMNS = 'id, title, permission_level, created_at, updated_at'
+
+const TURN_COLUMNS = `id, session_id, instruction, answer, reasoning, context_json, mode, permission_level,
+  status, usage_json, cost_usd, legacy_ref_json, client_command_id, payload_digest, created_at, updated_at`
 
 const toolCallFrom = (row: ToolCallRow): AgentToolCall => ({
   id: row.id,
@@ -149,6 +166,7 @@ const toolCallFrom = (row: ToolCallRow): AgentToolCall => ({
   ...(row.extra_json ? { extra: JSON.parse(row.extra_json) } : {}),
   argsDigest: row.args_digest,
   decision: row.decision,
+  approval: row.approval,
   state: row.state,
   result: row.result_json ? JSON.parse(row.result_json) : null,
   createdAt: row.created_at
@@ -157,6 +175,7 @@ const toolCallFrom = (row: ToolCallRow): AgentToolCall => ({
 const sessionFrom = (row: SessionRow): AgentSession => ({
   id: row.id,
   title: row.title,
+  permissionLevel: row.permission_level,
   createdAt: row.created_at,
   updatedAt: row.updated_at
 })
@@ -168,6 +187,8 @@ const turnFrom = (row: TurnRow): AgentTurn => ({
   answer: row.answer,
   reasoning: row.reasoning,
   context: JSON.parse(row.context_json || '{}'),
+  mode: row.mode,
+  permissionLevel: row.permission_level,
   status: row.status,
   usage: row.usage_json ? JSON.parse(row.usage_json) : null,
   costUsd: row.cost_usd,
@@ -220,18 +241,43 @@ export class AgentRepository {
 
   getSession(id: string): AgentSession | null {
     const row = this.db
-      .prepare('SELECT id, title, created_at, updated_at FROM agent_session WHERE id = ?')
+      .prepare(`SELECT ${SESSION_COLUMNS} FROM agent_session WHERE id = ?`)
       .get<SessionRow>(id)
     return row ? sessionFrom(row) : null
   }
 
   listSessions(): AgentSession[] {
     return this.db
-      .prepare(
-        'SELECT id, title, created_at, updated_at FROM agent_session ORDER BY updated_at DESC, id'
-      )
+      .prepare(`SELECT ${SESSION_COLUMNS} FROM agent_session ORDER BY updated_at DESC, id`)
       .all<SessionRow>()
       .map(sessionFrom)
+  }
+
+  setSessionPermissionLevel(id: string, level: AgentPermissionLevel, now: number): AgentSession {
+    const changed = this.db
+      .prepare('UPDATE agent_session SET permission_level = ?, updated_at = ? WHERE id = ?')
+      .run(level, now, id)
+    if (changed.changes === 0) throw new StorageError('not_found', 'Không tìm thấy phiên agent.')
+    return this.getSession(id)!
+  }
+
+  addSessionApproval(sessionId: string, capability: string, now: number): void {
+    this.db
+      .prepare(
+        `INSERT OR IGNORE INTO agent_session_approval (session_id, capability, created_at)
+         VALUES (?, ?, ?)`
+      )
+      .run(sessionId, capability, now)
+  }
+
+  listSessionApprovals(sessionId: string): string[] {
+    return this.db
+      .prepare(
+        `SELECT capability FROM agent_session_approval WHERE session_id = ?
+         ORDER BY created_at, capability`
+      )
+      .all<{ capability: string }>(sessionId)
+      .map((row) => row.capability)
   }
 
   createTurn(input: {
@@ -239,6 +285,8 @@ export class AgentRepository {
     sessionId: string
     instruction: string
     context: AgentContext
+    mode?: AgentChatMode
+    permissionLevel?: AgentPermissionLevel
     now: number
     legacyRef?: AgentLegacyRef
     clientCommandId?: string
@@ -257,15 +305,17 @@ export class AgentRepository {
       this.db
         .prepare(
           `INSERT INTO agent_turn
-            (id, session_id, instruction, answer, reasoning, context_json, status, legacy_ref_json,
-             client_command_id, payload_digest, created_at, updated_at)
-           VALUES (?, ?, ?, '', '', ?, 'queued', ?, ?, ?, ?, ?)`
+            (id, session_id, instruction, answer, reasoning, context_json, mode, permission_level,
+             status, legacy_ref_json, client_command_id, payload_digest, created_at, updated_at)
+           VALUES (?, ?, ?, '', '', ?, ?, ?, 'queued', ?, ?, ?, ?, ?)`
         )
         .run(
           input.id,
           input.sessionId,
           input.instruction,
           JSON.stringify(input.context ?? {}),
+          input.mode ?? 'agent',
+          input.permissionLevel ?? 'default',
           input.legacyRef ? JSON.stringify(input.legacyRef) : null,
           input.clientCommandId ?? null,
           input.payloadDigest ?? null,
@@ -288,9 +338,7 @@ export class AgentRepository {
   getTurn(id: string): AgentTurn | null {
     const row = this.db
       .prepare(
-        `SELECT id, session_id, instruction, answer, reasoning, context_json, status,
-                usage_json, cost_usd, legacy_ref_json, client_command_id, payload_digest,
-                created_at, updated_at
+        `SELECT ${TURN_COLUMNS}
          FROM agent_turn WHERE id = ?`
       )
       .get<TurnRow>(id)
@@ -300,9 +348,7 @@ export class AgentRepository {
   listTurns(sessionId: string): AgentTurn[] {
     return this.db
       .prepare(
-        `SELECT id, session_id, instruction, answer, reasoning, context_json, status,
-                usage_json, cost_usd, legacy_ref_json, client_command_id, payload_digest,
-                created_at, updated_at
+        `SELECT ${TURN_COLUMNS}
          FROM agent_turn WHERE session_id = ? ORDER BY created_at ASC, id ASC`
       )
       .all<TurnRow>(sessionId)
@@ -312,9 +358,7 @@ export class AgentRepository {
   listUnsettledTurns(): AgentTurn[] {
     return this.db
       .prepare(
-        `SELECT id, session_id, instruction, answer, reasoning, context_json, status,
-                usage_json, cost_usd, legacy_ref_json, client_command_id, payload_digest,
-                created_at, updated_at
+        `SELECT ${TURN_COLUMNS}
          FROM agent_turn WHERE status IN ('queued', 'running') ORDER BY created_at ASC, id ASC`
       )
       .all<TurnRow>()
@@ -324,9 +368,7 @@ export class AgentRepository {
   findTurnByClientCommandId(clientCommandId: string): AgentTurn | null {
     const row = this.db
       .prepare(
-        `SELECT id, session_id, instruction, answer, reasoning, context_json, status,
-                usage_json, cost_usd, legacy_ref_json, client_command_id, payload_digest,
-                created_at, updated_at
+        `SELECT ${TURN_COLUMNS}
          FROM agent_turn WHERE client_command_id = ?`
       )
       .get<TurnRow>(clientCommandId)
@@ -340,6 +382,7 @@ export class AgentRepository {
     payloadDigest: string
     instruction: string
     context: AgentContext
+    mode?: AgentChatMode
     now: number
   }): { turn: AgentTurn; created: boolean } {
     return this.db.transaction(() => {
@@ -363,6 +406,9 @@ export class AgentRepository {
           payloadDigest: input.payloadDigest,
           instruction: input.instruction,
           context: input.context,
+          mode: input.mode,
+          // The turn keeps the level its session had when it was accepted.
+          permissionLevel: this.getSession(input.sessionId)?.permissionLevel,
           now: input.now
         }),
         created: true
@@ -649,10 +695,17 @@ export class AgentRepository {
     })
   }
 
-  insertToolCalls(calls: Array<Omit<AgentToolCall, 'result'> & { result?: unknown }>): void {
+  insertToolCalls(
+    calls: Array<
+      Omit<AgentToolCall, 'result' | 'approval'> & {
+        result?: unknown
+        approval?: AgentToolApproval | null
+      }
+    >
+  ): void {
     this.db.transaction(() => {
       const insert = this.db.prepare(
-        `INSERT INTO agent_tool_call (${TOOL_CALL_COLUMNS}) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+        `INSERT INTO agent_tool_call (${TOOL_CALL_COLUMNS}) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
       )
       for (const call of calls) {
         insert.run(
@@ -667,16 +720,26 @@ export class AgentRepository {
           call.state,
           call.result === undefined ? null : JSON.stringify(call.result),
           call.createdAt,
-          call.extra === undefined ? null : JSON.stringify(call.extra)
+          call.extra === undefined ? null : JSON.stringify(call.extra),
+          call.approval ?? null
         )
       }
     })
   }
 
-  updateToolCall(id: string, state: AgentToolCallState, result: unknown): AgentToolCall {
+  /** `approval` is kept when not given. */
+  updateToolCall(
+    id: string,
+    state: AgentToolCallState,
+    result: unknown,
+    approval?: AgentToolApproval
+  ): AgentToolCall {
     const changed = this.db
-      .prepare('UPDATE agent_tool_call SET state = ?, result_json = ? WHERE id = ?')
-      .run(state, result === undefined ? null : JSON.stringify(result), id)
+      .prepare(
+        `UPDATE agent_tool_call SET state = ?, result_json = ?, approval = COALESCE(?, approval)
+         WHERE id = ?`
+      )
+      .run(state, result === undefined ? null : JSON.stringify(result), approval ?? null, id)
     if (changed.changes === 0) throw new StorageError('not_found', 'Không tìm thấy tool call.')
     return this.getToolCall(id)!
   }

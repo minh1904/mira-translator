@@ -350,6 +350,53 @@ describe('AgentTaskService: writes', () => {
 })
 
 describe('AgentTaskService: created from chat', () => {
+  it('creates the task without asking at allow_all and skips it in Autopilot', async () => {
+    const runner = scriptedRunner()
+    const kit = taskKit(runner.run)
+    const chat = new AgentService({
+      library: kit.library,
+      connections: kit.services.connections,
+      repository: new AgentRepository(kit.library.appDb),
+      registry: kit.registry,
+      tasks: kit.tasks,
+      openChatModel: (selection) => kit.model.open(selection)
+    })
+    const createTask = () =>
+      callTools({
+        name: 'create_translation_task',
+        args: { target: 'ctx', fromChapter: 1, toChapter: 2, contextStrategy: 'approved_only' }
+      })
+    const sendAt = async (level: 'allow_all' | 'autopilot') => {
+      const session = chat.createSession('Tác vụ')
+      chat.setPermissionLevel(session.id, level)
+      return chat.send({
+        sessionId: session.id,
+        instruction: 'dịch chương 1 đến 2',
+        context: { workId: kit.work1.id },
+        modelSelection: kit.modelSelection
+      })
+    }
+    runner.outcomes.set(kit.ch1_1.id, async () => runner.done('completed'))
+    runner.outcomes.set(kit.ch1_2.id, async () => runner.done('completed'))
+
+    kit.model.script(createTask(), say('Không tạo.'))
+    const skipped = await sendAt('autopilot')
+    expect(skipped.status).toBe('completed')
+    expect(kit.tasks.list()).toEqual([])
+    expect(chat.listToolCalls(skipped.turnId)[0]).toMatchObject({ approval: 'autopilot_skip' })
+
+    kit.model.script(createTask(), say('Đã tạo.'))
+    const created = await sendAt('allow_all')
+    expect(created.status).toBe('completed')
+    expect(kit.tasks.list()).toHaveLength(1)
+    expect(chat.listToolCalls(created.turnId)[0]).toMatchObject({
+      decision: 'needs_user',
+      approval: 'level_allow_all',
+      state: 'completed'
+    })
+    await kit.tasks.idle()
+  })
+
   it('waits for approval, then creates a task that keeps running after the turn ends and its Stop', async () => {
     const runner = scriptedRunner()
     const kit = taskKit(runner.run)

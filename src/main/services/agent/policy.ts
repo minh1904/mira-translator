@@ -1,4 +1,8 @@
-import type { ResolvedTarget } from '../../../shared/contracts/agent'
+import type {
+  AgentPermissionLevel,
+  AgentToolApproval,
+  ResolvedTarget
+} from '../../../shared/contracts/agent'
 import type { AgentToolDecision } from '../../infra/storage/agentRepository'
 import type { CapabilityKind } from './types'
 
@@ -37,6 +41,8 @@ export interface PolicyInput {
 export interface PolicyDecision {
   decision: AgentToolDecision
   reason: string
+  /** `high`: a `needs_user` call that Autopilot skips instead of approving. */
+  risk?: 'high'
 }
 
 const normalize = (text: string): string =>
@@ -96,7 +102,11 @@ export function decideToolCall(input: PolicyInput): PolicyDecision {
       : { decision: 'deny', reason: 'Thao tác không thuộc phiên này.' }
   }
   if (input.name === CREATE_TRANSLATION_TASK) {
-    return { decision: 'needs_user', reason: 'Tác vụ dịch nhiều chương tốn chi phí, cần duyệt.' }
+    return {
+      decision: 'needs_user',
+      reason: 'Tác vụ dịch nhiều chương tốn chi phí, cần duyệt.',
+      risk: 'high'
+    }
   }
   if (input.name === STEER_TRANSLATION_TASK) {
     return {
@@ -108,7 +118,46 @@ export function decideToolCall(input: PolicyInput): PolicyDecision {
     if (input.handle === CONTEXT_HANDLE || input.chosenByUser || namedByUser(input)) {
       return { decision: 'allow', reason: 'Đích do người dùng nêu; có thể hoàn tác.' }
     }
-    return { decision: 'needs_user', reason: 'Đích không do người dùng nêu, cần duyệt.' }
+    return {
+      decision: 'needs_user',
+      reason: 'Đích không do người dùng nêu, cần duyệt.',
+      risk: 'high'
+    }
   }
   return { decision: 'deny', reason: 'Loại công cụ này không được phép trong chat.' }
+}
+
+export type PermissionOutcome =
+  | { run: 'allow'; approval?: AgentToolApproval }
+  | { run: 'needs_user' }
+  | { run: 'deny' }
+  | { run: 'skip'; approval: 'autopilot_skip' }
+
+/**
+ * What the turn's permission level and the session's approvals make of a policy decision
+ * (`fix-agent-chat-permissions` D3). Nothing here outranks `deny`; a question is only answered
+ * for the user in Autopilot.
+ */
+export function applyPermission(input: {
+  name: string
+  decision: PolicyDecision
+  level: AgentPermissionLevel
+  sessionApproved: boolean
+}): PermissionOutcome {
+  const { decision, level } = input
+  if (decision.decision === 'allow') return { run: 'allow' }
+  if (decision.decision === 'deny') return { run: 'deny' }
+  if (input.name === ASK_QUESTIONS) {
+    return level === 'autopilot'
+      ? { run: 'allow', approval: 'level_autopilot' }
+      : { run: 'needs_user' }
+  }
+  if (input.sessionApproved) return { run: 'allow', approval: 'user_session' }
+  if (level === 'allow_all') return { run: 'allow', approval: 'level_allow_all' }
+  if (level === 'autopilot') {
+    return decision.risk === 'high'
+      ? { run: 'skip', approval: 'autopilot_skip' }
+      : { run: 'allow', approval: 'level_autopilot' }
+  }
+  return { run: 'needs_user' }
 }

@@ -13,6 +13,7 @@ import {
 } from '../../ai-connections/public'
 import { NEW_CHAT, useAgentStore } from '../store/agentStore'
 import { contextChips, withoutChips, type ChipKey } from './contextChips'
+import { PermissionLevelMenu } from './PermissionLevelMenu'
 
 /** Model của Trợ lý: chọn một lần trên ô soạn, dùng cho mọi phiên và cả khi trả lời câu hỏi đang chờ. */
 export function useAgentModel(): ModelPicker {
@@ -38,7 +39,6 @@ export function AgentComposer({ placeholder }: { placeholder?: string }): JSX.El
   const waiting = useAgentStore((s) => s.pending.length > 0)
   const mode = useAgentStore((s) => s.mode)
   const setMode = useAgentStore((s) => s.setMode)
-  const permissionLevel = useAgentStore((s) => s.permissionLevel)
   const model = useAgentModel()
   const ready = draft.trim() !== '' && model.selection !== null
   // Chips follow the workspace as it moves; removals belong to the draft being written.
@@ -57,8 +57,7 @@ export function AgentComposer({ placeholder }: { placeholder?: string }): JSX.El
     const sent = await send(text, {
       context: withoutChips(context, removedChips),
       modelSelection: model.selection,
-      mode,
-      permissionLevel
+      mode
     })
     if (sent) setRemoved({ key: draftKey, chips: new Set() })
   }
@@ -140,6 +139,7 @@ export function AgentComposer({ placeholder }: { placeholder?: string }): JSX.El
           onAddCustom={model.addCustomModel}
           onOpenSettings={openModelList}
         />
+        <PermissionLevelMenu />
         <span className="flex-1" />
         {busy ? (
           <CompactButton

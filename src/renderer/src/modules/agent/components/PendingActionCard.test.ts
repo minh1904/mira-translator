@@ -2,7 +2,7 @@ import { createElement } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it, vi } from 'vitest'
 import type { AgentPendingAction } from '../../../../../shared/contracts/agent'
-import { PendingActionCard } from './PendingActionCard'
+import { approvalShortcut, PendingActionCard } from './PendingActionCard'
 
 describe('PendingActionCard', () => {
   it('renders interactive question with candidate buttons', () => {
@@ -53,8 +53,17 @@ describe('PendingActionCard', () => {
     )
 
     expect(html).toContain('Dịch chương 1')
-    expect(html).toContain('Duyệt')
-    expect(html).toContain('Không duyệt')
+    expect(html).toContain('Cho phép trong phiên này')
+    expect(html).toContain('aria-label="Lựa chọn cho phép khác"')
+    expect(html).toContain('Bỏ qua')
     expect(html).toContain('aria-label="Cần duyệt"')
+    expect(html).toContain('aria-keyshortcuts="Control+Enter Control+Alt+Enter"')
+  })
+
+  it('maps Ctrl+Enter to allowing for the session and Ctrl+Alt+Enter to skipping', () => {
+    expect(approvalShortcut({ key: 'Enter', ctrlKey: true, altKey: false })).toBe('approve_session')
+    expect(approvalShortcut({ key: 'Enter', ctrlKey: true, altKey: true })).toBe('reject')
+    expect(approvalShortcut({ key: 'Enter', ctrlKey: false, altKey: false })).toBeNull()
+    expect(approvalShortcut({ key: 'a', ctrlKey: true, altKey: false })).toBeNull()
   })
 })

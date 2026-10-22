@@ -90,6 +90,17 @@ describe('agent contracts', () => {
     expect(() =>
       v.parse(agentSendInputSchema, { ...base, pendingReply: { ...reply, extra: 1 } })
     ).toThrow()
+    const session = { ...reply, choice: 'approve_session' }
+    expect(
+      v.parse(agentSendInputSchema, { ...base, continuesTurnId: id(2), pendingReply: session })
+    ).toMatchObject({ pendingReply: session })
+  })
+
+  it('takes the chat mode on a send but never a permission level', () => {
+    const base = { clientCommandId: id(1), instruction: 'Hỏi' }
+    expect(v.parse(agentSendInputSchema, { ...base, mode: 'ask' })).toMatchObject({ mode: 'ask' })
+    expect(() => v.parse(agentSendInputSchema, { ...base, mode: 'edit' })).toThrow()
+    expect(() => v.parse(agentSendInputSchema, { ...base, permissionLevel: 'autopilot' })).toThrow()
   })
 
   it('validates positive immutable sequence numbers and one terminal event', () => {

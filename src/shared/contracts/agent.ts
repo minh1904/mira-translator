@@ -227,9 +227,26 @@ export function validateAgentEventSequence(
   return terminalCount === 1 ? { ok: true } : { ok: false, reason: 'terminal_count' }
 }
 
+/** Ask chỉ có capability đọc; Agent có đủ. Lưu trên turn khi được chấp nhận. */
+export const AGENT_CHAT_MODES = ['ask', 'agent'] as const
+export type AgentChatMode = (typeof AGENT_CHAT_MODES)[number]
+
+/** Mức quyền của session; turn chụp mức này khi được chấp nhận. */
+export const AGENT_PERMISSION_LEVELS = ['default', 'allow_all', 'autopilot'] as const
+export type AgentPermissionLevel = (typeof AGENT_PERMISSION_LEVELS)[number]
+
+/** Vì sao một call `needs_user` được chạy hoặc bị Autopilot bỏ qua. */
+export type AgentToolApproval =
+  | 'user_once'
+  | 'user_session'
+  | 'level_allow_all'
+  | 'level_autopilot'
+  | 'autopilot_skip'
+
 export interface AgentSessionView {
   id: string
   title: string
+  permissionLevel: AgentPermissionLevel
   createdAt: number
   updatedAt: number
 }
@@ -247,6 +264,8 @@ export interface AgentTurnView {
   answer: string
   reasoning: string
   context: AgentContext
+  mode: AgentChatMode
+  permissionLevel: AgentPermissionLevel
   status: AgentTurnState
   usage: TokenUsage | null
   costUsd: number | null
@@ -273,12 +292,17 @@ export interface AgentSessionDetailView {
   activities: AgentActivity[]
   operations: AgentOperation[]
   pending: AgentPendingAction[]
+  /** Capability người dùng đã cho phép trong phiên này. */
+  sessionApprovals: string[]
 }
 
 export interface AgentPendingReply {
   toolCallId: string
   argsDigest: string
-  /** `approve`/`reject` for a write; a candidate handle for an ambiguous target. */
+  /**
+   * `approve` (một lần), `approve_session` (cả phiên) hoặc `reject` cho call cần duyệt; handle của
+   * ứng viên cho đích mơ hồ; handle của lựa chọn cho câu hỏi.
+   */
   choice: string
 }
 
@@ -294,8 +318,8 @@ export interface AgentSendInput {
   }
   continuesTurnId?: string
   pendingReply?: AgentPendingReply
-  mode?: 'ask' | 'agent'
-  permissionLevel?: 'normal' | 'autopilot'
+  /** Chỉ đọc khi tạo turn mới; lượt tiếp tục dùng chế độ đã lưu của turn. */
+  mode?: AgentChatMode
 }
 
 export const agentSendInputSchema = v.strictObject({
@@ -322,8 +346,17 @@ export const agentSendInputSchema = v.strictObject({
       choice: v.pipe(v.string(), v.minLength(1))
     })
   ),
-  mode: v.optional(v.picklist(['ask', 'agent'])),
-  permissionLevel: v.optional(v.picklist(['normal', 'autopilot']))
+  mode: v.optional(v.picklist(AGENT_CHAT_MODES))
+})
+
+export interface AgentSetPermissionLevelInput {
+  sessionId: string
+  level: AgentPermissionLevel
+}
+
+export const agentSetPermissionLevelInputSchema = v.strictObject({
+  sessionId: idSchema,
+  level: v.picklist(AGENT_PERMISSION_LEVELS)
 })
 
 export interface AgentSendResult {
