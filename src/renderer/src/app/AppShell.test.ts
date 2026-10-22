@@ -40,4 +40,17 @@ describe('AppShell', () => {
     expect(html.match(/<header\b/g)).toHaveLength(1)
     expect(titleBar).toContain('pr-sm')
   })
+
+  it.each([
+    ['app navigation', renderShell()],
+    ['chapter controls', renderShell(null)]
+  ])('keeps one full-width status bar below the workspace with %s', (_name, html) => {
+    const workspace = html.indexOf('data-slot="app-workspace"')
+    const content = html.indexOf('Content')
+    const statusBar = html.indexOf('aria-label="Thanh trạng thái"')
+
+    expect(html.match(/<footer\b/g)).toHaveLength(1)
+    expect(statusBar).toBeGreaterThan(content)
+    expect(statusBar).toBeGreaterThan(workspace)
+  })
 })

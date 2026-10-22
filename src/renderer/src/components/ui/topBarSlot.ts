@@ -7,5 +7,7 @@ import { createContext } from 'react'
 export const TopBarSlotContext = createContext<HTMLElement | null>(null)
 /** Phần tử DOM ở bên trái thanh trên cùng nơi trang hiển thị tiêu đề (TopBarTitle). */
 export const TopBarTitleSlotContext = createContext<HTMLElement | null>(null)
+/** Phần tử DOM trên thanh trạng thái đáy cửa sổ nơi màn hình hiển thị trạng thái của nó (StatusBarItems). */
+export const StatusBarSlotContext = createContext<HTMLElement | null>(null)
 /** Các tab công việc bị ẩn vẫn giữ editor được mount nhưng không được chiếm quyền hành động hay phím tắt. */
 export const WorkTabActiveContext = createContext(true)

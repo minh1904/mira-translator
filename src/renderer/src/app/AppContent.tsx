@@ -311,10 +311,7 @@ export function AppContent({ registry }: { registry: LeaveGuardRegistry }): JSX.
         settingsOpen={settingsOpen}
         footer={
           view.name !== 'chapter' ? (
-            <footer
-              aria-label="Trạng thái ứng dụng"
-              className="flex h-[22px] shrink-0 items-center justify-between border-t border-default bg-subtle px-2.5 text-body-xs text-subtle select-none tabular-nums"
-            >
+            <div className="flex min-w-0 flex-1 items-center justify-between gap-3">
               <div className="flex items-center gap-2">
                 <span className="flex items-center gap-1 font-medium text-default">
                   <span className="size-1.5 rounded-full bg-success" aria-hidden="true" />
@@ -326,7 +323,7 @@ export function AppContent({ registry }: { registry: LeaveGuardRegistry }): JSX.
                 {works && <span>{works.length} tác phẩm</span>}
                 <span>UTF-8</span>
               </div>
-            </footer>
+            </div>
           ) : undefined
         }
       >

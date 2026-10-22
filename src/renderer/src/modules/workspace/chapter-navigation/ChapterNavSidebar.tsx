@@ -453,11 +453,10 @@ export function ChapterNavSidebar({
         )}
       </nav>
 
-      {chapters.length > 0 && (
-        <div className="border-t border-default px-2.5 py-1.5 text-body-xs text-muted shrink-0">
-          {query
-            ? `${filteredChapters.length}/${chapters.length} chương`
-            : `${chapters.filter((chapter) => chapterState(chapter) === 'translated').length}/${chapters.length} chương đã dịch`}
+      {/* Tiến độ dịch nằm trên thanh trạng thái đáy cửa sổ; ở đây chỉ còn số kết quả khi đang lọc. */}
+      {chapters.length > 0 && query && (
+        <div className="flex h-[22px] shrink-0 items-center border-t border-default px-2.5 text-body-xs text-muted tabular-nums">
+          {`${filteredChapters.length}/${chapters.length} chương`}
         </div>
       )}
 

@@ -136,6 +136,9 @@ Dưới ô tìm kiếm có thể có dải chip/pill nhỏ (hoặc dropdown nh�
 2. **Đáy Sidebar (Footer)**:
    - Hiển thị dòng tiến độ tinh gọn: `12/120 chương đã dịch (10%)`.
    - Giúp người dịch nắm được tổng quan tiến độ mà không tốn diện tích hiển thị.
+   - **Đã thay đổi (2026-10-22):** dòng `N/M chương đã dịch` chuyển xuống thanh trạng thái 22px ở
+     đáy cửa sổ, cạnh nhãn "Soạn thảo". Chân sidebar cao khác thanh trạng thái nằm trong card
+     editor, nên ba cột không thẳng đáy. Chân sidebar giờ chỉ hiện `N/M chương` khi đang lọc.
 
 ---
 

@@ -12,7 +12,11 @@ import { cn } from '../lib/cn'
 import { ICON } from '../components/ui/icon'
 import { Kbd } from '../components/ui/Input'
 import { Tip } from '../components/ui/Tooltip'
-import { TopBarSlotContext, TopBarTitleSlotContext } from '../components/ui/topBarSlot'
+import {
+  StatusBarSlotContext,
+  TopBarSlotContext,
+  TopBarTitleSlotContext
+} from '../components/ui/topBarSlot'
 import type { Theme } from './useTheme'
 
 export interface AppShellProps {
@@ -30,7 +34,10 @@ export interface AppShellProps {
   onOpenPalette?(): void
   /** Đang ở màn cài đặt: nút sáng lên và không mở lại chính nó. */
   settingsOpen?: boolean
-  /** Thanh trạng thái toàn cục ở đáy cửa sổ (chiều cao 22px chuẩn VS Code). */
+  /**
+   * Trạng thái mặc định trên thanh đáy cửa sổ (22px như VS Code). Màn hình có trạng thái riêng
+   * (màn chương) bỏ trống prop này và gắn nội dung qua `StatusBarItems`.
+   */
   footer?: ReactNode
   children: ReactNode
 }
@@ -65,6 +72,7 @@ export function AppShell({
   // Phần tử để gắn các nút điều khiển của màn hình hiện tại (xem `TopBarActions`). Sử dụng state để cập nhật lại khi phần tử tồn tại.
   const [slot, setSlot] = useState<HTMLElement | null>(null)
   const [titleSlot, setTitleSlot] = useState<HTMLElement | null>(null)
+  const [statusSlot, setStatusSlot] = useState<HTMLElement | null>(null)
 
   // Trình xử lý phím tắt toàn cục; nếu các phần tử bên trong (như ô soạn thảo) đã xử lý và gọi preventDefault(), sự kiện sẽ được bỏ qua.
   useEffect(() => {
@@ -168,22 +176,33 @@ export function AppShell({
         <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
           <TopBarTitleSlotContext.Provider value={titleSlot}>
             <TopBarSlotContext.Provider value={slot}>
-              <main
-                className={cn(
-                  'min-h-0 flex-1 overflow-y-auto',
-                  nav !== null &&
-                    'overflow-hidden rounded-xs border border-default bg-surface shadow-xs'
-                )}
-              >
-                {children}
-              </main>
+              <StatusBarSlotContext.Provider value={statusSlot}>
+                <main
+                  className={cn(
+                    'min-h-0 flex-1 overflow-y-auto',
+                    nav !== null &&
+                      'overflow-hidden rounded-xs border border-default bg-surface shadow-xs'
+                  )}
+                >
+                  {children}
+                </main>
+              </StatusBarSlotContext.Provider>
             </TopBarSlotContext.Provider>
           </TopBarTitleSlotContext.Provider>
         </div>
       </div>
 
-      {/* 3. Thanh trạng thái đáy (Status Bar) 22px */}
-      {footer}
+      {/* 3. Thanh trạng thái đáy (Status Bar) 22px, trải hết chiều ngang cửa sổ */}
+      <footer
+        aria-label="Thanh trạng thái"
+        className="flex h-[22px] shrink-0 items-center gap-3 border-t border-default bg-subtle px-2.5 text-body-xs text-subtle tabular-nums select-none"
+      >
+        {footer}
+        <div
+          ref={setStatusSlot}
+          className="flex min-w-0 flex-1 items-center justify-between gap-3 empty:hidden"
+        />
+      </footer>
     </div>
   )
 }

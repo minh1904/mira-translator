@@ -188,7 +188,9 @@ thang z-index theo bảng Obsidian, thời lượng 70/140/300 ms và tắt chuy
 - **Danh sách điều hướng** (thư viện, chương): 13 px, cao 28 px, hover overlay, active accent 15 %.
 - **Tag/Badge**: thêm biến thể pill nền accent 10 % cho nhãn nhân vật/glossary.
 - **Status bar cho editor chương** (đã làm 2026-10-05): số chữ, trạng thái lưu, số đề xuất AI đang chờ. Đây là
-  phần duy nhất của khung Obsidian có giá trị rõ cho người dịch; ribbon thì không.
+  phần duy nhất của khung Obsidian có giá trị rõ cho người dịch; ribbon thì không. Từ 2026-10-22,
+  `AppShell` luôn có một thanh trạng thái 22px trải hết chiều ngang đáy cửa sổ; màn chương gắn nội
+  dung của nó vào đây qua `StatusBarItems` thay vì đặt thanh riêng trong card editor.
 - **Icon:** giữ Solar Icons (quyết định cũ còn hiệu lực), thêm `--icon-s/m/l` = 16/18/24 và màu mặc
   định muted.
 

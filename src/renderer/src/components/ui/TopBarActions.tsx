@@ -5,7 +5,12 @@ import { createPortal } from 'react-dom'
 import { CompactButton } from './CompactButton'
 import { ICON } from './icon'
 import { cn } from '../../lib/cn'
-import { TopBarSlotContext, TopBarTitleSlotContext, WorkTabActiveContext } from './topBarSlot'
+import {
+  StatusBarSlotContext,
+  TopBarSlotContext,
+  TopBarTitleSlotContext,
+  WorkTabActiveContext
+} from './topBarSlot'
 
 /**
  * Hiển thị các phần tử con lên thanh trên cùng (top bar) qua React portal thay vì tại vị trí khai báo.
@@ -16,6 +21,16 @@ import { TopBarSlotContext, TopBarTitleSlotContext, WorkTabActiveContext } from 
  */
 export function TopBarActions({ children }: { children: ReactNode }): JSX.Element | null {
   const slot = useContext(TopBarSlotContext)
+  const active = useContext(WorkTabActiveContext)
+  return slot === null || !active ? null : createPortal(children, slot)
+}
+
+/**
+ * Hiển thị trạng thái của màn hình lên thanh trạng thái đáy cửa sổ qua React portal, thay cho
+ * trạng thái mặc định của ứng dụng. Chỉ tab đang hiển thị được gắn nội dung.
+ */
+export function StatusBarItems({ children }: { children: ReactNode }): JSX.Element | null {
+  const slot = useContext(StatusBarSlotContext)
   const active = useContext(WorkTabActiveContext)
   return slot === null || !active ? null : createPortal(children, slot)
 }

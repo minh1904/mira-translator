@@ -78,9 +78,9 @@ describe('ChapterNavSidebar', () => {
     expect(html).toContain('aria-label="Thao tác với Cuộc gặp gỡ"')
   })
 
-  it('renders translation progress footer', () => {
+  it('leaves translation progress to the window status bar', () => {
     const html = render()
-    expect(html).toContain('1/2 chương đã dịch')
+    expect(html).not.toContain('chương đã dịch')
   })
 
   it('renders clean labels and gap indicator when chapters are sparse', () => {
