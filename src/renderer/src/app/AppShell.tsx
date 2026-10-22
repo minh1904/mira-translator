@@ -108,20 +108,21 @@ export function AppShell({
           <div ref={setTitleSlot} className="flex min-w-0 items-center gap-xs" />
         </div>
 
-        {/* Chính giữa: Command Center tìm kiếm nhanh theo phong cách VS Code */}
+        {/* Chính giữa: Command Center tìm kiếm nhanh theo phong cách VS Code.
+            max-w-sm là token spacing 12px, không phải 24rem; chiều rộng dùng --container-sm. */}
         {onOpenPalette && (
-          <div className="mx-2 flex min-w-0 flex-1 max-w-sm justify-center">
+          <div className="mx-2 flex min-w-0 max-w-(--container-sm) flex-1 justify-center">
             <Button
               variant="outline"
               onClick={onOpenPalette}
               title="Tìm kiếm tác phẩm, chương… (Ctrl+K / Ctrl+P)"
-              className="window-no-drag !h-6 w-full max-w-sm justify-between rounded-xs px-2 text-label-xs text-muted hover:border-strong hover:bg-surface hover:text-default shadow-2xs"
+              className="window-no-drag !h-6 w-full min-w-0 justify-between pr-1 pl-2 text-muted hover:border-strong hover:bg-surface hover:text-default shadow-2xs"
             >
-              <span className="flex items-center gap-1.5 truncate">
-                <MinimalisticMagnifierIcon size={12} className="text-muted" />
+              <span className="flex min-w-0 items-center gap-1.5">
+                <MinimalisticMagnifierIcon size={12} className="shrink-0 text-muted" />
                 <span className="truncate">Tìm kiếm tác phẩm, chương…</span>
               </span>
-              <Kbd>Ctrl K</Kbd>
+              <Kbd size="sm">Ctrl K</Kbd>
             </Button>
           </div>
         )}

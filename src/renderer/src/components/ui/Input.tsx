@@ -75,9 +75,21 @@ export function SearchInput({ label, shortcut, size, ...props }: SearchInputProp
 }
 
 /** Phím bàn phím hoặc phím tắt, hiển thị trong ô tìm kiếm hoặc hàng menu. */
-export function Kbd({ children }: { children: ReactNode }): JSX.Element {
+export function Kbd({
+  children,
+  size = 'md'
+}: {
+  children: ReactNode
+  /** `sm` cao 16px, dùng trong control cao 24px (ô tìm kiếm trên thanh tiêu đề). */
+  size?: 'md' | 'sm'
+}): JSX.Element {
   return (
-    <kbd className="pointer-events-none inline-flex h-5 shrink-0 items-center rounded-xs border border-default px-1.5 font-sans text-body-xs whitespace-nowrap text-muted">
+    <kbd
+      className={cn(
+        'pointer-events-none inline-flex shrink-0 items-center rounded-xs border border-default font-sans text-body-xs whitespace-nowrap text-muted',
+        size === 'sm' ? 'h-4 px-1 leading-none' : 'h-5 px-1.5'
+      )}
+    >
       {children}
     </kbd>
   )
