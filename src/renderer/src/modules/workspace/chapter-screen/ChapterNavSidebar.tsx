@@ -242,6 +242,8 @@ export function ChapterNavSidebar({
             ref={inputRef}
             label="Tìm kiếm chương"
             placeholder="Tìm hoặc nhảy số… (/)"
+            // Phẳng trong dải header như filter Explorer của VS Code: dòng chương đang chọn là khối nền duy nhất.
+            className="border-transparent bg-transparent px-1 hover:bg-transparent has-[:focus]:outline-none"
             value={query}
             onChange={(event) => setQuery(event.target.value)}
             onKeyDown={handleSearchKeyDown}
