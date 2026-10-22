@@ -23,14 +23,14 @@ describe('AutoScrollSentinel (Task 6.6)', () => {
     expect(getScrollBehavior(() => true)).toBe('auto')
   })
 
-  it('renders "Nội dung mới" button only when user scrolled up and new content arrived', () => {
+  it('renders "Về mới nhất" button only when user scrolled up and new content arrived', () => {
     const withPill = renderToStaticMarkup(
       createElement(AutoScrollSentinel, {
         showNewContentPill: true,
         onScrollToBottom: () => {}
       })
     )
-    expect(withPill).toContain('Nội dung mới')
+    expect(withPill).toContain('Về mới nhất')
 
     const withoutPill = renderToStaticMarkup(
       createElement(AutoScrollSentinel, {
@@ -38,6 +38,6 @@ describe('AutoScrollSentinel (Task 6.6)', () => {
         onScrollToBottom: () => {}
       })
     )
-    expect(withoutPill).not.toContain('Nội dung mới')
+    expect(withoutPill).not.toContain('Về mới nhất')
   })
 })

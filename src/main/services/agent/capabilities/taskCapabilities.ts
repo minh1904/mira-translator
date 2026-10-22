@@ -45,10 +45,8 @@ export const createTranslationTaskCapability: CapabilityDefinition<{
     ok: false,
     error: { code: 'internal', message: 'Tác vụ chỉ được tạo qua AgentService sau khi duyệt.' }
   }),
-  activityAdapter: ({ target, args }) => ({
-    label: `Tạo tác vụ dịch chương ${args.fromChapter}–${args.toChapter} của "${target?.workLabel ?? ''}"`,
-    kind: 'write'
-  })
+  describe: ({ target, args }) =>
+    `Tạo tác vụ dịch chương ${args.fromChapter}–${args.toChapter} của "${target?.workLabel ?? ''}"`
 }
 
 /**
@@ -96,10 +94,7 @@ export function readTranslationTasksCapability(tasks: {
         })
       }
     },
-    activityAdapter: ({ target }) => ({
-      label: `Đọc tác vụ dịch của "${target?.workLabel ?? ''}"`,
-      kind: 'read'
-    })
+    describe: ({ target }) => `Đọc tác vụ dịch của "${target?.workLabel ?? ''}"`
   }
 }
 
@@ -138,8 +133,5 @@ export const steerTranslationTaskCapability: CapabilityDefinition<{
     ok: false,
     error: { code: 'internal', message: 'Điều chỉnh chỉ chạy qua AgentService sau khi duyệt.' }
   }),
-  activityAdapter: ({ args }) => ({
-    label: `Điều chỉnh tác vụ dịch từ chương ${args.fromChapter}`,
-    kind: 'write'
-  })
+  describe: ({ args }) => `Điều chỉnh tác vụ dịch từ chương ${args.fromChapter}`
 }

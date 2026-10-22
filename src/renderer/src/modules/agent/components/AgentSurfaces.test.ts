@@ -29,6 +29,7 @@ const turn = (id: string, patch: Partial<AgentTurnView>): AgentTurnView => ({
   context: {},
   mode: 'agent',
   permissionLevel: 'default',
+  modelLabel: null,
   status: 'completed',
   usage: null,
   costUsd: null,
@@ -70,7 +71,23 @@ describe('assistant surfaces', () => {
       activities: [],
       operations: [],
       pending: [],
-      sessionApprovals: []
+      sessionApprovals: [],
+      // Main always sends the answer as a part, rebuilt for turns stored before parts existed.
+      parts: [
+        {
+          id: 'p1',
+          turnId: 't1',
+          seq: 1,
+          round: 1,
+          kind: 'text',
+          text: 'Chào bạn.',
+          toolCallId: null,
+          durationMs: null,
+          createdAt: 1,
+          updatedAt: 1
+        }
+      ],
+      toolCalls: []
     })
     await useAgentStore.getState().selectSession('s1')
     useAgentStore.getState().setDraft('dịch giúp chương này')
@@ -90,7 +107,9 @@ describe('assistant surfaces', () => {
       activities: [],
       operations: [],
       pending: [],
-      sessionApprovals: []
+      sessionApprovals: [],
+      parts: [],
+      toolCalls: []
     })
     await useAgentStore.getState().selectSession('s1')
     const { adapter } = useAgentStore.getState()
@@ -117,6 +136,8 @@ describe('assistant surfaces', () => {
       activities: [],
       operations: [],
       sessionApprovals: [],
+      parts: [],
+      toolCalls: [],
       pending: [
         {
           turnId: 't1',

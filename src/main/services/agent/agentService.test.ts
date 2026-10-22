@@ -176,9 +176,12 @@ describe('AgentService model–tool loop', () => {
     expect(res.status).toBe('completed')
     expect(model.requests[0].tools).toBeUndefined()
     expect(agent.listOperations(res.turnId)).toEqual([])
-    expect(agent.getSessionDetail(res.sessionId).activities.map((a) => a.label)).toContain(
-      'Model này không dùng được công cụ; trả lời từ ngữ cảnh đã gửi.'
-    )
+    expect(
+      agent
+        .getSessionDetail(res.sessionId)
+        .parts.filter((part) => part.kind === 'progress')
+        .map((part) => part.text)
+    ).toContain('Model này không dùng được công cụ; trả lời từ ngữ cảnh đã gửi.')
   })
 
   it('fails on a provider error in round two without asking another model', async () => {
@@ -315,8 +318,8 @@ describe('AgentService budget and loop', () => {
     expect(messages.some((m) => m.content.startsWith('câu hai nguyên văn'))).toBe(true)
     const dropped = agent
       .getSessionDetail(second.sessionId)
-      .activities.find((a) => a.turnId === second.turnId && a.label.startsWith('Bỏ'))
-    expect(dropped?.detail).toMatchObject({ droppedTurns: 1 })
+      .parts.find((part) => part.turnId === second.turnId && part.kind === 'progress')
+    expect(dropped?.text).toBe('Bỏ 1 lượt cũ khỏi ngữ cảnh model')
   })
 })
 
@@ -501,35 +504,6 @@ describe('AgentService waiting_user and continuation', () => {
     expect(resumed.status).toBe('completed')
     expect(agent.getSessionDetail(res.sessionId).pending).toHaveLength(0)
     expect(resumed.answer).toBe('Sẽ dịch theo phong cách Thuần Việt.')
-  })
-
-  it('delegates research task to subagent and incorporates its summary into parent answer', async () => {
-    const { agent, model, modelSelection } = setupAgent()
-    model.script(
-      callTools({
-        name: 'run_subagent',
-        args: {
-          task: 'Tra cứu danh sách tác phẩm',
-          description: 'Liệt kê tác phẩm'
-        }
-      }),
-      callTools({ name: 'list_works', args: {} }),
-      say('Thư viện có 2 tác phẩm là Đại Đạo Triều Thiên và Phàm Nhân Tu Tiên.'),
-      say('Theo báo cáo từ Subagent, thư viện hiện có 2 tác phẩm.')
-    )
-
-    const res = await agent.send({
-      instruction: 'thư viện có những truyện nào?',
-      modelSelection
-    })
-
-    expect(res.status).toBe('completed')
-    expect(res.answer).toBe('Theo báo cáo từ Subagent, thư viện hiện có 2 tác phẩm.')
-
-    const activities = agent.getSessionDetail(res.sessionId).activities
-    const subActivity = activities.find((a) => a.label === 'Subagent: Liệt kê tác phẩm')
-    expect(subActivity).toBeDefined()
-    expect(subActivity?.state).toBe('completed')
   })
 
   it('keeps a waiting turn across shutdown and startup, then expires it on a new command', async () => {
@@ -787,5 +761,195 @@ describe('AgentService chat modes and permission levels', () => {
     const other = await ask()
     expect(other.sessionId).not.toBe(first.sessionId)
     expect(other.status).toBe('waiting_user')
+  })
+})
+
+describe('AgentService response parts', () => {
+  /** One model round that thinks, writes, then calls tools. */
+  const think = (reasoning: string, text: string, ...calls: Parameters<typeof callTools>) => [
+    { kind: 'reasoning' as const, text: reasoning },
+    { kind: 'delta' as const, text },
+    ...callTools(...calls)
+  ]
+
+  it('stores text, tool call and text in the order they happened, and reads them back', async () => {
+    const { agent, model, modelSelection } = setupAgent()
+    model.script(
+      think('Cần danh sách.', 'Để tôi xem thư viện.', { name: 'list_works', args: {} }),
+      say('Thư viện có 2 tác phẩm.')
+    )
+    const res = await agent.send({ instruction: 'thư viện có gì?', modelSelection })
+    expect(res.status).toBe('completed')
+    const detail = agent.getSessionDetail(res.sessionId)
+    const parts = detail.parts.filter((part) => part.turnId === res.turnId)
+    expect(parts.map((part) => [part.kind, part.round, part.text])).toEqual([
+      ['reasoning', 1, 'Cần danh sách.'],
+      ['text', 1, 'Để tôi xem thư viện.'],
+      ['tool_call', 1, ''],
+      ['text', 2, 'Thư viện có 2 tác phẩm.']
+    ])
+    const call = detail.toolCalls.find((item) => item.id === parts[2].toolCallId)
+    expect(call).toMatchObject({
+      name: 'list_works',
+      state: 'completed',
+      invocationMessage: 'Đang đọc danh sách tác phẩm',
+      pastTenseMessage: 'Đã đọc danh sách tác phẩm'
+    })
+    // The answer the model sees as history is unchanged.
+    expect(agent.getTurn(res.turnId)).toMatchObject({
+      answer: 'Để tôi xem thư viện.\n\nThư viện có 2 tác phẩm.',
+      reasoning: 'Cần danh sách.'
+    })
+    // The footer names the model the turn ran on.
+    expect(agent.getTurn(res.turnId)?.modelLabel).toBe('Mock Model')
+    // Reopening reads the same parts from the library DB.
+    expect(agent.getSessionDetail(res.sessionId).parts).toEqual(detail.parts)
+  })
+
+  it('rebuilds parts for a turn stored before parts existed', async () => {
+    const { agent, model, modelSelection, library } = setupAgent()
+    model.script(callTools({ name: 'list_works', args: {} }), say('Có 2 tác phẩm.'))
+    const res = await agent.send({ instruction: 'thư viện có gì?', modelSelection })
+    // A turn from before library v16 has no parts.
+    library.appDb.prepare('DELETE FROM agent_turn_part WHERE turn_id = ?').run(res.turnId)
+    const parts = agent.getSessionDetail(res.sessionId).parts
+    const [call] = agent.listToolCalls(res.turnId)
+    expect(parts.map((part) => [part.kind, part.toolCallId, part.text])).toEqual([
+      ['tool_call', call.id, ''],
+      ['text', null, 'Có 2 tác phẩm.']
+    ])
+    expect(parts.map((part) => part.seq)).toEqual([1, 2])
+  })
+
+  it('announces a call when it runs and when it ends, and a refused call only when it ends', async () => {
+    const { agent, model, modelSelection } = setupAgent()
+    const events: AgentStreamEvent[] = []
+    model.script(
+      callTools(
+        { name: 'list_works', args: {} },
+        { name: 'read_chapter', args: { target: 'not-issued' } }
+      ),
+      say('Xong.')
+    )
+    const res = await agent.send({
+      instruction: 'xem',
+      modelSelection,
+      onStream: (event) => events.push(event)
+    })
+    expect(validateAgentEventSequence(events)).toEqual({ ok: true })
+    const calls = events
+      .filter((event) => event.kind === 'tool-call')
+      .map((event) => event.toolCall as { name: string; state: string; reason: string | null })
+    expect(calls.map((call) => [call.name, call.state])).toEqual([
+      ['read_chapter', 'failed'],
+      ['list_works', 'running'],
+      ['list_works', 'completed']
+    ])
+    expect(calls[0].reason).toMatch(/handle/)
+    const deltas = events.filter((event) => event.kind === 'answer-delta')
+    expect(deltas.at(-1)).toMatchObject({ text: 'Xong.', round: 2 })
+    expect(agent.getToolCallDetail(agent.listToolCalls(res.turnId)[0].id).result).toMatchObject({
+      ok: true
+    })
+  })
+
+  it('keeps what a stopped round streamed as parts', async () => {
+    const { agent, model, modelSelection } = setupAgent()
+    const controller = new AbortController()
+    model.script([
+      { kind: 'delta', text: 'Đang viết dở' },
+      { kind: 'delta', text: ' và chưa xong' }
+    ])
+    await agent
+      .send({
+        instruction: 'viết',
+        modelSelection,
+        signal: controller.signal,
+        onStream: (event) => {
+          if (event.kind === 'answer-delta') controller.abort()
+        }
+      })
+      .catch(() => null)
+    const [session] = agent.listSessions()
+    const detail = agent.getSessionDetail(session.id)
+    expect(detail.turns[0].status).toBe('cancelled')
+    expect(detail.parts.map((part) => [part.kind, part.text])).toEqual([['text', 'Đang viết dở']])
+  })
+
+  it('stores subagent calls under the parent call and returns only its last text', async () => {
+    const { agent, model, modelSelection } = setupAgent()
+    const events: AgentStreamEvent[] = []
+    model.script(
+      callTools({
+        name: 'run_subagent',
+        args: { task: 'Tra cứu danh sách tác phẩm', description: 'Liệt kê tác phẩm' }
+      }),
+      [{ kind: 'delta', text: 'Tôi sẽ tra.' }, ...callTools({ name: 'list_works', args: {} })],
+      say('Thư viện có 2 tác phẩm.'),
+      say('Theo subagent, thư viện có 2 tác phẩm.')
+    )
+    const res = await agent.send({
+      instruction: 'thư viện có những truyện nào?',
+      modelSelection,
+      onStream: (event) => events.push(event)
+    })
+    expect(res.answer).toBe('Theo subagent, thư viện có 2 tác phẩm.')
+    const [parent] = agent.listToolCalls(res.turnId)
+    expect(parent).toMatchObject({
+      name: 'run_subagent',
+      result: { ok: true, value: { summary: 'Thư viện có 2 tác phẩm.' } }
+    })
+    const detail = agent.getSessionDetail(res.sessionId)
+    const children = detail.toolCalls.filter((call) => call.parentToolCallId === parent.id)
+    expect(children.map((call) => [call.name, call.state])).toEqual([['list_works', 'completed']])
+    expect(detail.toolCalls.find((call) => call.id === parent.id)).toMatchObject({
+      invocationMessage: 'Đang chạy subagent: Liệt kê tác phẩm',
+      pastTenseMessage: 'Đã chạy subagent: Liệt kê tác phẩm'
+    })
+    const childEvents = events
+      .filter((event) => event.kind === 'tool-call')
+      .map((event) => event.toolCall as { parentToolCallId: string | null; state: string })
+      .filter((call) => call.parentToolCallId === parent.id)
+    expect(childEvents.map((call) => call.state)).toEqual(['running', 'completed'])
+    // Subagent rounds answer a tool call of the turn, never the user.
+    expect(
+      model.requests.slice(1, 3).every((request) => request.messages[0].role === 'system')
+    ).toBe(true)
+  })
+
+  it('refuses a write in a subagent and stops it at its call ceiling', async () => {
+    const { agent, model, modelSelection, library, work1, ch1_1 } = setupAgent()
+    const resolves = (from: number, count: number) =>
+      Array.from({ length: count }, (_, index) => ({
+        name: 'resolve_target',
+        args: { description: 'mô tả ' + (from + index) }
+      }))
+    model.script(
+      callTools({ name: 'run_subagent', args: { task: 'Dịch thử', description: 'Thử ghi' } }),
+      callTools({ name: 'translate_chapter', args: { target: 'ctx' } }, ...resolves(1, 5)),
+      callTools(...resolves(6, 6)),
+      say('Hết.')
+    )
+    const res = await agent.send({
+      instruction: 'dịch',
+      context: { workId: work1.id, chapterId: ch1_1.id },
+      modelSelection
+    })
+    const [parent] = agent.listToolCalls(res.turnId)
+    const children = agent
+      .getSessionDetail(res.sessionId)
+      .toolCalls.filter((call) => call.parentToolCallId === parent.id)
+    expect(children[0]).toMatchObject({ name: 'translate_chapter', state: 'failed' })
+    expect(children[0].reason).toMatch(/chỉ được đọc/)
+    expect(library.readText(work1.id, ch1_1.id, 'target').content).toBe('')
+    // The refused write is not counted: ten resolves run, the eleventh stops the subagent.
+    expect(children).toHaveLength(12)
+    expect(children.filter((call) => call.state === 'completed')).toHaveLength(10)
+    expect(children.at(-1)).toMatchObject({ state: 'failed' })
+    expect(parent.result).toMatchObject({
+      ok: true,
+      value: { stopped: expect.stringMatching(/hạn mức gọi công cụ/) }
+    })
+    expect(res.answer).toBe('Hết.')
   })
 })

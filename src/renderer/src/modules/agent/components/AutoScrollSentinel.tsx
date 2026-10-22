@@ -31,7 +31,7 @@ export function AutoScrollSentinel({
       {showNewContentPill && (
         <div className="sticky bottom-3 z-(--mira-z-sticky) flex justify-center">
           <Button variant="solid" onClick={onScrollToBottom} className="rounded-full shadow-md">
-            Nội dung mới ↓
+            Về mới nhất ↓
           </Button>
         </div>
       )}

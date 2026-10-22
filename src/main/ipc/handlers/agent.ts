@@ -8,6 +8,7 @@ import {
   agentCancelInputSchema,
   agentSendInputSchema,
   agentSetPermissionLevelInputSchema,
+  agentToolCallGetInputSchema,
   agentUndoInputSchema,
   agentWriteIntentAckSchema,
   type AgentCancelResult,
@@ -16,6 +17,7 @@ import {
   type AgentSendResult,
   type AgentSessionDetailView,
   type AgentSessionView,
+  type AgentToolCallDetailView,
   type AgentUndoResult
 } from '../../../shared/contracts/agent'
 import { CHANNELS, EVENT_CHANNELS } from '../../../shared/contracts/channels'
@@ -125,6 +127,11 @@ export function agentHandlers(deps: HandlerDeps): AreaHandlers<'agent'> {
           sessionId: accepted.sessionId
         }
       }
+    ),
+
+    [CHANNELS.agentToolCallGet]: createHandler(
+      agentToolCallGetInputSchema,
+      ({ toolCallId }): AgentToolCallDetailView => agentOf(deps).getToolCallDetail(toolCallId)
     ),
 
     [CHANNELS.agentTurnCancel]: createHandler(

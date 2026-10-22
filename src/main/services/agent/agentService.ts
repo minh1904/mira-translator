@@ -8,10 +8,14 @@ import type {
   AgentPendingAction,
   AgentPendingReply,
   AgentPermissionLevel,
+  AgentResponsePart,
   AgentSessionDetailView,
   AgentStreamEvent,
   AgentTargetChanged,
   AgentToolApproval,
+  AgentToolCallDetailView,
+  AgentToolCallView,
+  AgentToolCallViewState,
   AgentTurnState,
   AgentWriteIntent,
   AgentWriteIntentAck,
@@ -33,8 +37,10 @@ import type {
   AgentRepository,
   AgentSession,
   AgentToolCall,
+  AgentToolCallMessages,
   AgentToolCallState,
-  AgentTurn
+  AgentTurn,
+  NewAgentResponsePart
 } from '../../infra/storage/agentRepository'
 import type { LibraryStore } from '../library/library'
 import type { ConnectionService } from '../ai/connectionService'
@@ -227,9 +233,158 @@ const runsWithoutUser = (approval: AgentToolApproval | null): boolean =>
   approval === 'level_allow_all' || approval === 'level_autopilot' || approval === 'user_session'
 
 /** A call ready to be stored: its approval is set only when the permission level decided it. */
-type PreparedCall = Omit<AgentToolCall, 'result' | 'approval'> & {
+type PreparedCall = Omit<AgentToolCall, 'result' | 'approval' | 'parentCallId' | 'messages'> & {
   result?: ToolCallResult
   approval?: AgentToolApproval | null
+  parentCallId?: string | null
+  messages: AgentToolCallMessages
+}
+
+/** Ceilings of one subagent run, apart from the turn's own budget (`add-agent-response-parts` D6). */
+export const SUBAGENT_LIMITS = { rounds: 4, calls: 10, readChars: 60_000 } as const
+
+const SUBAGENT_PROMPT =
+  'Bạn là một Subagent hỗ trợ tra cứu và phân tích chuyên sâu cho tiểu thuyết. Hãy sử dụng các công cụ ' +
+  'tra cứu được cấp để hoàn thành nhiệm vụ và trả về bản tóm tắt kết quả chính xác, súc tích.'
+
+/** "Đọc chương 12" becomes "Đang đọc chương 12" while running and "Đã đọc chương 12" after. */
+export function toolMessages(phrase: string): AgentToolCallMessages {
+  const lower = phrase.charAt(0).toLocaleLowerCase('vi') + phrase.slice(1)
+  return { invocation: `Đang ${lower}`, pastTense: `Đã ${lower}` }
+}
+
+const SUMMARY_CHARS = 200
+
+/** A short line for a completed call: what the model learned, when the result says it plainly. */
+function summarizeResult(result: ToolCallResult | null): string | null {
+  const value = result?.value
+  if (value === null || typeof value !== 'object') return null
+  const fields = value as Record<string, unknown>
+  const text = [fields.summary, fields.label, fields.answer].find(
+    (item): item is string => typeof item === 'string' && item.trim() !== ''
+  )
+  if (!text) return null
+  return text.length > SUMMARY_CHARS ? text.slice(0, SUMMARY_CHARS - 1) + '…' : text
+}
+
+/** Working time a subagent call stored in its result. */
+function durationOf(result: ToolCallResult | null): number | null {
+  const value = result?.value as { durationMs?: unknown } | undefined
+  return typeof value?.durationMs === 'number' ? value.durationMs : null
+}
+
+/** How the transcript shows a stored call (`agent-response-parts`). */
+export function toolCallViewOf(row: AgentToolCall): AgentToolCallView {
+  const result = row.result as ToolCallResult | null
+  let state: AgentToolCallViewState
+  let reason: string | null = null
+  if (row.state === 'pending') {
+    state =
+      row.decision === 'needs_user' && !result?.reply && !runsWithoutUser(row.approval)
+        ? 'waiting_user'
+        : 'running'
+  } else if (row.state === 'completed') {
+    state = 'completed'
+  } else if (row.state === 'failed') {
+    state = row.approval === 'autopilot_skip' ? 'skipped' : 'failed'
+    reason = result?.error?.message ?? 'Công cụ chạy không thành công.'
+  } else {
+    state = 'cancelled'
+    reason =
+      row.state === 'expired' ? 'Lượt hết hạn vì có lệnh mới.' : 'Lượt đã dừng trước khi chạy.'
+  }
+  const messages = row.messages ?? toolMessages(`Gọi công cụ ${row.name}`)
+  return {
+    id: row.id,
+    turnId: row.turnId,
+    round: row.round,
+    parentToolCallId: row.parentCallId,
+    name: row.name,
+    args: row.args,
+    state,
+    invocationMessage: messages.invocation,
+    pastTenseMessage: messages.pastTense,
+    summary: state === 'completed' ? summarizeResult(result) : null,
+    reason,
+    durationMs: durationOf(result),
+    createdAt: row.createdAt
+  }
+}
+
+/** Reasoning, then answer text, of one model round: what the round said before its tool calls. */
+function roundTextParts(round: {
+  round: number
+  reasoning: string
+  text: string
+  durationMs: number | null
+  startedAt: number
+}): NewAgentResponsePart[] {
+  const parts: NewAgentResponsePart[] = []
+  if (round.reasoning !== '') {
+    parts.push({
+      round: round.round,
+      kind: 'reasoning',
+      text: round.reasoning,
+      toolCallId: null,
+      durationMs: round.durationMs,
+      createdAt: round.startedAt
+    })
+  }
+  if (round.text.trim() !== '') {
+    parts.push({
+      round: round.round,
+      kind: 'text',
+      text: round.text,
+      toolCallId: null,
+      durationMs: null,
+      createdAt: round.startedAt
+    })
+  }
+  return parts
+}
+
+/**
+ * Parts of a turn stored before `agent_turn_part` existed: its reasoning, its calls by round, then its
+ * answer. The order between text and calls is not known, so all the text goes last.
+ */
+function legacyParts(turn: AgentTurn, calls: AgentToolCall[]): AgentResponsePart[] {
+  const parts: Array<Omit<AgentResponsePart, 'id' | 'seq'>> = []
+  const at = { createdAt: turn.createdAt, updatedAt: turn.updatedAt, turnId: turn.id }
+  if (turn.reasoning) {
+    parts.push({
+      ...at,
+      round: 0,
+      kind: 'reasoning',
+      text: turn.reasoning,
+      toolCallId: null,
+      durationMs: null
+    })
+  }
+  for (const call of calls) {
+    parts.push({
+      ...at,
+      round: call.round,
+      kind: 'tool_call',
+      text: '',
+      toolCallId: call.id,
+      durationMs: null
+    })
+  }
+  if (turn.answer) {
+    parts.push({
+      ...at,
+      round: 0,
+      kind: 'text',
+      text: turn.answer,
+      toolCallId: null,
+      durationMs: null
+    })
+  }
+  return parts.map((part, index) => ({
+    ...part,
+    id: `legacy:${turn.id}:${index + 1}`,
+    seq: index + 1
+  }))
 }
 
 function targetLabel(target: ResolvedTarget): string {
@@ -350,13 +505,57 @@ export class AgentService {
   getSessionDetail(sessionId: string): AgentSessionDetailView {
     const session = this.repository.getSession(sessionId)
     if (!session) throw new StorageError('not_found', 'Không tìm thấy phiên agent.')
+    const turns = this.repository.listTurns(sessionId)
+    const toolCalls = this.repository.listSessionToolCalls(sessionId)
     return {
       session,
-      turns: this.repository.listTurns(sessionId),
+      turns,
       activities: this.repository.listSessionActivities(sessionId),
       operations: this.repository.listSessionOperations(sessionId),
       pending: this.repository.listSessionPendingToolCalls(sessionId).map(pendingActionOf),
-      sessionApprovals: this.repository.listSessionApprovals(sessionId)
+      sessionApprovals: this.repository.listSessionApprovals(sessionId),
+      parts: this.sessionParts(sessionId, turns, toolCalls),
+      toolCalls: toolCalls.map(toolCallViewOf)
+    }
+  }
+
+  /** Stored parts, plus parts rebuilt for turns that predate them. */
+  private sessionParts(
+    sessionId: string,
+    turns: AgentTurn[],
+    toolCalls: AgentToolCall[]
+  ): AgentResponsePart[] {
+    const stored = this.repository.listSessionParts(sessionId)
+    const withParts = new Set(stored.map((part) => part.turnId))
+    const parts: AgentResponsePart[] = []
+    for (const turn of turns) {
+      if (withParts.has(turn.id)) {
+        parts.push(...stored.filter((part) => part.turnId === turn.id))
+      } else {
+        const own = toolCalls.filter(
+          (call) => call.turnId === turn.id && call.parentCallId === null
+        )
+        parts.push(...legacyParts(turn, own))
+      }
+    }
+    return parts
+  }
+
+  /** One stored call with its full result, for the transcript's Input/Output section. */
+  getToolCallDetail(toolCallId: string): AgentToolCallDetailView {
+    const row = this.repository.getToolCall(toolCallId)
+    if (!row) throw new StorageError('not_found', 'Không tìm thấy tool call.')
+    const {
+      reply: _reply,
+      targets: _targets,
+      candidates,
+      ...result
+    } = (row.result ?? {}) as ToolCallResult
+    return {
+      toolCall: toolCallViewOf(row),
+      result: candidates
+        ? { ...result, candidates: candidates.map(({ handle, label }) => ({ handle, label })) }
+        : result
     }
   }
 
@@ -632,8 +831,9 @@ export class AgentService {
     let terminalEmitted = false
     const emit = (
       eventData:
-        | { kind: 'reasoning-delta'; text: string }
-        | { kind: 'answer-delta'; text: string }
+        | { kind: 'reasoning-delta'; text: string; round: number }
+        | { kind: 'answer-delta'; text: string; round: number }
+        | { kind: 'tool-call'; toolCall: AgentToolCallView }
         | { kind: 'activity-start'; activityId: string; stepSeq: number; activity: unknown }
         | { kind: 'activity-update'; activityId: string; stepSeq: number; activity: unknown }
         | { kind: 'activity-finish'; activityId: string; stepSeq: number; activity: unknown }
@@ -698,7 +898,14 @@ export class AgentService {
     const usages: Array<TokenUsage | null> = turn.usage ? [turn.usage] : []
     let model: AgentChatModel | null = null
     let answer = turn.answer
+    let reasoningAll = turn.reasoning
+    // Text and reasoning of the round being streamed, until they are stored as parts.
+    let unsaved: Parameters<typeof roundTextParts>[0] | null = null
     const targetsChanged = new Map<string, AgentTargetChanged>()
+    const saveParts = (parts: NewAgentResponsePart[]) =>
+      this.repository.insertParts(turnId, parts, this.now())
+    const emitCall = (row: AgentToolCall, state?: AgentToolCallViewState) =>
+      emit({ kind: 'tool-call', toolCall: { ...toolCallViewOf(row), ...(state ? { state } : {}) } })
 
     const totalUsage = () => aggregateTokenUsage(usages)
     const costOf = (usage: TokenUsage | null) =>
@@ -711,6 +918,7 @@ export class AgentService {
         throw new StorageError('conflict', 'Cấu hình model đã đổi. Vui lòng gửi lại lệnh.')
       }
       const chatModel = model
+      this.repository.setTurnModelLabel(turnId, this.modelLabelOf(selection, chatModel))
       // Mode and level come from the turn, never from the command that resumes it.
       const capabilities = this.chatCapabilities(turn.mode)
       const sessionApprovals = new Set(this.repository.listSessionApprovals(sessionId))
@@ -843,31 +1051,30 @@ export class AgentService {
         }
 
         if (row.name === RUN_SUBAGENT) {
-          const task = String(args.task ?? '')
-          const description = String(args.description ?? 'Nhiệm vụ phụ')
-          const finish = activity({
-            kind: 'read',
-            label: `Subagent: ${description}`
-          })
+          const startedAt = this.now()
           try {
-            const subResult = await this.executeSubagent({
-              task,
-              description,
+            const sub = await this.executeSubagent({
+              parent: row,
+              task: String(args.task ?? ''),
               chatModel,
               context: turn.context,
               signal,
-              sessionId
+              sessionId,
+              emitCall
             })
-            finish('completed', { summary: subResult.summary })
             return {
               state: 'completed',
               result: {
                 ok: true,
-                value: { summary: subResult.summary }
+                value: {
+                  summary: sub.summary,
+                  durationMs: this.now() - startedAt,
+                  ...(sub.stopped ? { stopped: sub.stopped } : {})
+                }
               }
             }
           } catch (error) {
-            finish('failed')
+            if (signal.aborted) throw error
             return { state: 'failed', result: { ok: false, error: errorInfo(error) } }
           }
         }
@@ -989,15 +1196,10 @@ export class AgentService {
             targetsChanged
           })
         }
-        const adapted = cap.activityAdapter?.({
-          turnId,
-          commandId: row.id,
-          target,
-          args: rest,
-          library: this.library,
-          now: this.now()
+        const finish = activity({
+          kind: 'read',
+          label: this.phraseOf(cap.name, rest, target, capabilities)
         })
-        const finish = activity({ kind: 'read', label: adapted?.label ?? `Đọc: ${cap.name}` })
         const res = await this.registry.execute(cap.name, rest, {
           turnId,
           commandId: row.id,
@@ -1037,9 +1239,9 @@ export class AgentService {
           if (signal.aborted) throw new StorageError('cancelled', 'Lượt agent đã được hủy.')
           const result = row.result as ToolCallResult | null
           const stopRest = (code: string, message: string) => {
-            persist(row.id, 'failed', { ok: false, error: { code, message } })
+            emitCall(persist(row.id, 'failed', { ok: false, error: { code, message } }))
             for (const later of round.slice(index + 1)) {
-              if (later.state === 'pending') persist(later.id, 'cancelled', null)
+              if (later.state === 'pending') emitCall(persist(later.id, 'cancelled', null))
             }
             throw new TurnStop(code, message)
           }
@@ -1053,24 +1255,30 @@ export class AgentService {
             row.state !== 'pending' ||
             (row.decision === 'needs_user' && !result?.reply && !runsWithoutUser(row.approval))
           ) {
+            // A call waiting for the user shows as such; a finished one was announced when it ended.
+            if (row.state === 'pending') emitCall(row)
             continue
           }
           // An approved call is judged again: the approval never outranks a deny.
           const decision = this.decide(row, handles, chosen, turn, sessionId, capabilities)
           if (decision.decision === 'deny') {
-            persist(row.id, 'failed', {
-              ok: false,
-              error: { code: 'denied', message: decision.reason }
-            })
+            emitCall(
+              persist(row.id, 'failed', {
+                ok: false,
+                error: { code: 'denied', message: decision.reason }
+              })
+            )
             continue
           }
           const calls = budget.recordCapabilityCall(row.name)
           if (!calls.allowed) {
             forceFinal = true
-            persist(row.id, 'failed', {
-              ok: false,
-              error: { code: 'budget_calls', message: calls.reason ?? '' }
-            })
+            emitCall(
+              persist(row.id, 'failed', {
+                ok: false,
+                error: { code: 'budget_calls', message: calls.reason ?? '' }
+              })
+            )
             continue
           }
           if (isWriteKind(capabilities.get(row.name))) {
@@ -1078,6 +1286,7 @@ export class AgentService {
             if (!writes.allowed) stopRest('budget_write', writes.reason ?? '')
           }
           let outcome: { state: AgentToolCallState; result: ToolCallResult }
+          emitCall(row, 'running')
           try {
             outcome = await execute(row)
           } catch (error) {
@@ -1089,6 +1298,7 @@ export class AgentService {
             ...outcome.result,
             ...(result?.reply ? { reply: result.reply } : {})
           })
+          emitCall(round[index])
         }
       }
 
@@ -1096,10 +1306,16 @@ export class AgentService {
       await runRound(rows.filter((row) => row.state === 'pending'))
 
       if (!toolsEnabled) {
-        activity({
-          kind: 'result',
-          label: 'Model này không dùng được công cụ; trả lời từ ngữ cảnh đã gửi.'
-        })('completed')
+        saveParts([
+          {
+            round: 0,
+            kind: 'progress',
+            text: 'Model này không dùng được công cụ; trả lời từ ngữ cảnh đã gửi.',
+            toolCallId: null,
+            durationMs: null,
+            createdAt: this.now()
+          }
+        ])
       }
 
       for (;;) {
@@ -1119,16 +1335,35 @@ export class AgentService {
           limitChars: contextLimitChars(chatModel.info)
         })
         if (assembled.droppedTurns > 0) {
-          activity({
-            kind: 'thinking',
-            label: `Bỏ ${assembled.droppedTurns} lượt cũ khỏi ngữ cảnh model`,
-            detail: { droppedTurns: assembled.droppedTurns, round: roundNo }
-          })('completed', { droppedTurns: assembled.droppedTurns, round: roundNo })
+          saveParts([
+            {
+              round: roundNo,
+              kind: 'progress',
+              text: `Bỏ ${assembled.droppedTurns} lượt cũ khỏi ngữ cảnh model`,
+              toolCallId: null,
+              durationMs: null,
+              createdAt: this.now()
+            }
+          ])
         }
 
         let text = ''
         let calls: AssembledToolCall[] = []
         let reported = false
+        const streamed = {
+          round: roundNo,
+          reasoning: '',
+          text: '',
+          durationMs: null as number | null,
+          startedAt: this.now()
+        }
+        unsaved = streamed
+        let reasoningFrom: number | null = null
+        const endReasoning = () => {
+          if (reasoningFrom !== null && streamed.durationMs === null) {
+            streamed.durationMs = this.now() - reasoningFrom
+          }
+        }
         for await (const event of chatModel.chat(assembled.messages, {
           signal,
           tools: final ? undefined : toolDefinitions,
@@ -1136,23 +1371,36 @@ export class AgentService {
           sessionId
         })) {
           if (event.kind === 'delta') {
+            endReasoning()
             // Text of a later round starts a new paragraph after what the user already saw.
             const piece = text === '' && answer !== '' ? '\n\n' + event.text : event.text
             text += piece
-            emit({ kind: 'answer-delta', text: piece })
+            streamed.text += event.text
+            emit({ kind: 'answer-delta', text: event.text, round: roundNo })
           } else if (event.kind === 'reasoning') {
-            emit({ kind: 'reasoning-delta', text: event.text })
+            reasoningFrom ??= this.now()
+            streamed.reasoning += event.text
+            emit({ kind: 'reasoning-delta', text: event.text, round: roundNo })
           } else {
+            endReasoning()
             reported = true
             usages.push(event.usage ? toWireUsage(event.usage) : null)
             if (event.kind === 'tool-calls') calls = event.calls
           }
         }
         if (!reported) usages.push(null)
+        endReasoning()
         if (signal.aborted) throw new StorageError('cancelled', 'Lượt agent đã được hủy.')
         answer += text
+        if (streamed.reasoning !== '') {
+          reasoningAll += (reasoningAll === '' ? '' : '\n\n') + streamed.reasoning
+        }
 
-        if (final || calls.length === 0) break
+        if (final || calls.length === 0) {
+          saveParts(roundTextParts(streamed))
+          unsaved = null
+          break
+        }
 
         // Persist every call of the round with its decision before any of them runs.
         const prepared = calls.map((call) =>
@@ -1170,11 +1418,28 @@ export class AgentService {
           )
         )
         try {
-          this.repository.insertToolCalls(prepared)
+          // The round's text, then its calls, are stored with the calls in one transaction.
+          this.repository.transaction(() => {
+            this.repository.insertToolCalls(prepared)
+            saveParts([
+              ...roundTextParts(streamed),
+              ...prepared.map((call) => ({
+                round: roundNo,
+                kind: 'tool_call' as const,
+                text: '',
+                toolCallId: call.id,
+                durationMs: null,
+                createdAt: call.createdAt
+              }))
+            ])
+          })
+          unsaved = null
         } catch (error) {
           throw new TurnStop('persistence', 'Không lưu được tool call: ' + errorInfo(error).message)
         }
         const round = this.repository.listToolCalls(turnId).filter((row) => row.round === roundNo)
+        // Calls refused before running (policy, validation, Autopilot) are already final.
+        for (const row of round) if (row.state !== 'pending') emitCall(row)
         await runRound(round)
 
         const waiting = this.repository
@@ -1184,6 +1449,7 @@ export class AgentService {
           const usage = totalUsage()
           this.repository.transitionTurn(turnId, 'waiting_user', this.now(), {
             answer,
+            reasoning: reasoningAll,
             usage,
             costUsd: costOf(usage)
           })
@@ -1201,7 +1467,12 @@ export class AgentService {
 
       const usage = totalUsage()
       const costUsd = costOf(usage)
-      this.repository.transitionTurn(turnId, 'completed', this.now(), { answer, usage, costUsd })
+      this.repository.transitionTurn(turnId, 'completed', this.now(), {
+        answer,
+        reasoning: reasoningAll,
+        usage,
+        costUsd
+      })
       emit({ kind: 'done', turnState: 'completed', usage })
       return { sessionId, turnId, status: 'completed', answer, usage, costUsd }
     } catch (error) {
@@ -1211,6 +1482,8 @@ export class AgentService {
       const info = errorInfo(error)
       const usage = totalUsage()
       try {
+        // What the stopped round had streamed stays visible.
+        if (unsaved) saveParts(roundTextParts(unsaved))
         for (const activityRow of this.repository.listActivities(turnId)) {
           if (activityRow.state !== 'running') continue
           this.repository.putActivity({
@@ -1227,6 +1500,7 @@ export class AgentService {
         if (!this.shuttingDown && currentTurn?.status === 'running') {
           this.repository.transitionTurn(turnId, cancelled ? 'cancelled' : 'failed', this.now(), {
             answer: cancelled ? answer : answer || info.message,
+            reasoning: reasoningAll,
             usage,
             costUsd: costOf(usage)
           })
@@ -1362,7 +1636,15 @@ export class AgentService {
       args,
       ...(call.extra !== undefined ? { extra: call.extra } : {}),
       argsDigest: digestPayload({ name: call.name, args }),
-      createdAt: this.now()
+      createdAt: this.now(),
+      messages: toolMessages(
+        this.phraseOf(
+          call.name,
+          args,
+          typeof args.target === 'string' ? handles.get(args.target) : undefined,
+          capabilities
+        )
+      )
     }
     const policy = this.decide(
       { name: call.name, args },
@@ -1448,15 +1730,7 @@ export class AgentService {
         }
       }
       const target = typeof args.target === 'string' ? handles.get(args.target) : undefined
-      const label =
-        cap.activityAdapter?.({
-          turnId,
-          commandId: base.id,
-          target,
-          args: rest,
-          library: this.library,
-          now: this.now()
-        }).label ?? call.name
+      const label = this.phraseOf(call.name, rest, target, capabilities)
       return {
         ...base,
         decision: 'needs_user',
@@ -1465,6 +1739,33 @@ export class AgentService {
       }
     }
     return { ...base, decision: 'allow', state: 'pending' }
+  }
+
+  /** The name the user gave the model entry, or the catalog name. */
+  private modelLabelOf(selection: ModelSelection, chatModel: AgentChatModel): string {
+    const entry = this.connections
+      .list()
+      .connections.find((item) => item.id === selection.connectionId)
+      ?.models.find((item) => item.id === selection.entryId)
+    return entry?.name ?? chatModel.info?.name ?? 'Model'
+  }
+
+  /** What a call does, as a verb phrase for its messages; a broken `describe` falls back to the name. */
+  private phraseOf(
+    name: string,
+    args: Record<string, unknown>,
+    target: ResolvedTarget | undefined,
+    capabilities: Map<string, CapabilityDefinition>
+  ): string {
+    if (name === RESOLVE_TARGET) return `Xác định đích "${String(args.description ?? '')}"`
+    const cap = capabilities.get(name) ?? this.registry.list().find((item) => item.name === name)
+    try {
+      const phrase = cap?.describe?.({ args, target })
+      if (phrase) return phrase
+    } catch {
+      // A description is decoration; the call itself is judged and run elsewhere.
+    }
+    return `Gọi công cụ ${name}`
   }
 
   /** One reversible write as an operation: lease via the write coordinator, journal, Undo. */
@@ -1519,19 +1820,13 @@ export class AgentService {
     this.repository.transitionOperation(operationId, 'running', { now: this.now() })
     emit({ kind: 'operation', operation: this.repository.getOperation(operationId) })
 
-    const adapted = cap.activityAdapter?.({
-      turnId,
-      commandId,
-      target,
-      args: input.args,
-      library: this.library,
-      now: this.now()
-    })
-    const finish = input.activity({
-      kind: 'write',
-      label: adapted?.label ?? cap.name,
-      operationId
-    })
+    let label = cap.name
+    try {
+      label = cap.describe?.({ args: input.args, target }) ?? cap.name
+    } catch {
+      // The operation still runs; only its label falls back to the capability name.
+    }
+    const finish = input.activity({ kind: 'write', label, operationId })
     let res: CapabilityExecutionResult
     try {
       await this.writeCoordinator.request(operationId, target, input.onWriteIntent)
@@ -1616,27 +1911,26 @@ export class AgentService {
     }
   }
 
+  /**
+   * Runs `run_subagent`: its own model rounds over read capabilities, each call stored under the parent
+   * call and announced like the turn's own, within `SUBAGENT_LIMITS`. Returns the last round's text.
+   */
   private async executeSubagent(input: {
+    parent: AgentToolCall
     task: string
-    description: string
     chatModel: AgentChatModel
     context?: AgentContext
     signal: AbortSignal
-    sessionId?: string
-  }): Promise<{ summary: string }> {
+    sessionId: string
+    emitCall: (row: AgentToolCall, state?: AgentToolCallViewState) => void
+  }): Promise<{ summary: string; stopped?: string }> {
+    const { parent, signal } = input
+    const cancelled = () => new StorageError('cancelled', 'Lượt agent đã được hủy.')
     const messages: ChatMessage[] = [
-      {
-        role: 'system',
-        content:
-          'Bạn là một Subagent hỗ trợ tra cứu và phân tích chuyên sâu cho tiểu thuyết. Hãy sử dụng các công cụ tra cứu được cấp để hoàn thành nhiệm vụ và trả về bản tóm tắt kết quả chính xác, súc tích.'
-      },
-      {
-        role: 'user',
-        content: input.task
-      }
+      { role: 'system', content: SUBAGENT_PROMPT },
+      { role: 'user', content: input.task }
     ]
-
-    const subCapabilities = new Map(
+    const capabilities = new Map(
       this.registry
         .list()
         .filter(
@@ -1648,131 +1942,176 @@ export class AgentService {
         )
         .map((cap) => [cap.name, cap])
     )
-    const subToolDefinitions = [
+    const toolDefinitions = [
       resolveTargetDefinition,
-      ...[...subCapabilities.values()].map((cap) => ({
+      ...[...capabilities.values()].map((cap) => ({
         type: 'function' as const,
-        function: {
-          name: cap.name,
-          description: cap.description,
-          parameters: cap.parameters!
-        }
+        function: { name: cap.name, description: cap.description, parameters: cap.parameters! }
       }))
     ]
-
+    const budget = new TurnBudgetTracker({
+      maxModelRounds: SUBAGENT_LIMITS.rounds,
+      maxCapabilityCalls: SUBAGENT_LIMITS.calls,
+      maxReadChars: SUBAGENT_LIMITS.readChars,
+      maxWriteOperations: 0
+    })
     const handles = new Map<string, ResolvedTarget>()
-    let issuedHandles = 0
-    const nextHandle = () => 'sub-t' + ++issuedHandles
+    let issued = 0
+    const nextHandle = () => 'sub-t' + ++issued
+    const digests = new Map<string, number>()
+    let lastText = ''
+    let stopped: string | undefined
 
-    let summaryText = ''
-    const maxRounds = 3
-
-    for (let roundNo = 1; roundNo <= maxRounds; roundNo++) {
-      if (input.signal.aborted) throw new StorageError('cancelled', 'Subagent đã bị hủy.')
-      const isFinal = roundNo === maxRounds
+    for (let roundNo = 1; stopped === undefined; roundNo++) {
+      if (signal.aborted) throw cancelled()
+      const roundBudget = budget.recordModelRound()
+      const final = roundBudget.isFinalRound || !roundBudget.allowed
       let text = ''
       let calls: AssembledToolCall[] = []
-
       for await (const event of input.chatModel.chat(messages, {
-        signal: input.signal,
-        tools: isFinal ? undefined : subToolDefinitions,
-        turnRound: roundNo - 1,
-        sessionId: input.sessionId ?? 'subagent'
+        signal,
+        tools: final ? undefined : toolDefinitions,
+        // Every subagent round answers a tool call of the turn, never the user directly.
+        turnRound: Math.max(1, parent.round),
+        sessionId: input.sessionId
       })) {
-        if (event.kind === 'delta') {
-          text += event.text
-        } else if (event.kind === 'tool-calls') {
-          calls = event.calls
-        }
+        if (event.kind === 'delta') text += event.text
+        else if (event.kind === 'tool-calls') calls = event.calls
       }
-      summaryText += text
-      if (isFinal || calls.length === 0) break
+      if (signal.aborted) throw cancelled()
+      lastText = text
+      if (final || calls.length === 0) break
 
       messages.push({
         role: 'assistant',
         content: text,
-        tool_calls: calls.map((c) => ({
-          id: c.id,
+        tool_calls: calls.map((call) => ({
+          id: call.id,
           type: 'function',
-          function: { name: c.name, arguments: c.arguments }
+          function: { name: call.name, arguments: call.arguments }
         }))
       })
-
-      // Execute read calls
       for (const call of calls) {
         let args: Record<string, unknown> = {}
         try {
-          args = JSON.parse(call.arguments || '{}')
+          const parsed: unknown = JSON.parse(call.arguments || '{}')
+          if (parsed !== null && typeof parsed === 'object' && !Array.isArray(parsed)) {
+            args = parsed as Record<string, unknown>
+          }
         } catch {
           args = {}
         }
+        const allowed = call.name === RESOLVE_TARGET || capabilities.has(call.name)
+        const target = typeof args.target === 'string' ? handles.get(args.target) : undefined
+        const row: PreparedCall = {
+          id: randomUUID(),
+          turnId: parent.turnId,
+          round: roundNo,
+          // Unique within the turn, apart from the turn's own call IDs.
+          callId: `${parent.id}:${call.id}`,
+          name: call.name,
+          args,
+          argsDigest: digestPayload({ name: call.name, args }),
+          decision: allowed ? 'allow' : 'deny',
+          state: 'pending',
+          parentCallId: parent.id,
+          messages: toolMessages(this.phraseOf(call.name, args, target, capabilities)),
+          createdAt: this.now()
+        }
+        this.repository.insertToolCalls([row])
+        const finish = (state: AgentToolCallState, result: ToolCallResult) => {
+          const stored = this.repository.updateToolCall(row.id, state, result)
+          input.emitCall(stored)
+          messages.push({ role: 'tool', content: JSON.stringify(result), tool_call_id: call.id })
+        }
+        const refuse = (code: string, message: string) =>
+          finish('failed', { ok: false, error: { code, message } })
+
+        const seen = (digests.get(row.argsDigest) ?? 0) + 1
+        digests.set(row.argsDigest, seen)
+        if (seen >= LOOP_REPEATS) {
+          stopped = `Công cụ ${call.name} bị gọi lặp lại với cùng tham số.`
+          refuse('loop', stopped)
+          break
+        }
+        if (!allowed) {
+          refuse('not_allowed', 'Công cụ không được phép cho subagent: subagent chỉ được đọc.')
+          continue
+        }
+        const quota = budget.recordCapabilityCall(call.name)
+        if (!quota.allowed) {
+          stopped = quota.reason ?? 'Subagent đã dùng hết số lần gọi công cụ.'
+          refuse('budget_calls', stopped)
+          break
+        }
+        input.emitCall({ ...row, approval: null, result: null } as AgentToolCall, 'running')
 
         if (call.name === RESOLVE_TARGET) {
-          const description = String(args.description ?? '')
-          const found = this.resolver.resolve(description, input.context)
+          const found = this.resolver.resolve(String(args.description ?? ''), input.context)
           if (found.status === 'resolved') {
             const handle = nextHandle()
             handles.set(handle, found.target)
-            messages.push({
-              role: 'tool',
-              content: JSON.stringify({
-                ok: true,
-                value: { status: 'resolved', handle, label: targetLabel(found.target) }
-              }),
-              tool_call_id: call.id
+            finish('completed', {
+              ok: true,
+              value: { status: 'resolved', handle, label: targetLabel(found.target) }
             })
+          } else if (found.status === 'ambiguous' && found.candidates.length > 0) {
+            // A subagent cannot ask the user; it gets the candidates and picks one itself.
+            const candidates = found.candidates.map((item) => {
+              const candidate: ResolvedTarget = item.chapterId
+                ? {
+                    kind: 'chapter',
+                    workId: item.workId,
+                    workLabel: item.workLabel,
+                    chapterId: item.chapterId,
+                    chapterLabel: item.chapterLabel ?? ''
+                  }
+                : { kind: 'work', workId: item.workId, workLabel: item.workLabel }
+              const handle = nextHandle()
+              handles.set(handle, candidate)
+              return { handle, label: targetLabel(candidate) }
+            })
+            finish('completed', { ok: true, value: { status: 'ambiguous', candidates } })
           } else {
-            messages.push({
-              role: 'tool',
-              content: JSON.stringify({
-                ok: false,
-                error: { code: 'not_found', message: 'Không tìm thấy đích.' }
-              }),
-              tool_call_id: call.id
+            finish('completed', {
+              ok: true,
+              value: { status: 'not_found', reason: 'reason' in found ? found.reason : '' }
             })
           }
           continue
         }
 
-        const cap = subCapabilities.get(call.name)
-        if (!cap) {
-          messages.push({
-            role: 'tool',
-            content: JSON.stringify({
-              ok: false,
-              error: { code: 'not_allowed', message: 'Công cụ không được phép cho subagent.' }
-            }),
-            tool_call_id: call.id
-          })
-          continue
-        }
-
-        const { target: handle, ...rest } = args
-        const target = typeof handle === 'string' ? handles.get(handle) : undefined
+        const cap = capabilities.get(call.name)!
+        const { target: _handle, ...rest } = args
+        let result: ToolCallResult
         try {
           const res = await this.registry.execute(cap.name, rest, {
-            turnId: 'subagent',
-            commandId: call.id,
+            turnId: parent.turnId,
+            commandId: row.id,
             target,
             library: this.library,
-            now: this.now()
+            now: this.now(),
+            signal
           })
-          messages.push({
-            role: 'tool',
-            content: JSON.stringify(res),
-            tool_call_id: call.id
-          })
-        } catch (err) {
-          messages.push({
-            role: 'tool',
-            content: JSON.stringify({ ok: false, error: errorInfo(err) }),
-            tool_call_id: call.id
-          })
+          result = res.ok ? { ok: true, value: res.value } : { ok: false, error: res.error }
+        } catch (error) {
+          if (signal.aborted) throw cancelled()
+          result = { ok: false, error: errorInfo(error) }
         }
+        const read = budget.recordRead(JSON.stringify(result).length)
+        if (!read.allowed) {
+          stopped = read.reason ?? 'Subagent đã đọc quá hạn mức.'
+          refuse('budget_read', stopped)
+          break
+        }
+        finish(result.ok ? 'completed' : 'failed', result)
       }
     }
 
-    return { summary: summaryText.trim() || 'Subagent đã hoàn thành nhiệm vụ.' }
+    return {
+      summary: lastText.trim() || 'Subagent không có kết luận.',
+      ...(stopped ? { stopped } : {})
+    }
   }
 }
 

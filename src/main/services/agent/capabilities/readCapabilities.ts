@@ -37,10 +37,7 @@ export const listWorksCapability: CapabilityDefinition<Record<string, never>> = 
       }))
     }
   },
-  activityAdapter: () => ({
-    label: 'Đọc danh sách tác phẩm',
-    kind: 'read'
-  })
+  describe: () => 'Đọc danh sách tác phẩm'
 }
 
 export const listChaptersCapability: CapabilityDefinition<Record<string, never>> = {
@@ -77,10 +74,7 @@ export const listChaptersCapability: CapabilityDefinition<Record<string, never>>
       }
     }
   },
-  activityAdapter: ({ target }) => ({
-    label: `Đọc danh mục chương (${target?.workLabel ?? 'tác phẩm'})`,
-    kind: 'read'
-  })
+  describe: ({ target }) => `Đọc danh mục chương (${target?.workLabel ?? 'tác phẩm'})`
 }
 
 interface ChapterPage {
@@ -139,11 +133,8 @@ export const readChapterCapability: CapabilityDefinition<{
       return { ok: true, value: result }
     })
   },
-  activityAdapter: ({ target, args }) => ({
-    label: `Đọc nội dung chương "${target?.kind === 'chapter' ? target.chapterLabel : ''}"`,
-    kind: 'read',
-    detail: { side: args.side ?? 'both' }
-  })
+  describe: ({ target }) =>
+    `Đọc nội dung chương "${target?.kind === 'chapter' ? target.chapterLabel : ''}"`
 }
 
 export const readSegmentsCapability: CapabilityDefinition<{ side: 'source' | 'target' }> = {
@@ -180,10 +171,8 @@ export const readSegmentsCapability: CapabilityDefinition<{ side: 'source' | 'ta
       }
     })
   },
-  activityAdapter: ({ target, args }) => ({
-    label: `Đọc các đoạn (${args.side}) của chương "${target?.kind === 'chapter' ? target.chapterLabel : ''}"`,
-    kind: 'read'
-  })
+  describe: ({ target, args }) =>
+    `Đọc các đoạn (${args.side}) của chương "${target?.kind === 'chapter' ? target.chapterLabel : ''}"`
 }
 
 export const searchWorkCapability: CapabilityDefinition<{
@@ -237,10 +226,8 @@ export const searchWorkCapability: CapabilityDefinition<{
       return { ok: true, value: { matches, totalMatches: matches.length } }
     })
   },
-  activityAdapter: ({ target, args }) => ({
-    label: `Tìm kiếm "${args.query}" trong "${target?.workLabel ?? 'tác phẩm'}"`,
-    kind: 'read'
-  })
+  describe: ({ target, args }) =>
+    `Tìm kiếm "${args.query}" trong "${target?.workLabel ?? 'tác phẩm'}"`
 }
 
 export const listGlossaryCapability: CapabilityDefinition<Record<string, never>> = {
@@ -260,10 +247,8 @@ export const listGlossaryCapability: CapabilityDefinition<Record<string, never>>
     const entries = library.getEffectiveGlossary(target.workId, target.chapterId)
     return { ok: true, value: entries }
   },
-  activityAdapter: ({ target }) => ({
-    label: `Đọc thuật ngữ chương "${target?.kind === 'chapter' ? target.chapterLabel : ''}"`,
-    kind: 'read'
-  })
+  describe: ({ target }) =>
+    `Đọc thuật ngữ chương "${target?.kind === 'chapter' ? target.chapterLabel : ''}"`
 }
 
 export const listAddressingCapability: CapabilityDefinition<Record<string, never>> = {
@@ -283,10 +268,8 @@ export const listAddressingCapability: CapabilityDefinition<Record<string, never
     const dyads = library.getEffectiveAddressing(target.workId, target.chapterId)
     return { ok: true, value: dyads }
   },
-  activityAdapter: ({ target }) => ({
-    label: `Đọc xưng hô chương "${target?.kind === 'chapter' ? target.chapterLabel : ''}"`,
-    kind: 'read'
-  })
+  describe: ({ target }) =>
+    `Đọc xưng hô chương "${target?.kind === 'chapter' ? target.chapterLabel : ''}"`
 }
 
 export const askQuestionsCapability: CapabilityDefinition<{
@@ -318,10 +301,7 @@ export const askQuestionsCapability: CapabilityDefinition<{
   },
   targetPolicy: 'no_target',
   handler: async () => ({ ok: true, value: {} }),
-  activityAdapter: ({ args }) => ({
-    label: `Hỏi: ${(args as { question?: string }).question ?? ''}`,
-    kind: 'read'
-  })
+  describe: ({ args }) => `Hỏi "${(args as { question?: string }).question ?? ''}"`
 }
 
 export const runSubagentCapability: CapabilityDefinition<{
@@ -353,10 +333,8 @@ export const runSubagentCapability: CapabilityDefinition<{
   },
   targetPolicy: 'no_target',
   handler: async () => ({ ok: true, value: {} }),
-  activityAdapter: ({ args }) => ({
-    label: `Subagent: ${(args as { description?: string }).description ?? 'Nhiệm vụ phụ'}`,
-    kind: 'read'
-  })
+  describe: ({ args }) =>
+    `Chạy subagent: ${(args as { description?: string }).description ?? 'Nhiệm vụ phụ'}`
 }
 
 export const defaultReadCapabilities: CapabilityDefinition[] = [

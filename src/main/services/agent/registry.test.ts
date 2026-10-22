@@ -158,20 +158,9 @@ describe('CapabilityRegistry & Read Capabilities', () => {
     })
     expect(ch2Text).toBe(1)
 
-    // Activity adapter returns accurate target label
-    const adapter = readChapterCapability.activityAdapter!(
-      {
-        turnId: 't1',
-        commandId: 'c1',
-        target: target2,
-        args: { side: 'source' },
-        library,
-        now: 1000
-      },
-      res
-    )
-    expect(adapter.label).toContain('Chapter 1')
-    expect(adapter.kind).toBe('read')
+    // The description names the target the call reads.
+    const described = readChapterCapability.describe!({ target: target2, args: { side: 'source' } })
+    expect(described).toContain('Chapter 1')
   })
 
   it('enforces budget limits on rounds, reads, writes and capability calls', () => {

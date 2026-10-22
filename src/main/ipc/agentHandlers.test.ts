@@ -142,6 +142,16 @@ describe('agent IPC handlers', () => {
     expect(detail.sessionApprovals).toEqual([])
   })
 
+  it('reads a stored tool call by id and reports one that does not exist', () => {
+    const { call } = setup()
+    const missing = call(CHANNELS.agentToolCallGet, { toolCallId: randomUUID() })
+    expect(missing.ok).toBe(false)
+    if (missing.ok) return
+    expect(missing.error.code).toBe('not_found')
+    const invalid = call(CHANNELS.agentToolCallGet, { toolCallId: 'x' })
+    expect(invalid.ok).toBe(false)
+  })
+
   it('rejects an invalid session id when getting session detail', () => {
     const { call } = setup()
     const result = call(CHANNELS.agentSessionsGet, { sessionId: 'not-a-uuid' })

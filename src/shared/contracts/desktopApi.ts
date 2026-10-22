@@ -20,6 +20,7 @@ import type {
   AgentSendResult,
   AgentSessionDetailView,
   AgentSessionView,
+  AgentToolCallDetailView,
   AgentSetPermissionLevelInput,
   AgentStreamEvent,
   AgentTargetChanged,
@@ -491,6 +492,10 @@ export interface AgentApi {
   turn: {
     send(input: AgentSendInput): Promise<Result<AgentSendResult>>
     cancel(input: AgentCancelInput): Promise<Result<AgentCancelResult>>
+  }
+  toolCalls: {
+    /** One stored call with its full result, read when the transcript opens it. */
+    get(toolCallId: string): Promise<Result<AgentToolCallDetailView>>
   }
   operations: {
     /** The latest operations of every chat and task, newest change first. */

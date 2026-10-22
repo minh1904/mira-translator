@@ -17,6 +17,7 @@ import type {
   AgentSendResult,
   AgentSessionDetailView,
   AgentSessionView,
+  AgentToolCallDetailView,
   AgentStreamEvent,
   AgentTargetChanged,
   AgentUndoResult,
@@ -558,6 +559,12 @@ const desktopApi: DesktopApi = {
       send: (input) =>
         ipcRenderer.invoke(CHANNELS.agentTurnSend, input) as Promise<Result<AgentSendResult>>,
       cancel: (input) => ipcRenderer.invoke(CHANNELS.agentTurnCancel, input)
+    },
+    toolCalls: {
+      get: (toolCallId) =>
+        ipcRenderer.invoke(CHANNELS.agentToolCallGet, { toolCallId }) as Promise<
+          Result<AgentToolCallDetailView>
+        >
     },
     operations: {
       list: (limit) =>

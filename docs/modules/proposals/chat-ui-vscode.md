@@ -185,14 +185,16 @@ Yêu cầu được tách thành bốn change, apply theo thứ tự (mỗi chan
 | # | Change | Phạm vi | Trạng thái |
 | --- | --- | --- | --- |
 | 1 | [`fix-agent-chat-permissions`](../../../openspec/changes/fix-agent-chat-permissions/proposal.md) | C22: chế độ trên turn, ba mức quyền, cổng rủi ro Autopilot, duyệt trong phiên; sửa lỗi 1–2 | Đã triển khai 2026-10-22, chưa archive |
-| 2 | [`add-agent-response-parts`](../../../openspec/changes/add-agent-response-parts/proposal.md) | Nền 1–3, 5; C9–C17, C19, C21 | Đã đặc tả, chưa làm |
+| 2 | [`add-agent-response-parts`](../../../openspec/changes/add-agent-response-parts/proposal.md) | Nền 1–3, 5; C9–C17, C19, C21 | Đã triển khai 2026-10-22, chưa archive |
 | 3 | [`add-agent-composer-context`](../../../openspec/changes/add-agent-composer-context/proposal.md) | Nền 4; C1–C8 | Đã đặc tả, chưa làm |
 | 4 | [`add-agent-questions-and-checkpoints`](../../../openspec/changes/add-agent-questions-and-checkpoints/proposal.md) | C18, C20, C24 | Đã đặc tả, chưa làm |
 
 Ghi chú về phạm vi đặc tả so với yêu cầu: không stream tham số tool (provider trả tool call nguyên khối), không có gợi ý
 tiếp theo do model sinh (xóa bản gõ cứng), không có Làm lại sau checkpoint, thanh chương đã sửa mở chương chứ chưa mở diff.
 
-## Hiện trạng tại `d209122`
+## Hiện trạng
+
+Bảng ban đầu ghi theo commit `d209122`; các dòng được cập nhật khi từng change ở mục OpenSpec triển khai.
 
 | Mã | Trạng thái | Ghi chú |
 | --- | --- | --- |
@@ -200,18 +202,18 @@ tiếp theo do model sinh (xóa bản gõ cứng), không có Làm lại sau che
 | C6 | Một phần | Có chế độ, model, Gửi/Dừng; thiếu nút + |
 | C7 | Một phần | Enter/Shift+Enter có; chưa có lịch sử bằng mũi tên |
 | C8 | Một phần | Placeholder không đổi theo chế độ |
-| C9 | Chưa đạt | Lệnh là khối toàn chiều ngang, không căn phải |
-| C10 | Chưa đạt | Thứ tự cố định: suy nghĩ → pill subagent → toàn bộ chữ → operation → thẻ duyệt |
-| C11 | Một phần | `DeltaBuffer` gom theo 40ms rồi đổ cả cục, không theo tốc độ từ; có tự đóng fence |
-| C12 | Một phần | Có dòng trạng thái khi đang chạy; không có nhãn luân phiên, không báo chờ lâu |
-| C13 | Một phần | Chỉ cuộn theo chữ trả lời, số lượt và thẻ duyệt; ngưỡng 80px |
-| C14 | Một phần | Có khối thu gọn và thời gian; nhãn tiếng Anh "Thinking"; không giới hạn chiều cao; không lưu |
-| C15–C16 | Chưa đạt | Transcript chỉ hiện activity có nhãn bắt đầu bằng `Subagent:`; mọi tool khác bị ẩn |
-| C17 | Một phần | Thẻ duyệt có Duyệt/Không duyệt nhưng nằm cuối lượt, không có phần Đầu vào, không có phím tắt |
+| C9 | Đạt | Bong bóng căn phải, tối đa 90% |
+| C10 | Đạt | Câu trả lời dựng từ `agent_turn_part` (library v16) theo thứ tự xảy ra; lượt cũ được dựng lại gần đúng |
+| C11 | Đạt | Chữ hiện theo tốc độ từ (8 từ/s ban đầu, kẹp 40–2000, xả tối thiểu 80); fence mở được tự đóng, fence rỗng ẩn |
+| C12 | Đạt | Nhãn luân phiên 1,2 giây, "Lâu hơn bình thường" sau 90 giây; chờ người dùng thì báo số thao tác cần duyệt |
+| C13 | Đạt | `ResizeObserver`, ngưỡng 2px, nút "Về mới nhất" |
+| C14 | Đạt | Cao tối đa 200px, tiêu đề tiếng Việt có tiêu đề in đậm và thời lượng; suy nghĩ được lưu theo vòng |
+| C15–C16 | Đạt | Dòng tool có icon và nhãn trạng thái, "Đang …"/"Đã …"; mở xem Đầu vào/Kết quả (đọc khi mở); call bị từ chối hiện lý do |
+| C17 | Một phần | Thẻ duyệt nằm ngay sau dòng tool của nó, có phím tắt (change 1); chưa có phần Đầu vào trong thẻ, xem bằng cách mở dòng tool |
 | C18 | Một phần | Chỉ chọn một; không có mặc định, nhập tự do, bỏ qua; thẻ nằm trong luồng chứ không trên ô nhập |
-| C19 | Một phần | Có pill; tool con không lưu, không hiện |
-| C20 | Một phần | Pill operation có Xem/Hoàn tác; mất nút Dừng và tiến độ chi tiết vì `OperationCard` bị gỡ khỏi transcript |
-| C21 | Chưa đạt | Không có Sao chép/Thử lại; `UsageDisplay` bị gỡ; badge Lỗi/Đã dừng bị gỡ; `AgentFollowups` có nhưng không dùng |
+| C19 | Đạt | Tool con lưu dưới call cha, có ngân sách riêng 4/10/60.000; dòng subagent mở ra thấy tool con, có thời gian làm |
+| C20 | Một phần | Thẻ operation (Dừng, tiến độ, Mở đích, Hoàn tác) nằm ngay sau dòng tool tạo ra nó; thanh "Đã sửa N chương" thuộc change 4 |
+| C21 | Một phần | Sao chép, Thử lại (lượt cuối), tên model, usage, khối lỗi, nhãn Đã dừng. Chưa có gợi ý tiếp theo (xóa bản gõ cứng) |
 | C22 | Đạt (sau `fix-agent-chat-permissions`) | Chế độ lưu trên turn; ba mức quyền thuộc session, chọn ở thanh dưới ô nhập, xác nhận khi nâng; Autopilot bỏ qua tạo task và ghi vào đích không nêu; thẻ duyệt có Cho phép trong phiên này / Cho phép một lần / Bỏ qua |
 | C23 | Đạt phần lớn | |
 | C24 | Chưa đạt | |
@@ -229,7 +231,7 @@ Lỗi:
    `create_translation_task` và ghi vào đích người dùng không nêu. Test autopilot đang ghi vào tác phẩm khác
    với tác phẩm trong ngữ cảnh. Theo quyết định 14, hai loại lời gọi này phải bị bỏ qua ở Autopilot; mức
    Cho phép tất cả chưa có; chưa có nút chọn mức và hộp xác nhận.
-3. **Subagent không đi qua đường lưu và ngân sách (C19).** Tool con không vào `agent_tool_call`, không bị
+3. **Subagent không đi qua đường lưu và ngân sách (C19).** — đã sửa bởi `add-agent-response-parts`. Tool con không vào `agent_tool_call`, không bị
    `budget` hay chặn lặp; bản tóm tắt nối chữ của mọi vòng; `ambiguous` bị báo là `not_found`; `turnRound`
    đánh lại từ 0 nên có thể lẫn với log gọi model của lượt chính.
 4. **Câu hỏi (C18):** nhánh tạo câu hỏi trong `execute()` không bao giờ chạy ở chế độ thường; ép kiểu

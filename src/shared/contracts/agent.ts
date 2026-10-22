@@ -178,6 +178,68 @@ export interface AgentActivity {
   updatedAt: number
 }
 
+/** One element of a turn's answer, in the order it happened (`add-agent-response-parts`). */
+export const RESPONSE_PART_KINDS = ['text', 'reasoning', 'tool_call', 'progress'] as const
+export type AgentResponsePartKind = (typeof RESPONSE_PART_KINDS)[number]
+
+export interface AgentResponsePart {
+  id: string
+  turnId: string
+  /** Order within the turn, starting at 1. */
+  seq: number
+  /** Model round the part belongs to; 0 for parts outside a round. */
+  round: number
+  kind: AgentResponsePartKind
+  /** Answer text, reasoning, or the progress message; empty for a tool call. */
+  text: string
+  toolCallId: string | null
+  /** How long the reasoning streamed, when measured. */
+  durationMs: number | null
+  createdAt: number
+  updatedAt: number
+}
+
+export const TOOL_CALL_VIEW_STATES = [
+  'waiting_user',
+  'running',
+  'completed',
+  'failed',
+  'cancelled',
+  'skipped'
+] as const
+export type AgentToolCallViewState = (typeof TOOL_CALL_VIEW_STATES)[number]
+
+/** A tool call as the transcript shows it; the full result is read with `toolCalls.get`. */
+export interface AgentToolCallView {
+  id: string
+  turnId: string
+  round: number
+  /** The `run_subagent` call this call ran under, if any. */
+  parentToolCallId: string | null
+  name: string
+  args: unknown
+  state: AgentToolCallViewState
+  /** "Đang …" while the call waits or runs. */
+  invocationMessage: string
+  /** "Đã …" once it completed. */
+  pastTenseMessage: string
+  /** Short summary of a completed result. */
+  summary: string | null
+  /** Why the call failed, was skipped or was cancelled. */
+  reason: string | null
+  /** How long a subagent call worked, when it reported it. */
+  durationMs: number | null
+  createdAt: number
+}
+
+export interface AgentToolCallDetailView {
+  toolCall: AgentToolCallView
+  /** The stored result, exactly as the model received it. */
+  result: unknown
+}
+
+export const agentToolCallGetInputSchema = v.strictObject({ toolCallId: idSchema })
+
 const streamBase = {
   requestId: idSchema,
   turnId: idSchema,
@@ -191,8 +253,19 @@ const activityEventBase = {
 }
 
 export const agentStreamEventSchema = v.variant('kind', [
-  v.strictObject({ ...streamBase, kind: v.literal('reasoning-delta'), text: v.string() }),
-  v.strictObject({ ...streamBase, kind: v.literal('answer-delta'), text: v.string() }),
+  v.strictObject({
+    ...streamBase,
+    kind: v.literal('reasoning-delta'),
+    text: v.string(),
+    round: v.optional(sequenceSchema)
+  }),
+  v.strictObject({
+    ...streamBase,
+    kind: v.literal('answer-delta'),
+    text: v.string(),
+    round: v.optional(sequenceSchema)
+  }),
+  v.strictObject({ ...streamBase, kind: v.literal('tool-call'), toolCall: v.unknown() }),
   v.strictObject({ ...activityEventBase, kind: v.literal('activity-start') }),
   v.strictObject({ ...activityEventBase, kind: v.literal('activity-update') }),
   v.strictObject({ ...activityEventBase, kind: v.literal('activity-finish') }),
@@ -266,6 +339,8 @@ export interface AgentTurnView {
   context: AgentContext
   mode: AgentChatMode
   permissionLevel: AgentPermissionLevel
+  /** Name of the model the turn ran on; `null` before it ran or for older turns. */
+  modelLabel: string | null
   status: AgentTurnState
   usage: TokenUsage | null
   costUsd: number | null
@@ -289,6 +364,10 @@ export interface AgentPendingAction {
 export interface AgentSessionDetailView {
   session: AgentSessionView
   turns: AgentTurnView[]
+  /** Answer elements of every turn, ordered by turn then `seq`. */
+  parts: AgentResponsePart[]
+  /** Every tool call of the session, subagent calls included. */
+  toolCalls: AgentToolCallView[]
   activities: AgentActivity[]
   operations: AgentOperation[]
   pending: AgentPendingAction[]

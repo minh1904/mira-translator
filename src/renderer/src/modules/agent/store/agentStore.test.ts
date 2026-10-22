@@ -25,6 +25,7 @@ const turn = (patch: Partial<AgentTurnView> = {}): AgentTurnView => ({
   context: {},
   mode: 'agent',
   permissionLevel: 'default',
+  modelLabel: null,
   status: 'running',
   usage: null,
   costUsd: null,
@@ -70,6 +71,8 @@ const detail = (patch: Partial<AgentSessionDetailView> = {}): AgentSessionDetail
   operations: [],
   pending: [],
   sessionApprovals: [],
+  parts: [],
+  toolCalls: [],
   ...patch
 })
 const event = (patch: Record<string, unknown>): AgentStreamEvent =>
@@ -294,5 +297,108 @@ describe('agentStore', () => {
     expect(sent).not.toHaveProperty('permissionLevel')
     useAgentStore.getState().newChat()
     expect(useAgentStore.getState().permissionLevel).toBe('default')
+  })
+
+  it('draws each round from its own deltas and keeps them until the stored parts arrive', async () => {
+    let snapshot = detail({ turns: [turn()] })
+    const api = bridge(async () => ({ ok: true, value: snapshot }))
+    await useAgentStore.getState().selectSession('s1')
+    const handle = useAgentStore.getState().handleStreamEvent
+    handle(event({ eventSeq: 2, kind: 'reasoning-delta', text: 'Nghĩ', round: 1 }))
+    handle(event({ eventSeq: 3, kind: 'answer-delta', text: 'Vòng một.', round: 1 }))
+    handle(event({ eventSeq: 4, kind: 'answer-delta', text: 'Vòng hai.', round: 2 }))
+    await new Promise((resolve) => setTimeout(resolve, 60))
+    const live = useAgentStore.getState().live
+    expect(live[1]).toMatchObject({ reasoning: 'Nghĩ', text: 'Vòng một.' })
+    expect(live[1].reasoningEndedAt).not.toBeNull()
+    expect(live[2]).toMatchObject({ text: 'Vòng hai.' })
+
+    // Main stored round 1: that round is drawn from its part, round 2 still from deltas.
+    snapshot = detail({
+      turns: [turn()],
+      parts: [
+        {
+          id: 'p1',
+          turnId: 't1',
+          seq: 1,
+          round: 1,
+          kind: 'text',
+          text: 'Vòng một.',
+          toolCallId: null,
+          durationMs: null,
+          createdAt: 1,
+          updatedAt: 1
+        }
+      ]
+    })
+    await useAgentStore.getState().refresh()
+    expect(Object.keys(useAgentStore.getState().live)).toEqual(['2'])
+
+    snapshot = detail({
+      turns: [turn({ status: 'completed', updatedAt: 30 })],
+      parts: snapshot.parts
+    })
+    handle(event({ eventSeq: 5, kind: 'done', turnState: 'completed', usage: null }))
+    expect(useAgentStore.getState().live[2]).toBeDefined()
+    await flush()
+    await flush()
+    expect(useAgentStore.getState().live).toEqual({})
+    expect(api.sessions.get).toHaveBeenCalledTimes(3)
+  })
+
+  it('updates a tool call from its events and reads its full result once', async () => {
+    const api = bridge(async () => ({ ok: true, value: detail({ turns: [turn()] }) }))
+    ;(api as unknown as { toolCalls: unknown }).toolCalls = {
+      get: vi.fn(async () => ({
+        ok: true,
+        value: { toolCall: {}, result: { ok: true, value: 3 } }
+      }))
+    }
+    await useAgentStore.getState().selectSession('s1')
+    const view = {
+      id: 'c1',
+      turnId: 't1',
+      round: 1,
+      parentToolCallId: null,
+      name: 'list_works',
+      args: {},
+      state: 'running',
+      invocationMessage: 'Đang đọc',
+      pastTenseMessage: 'Đã đọc',
+      summary: null,
+      reason: null,
+      durationMs: null,
+      createdAt: 1
+    }
+    useAgentStore
+      .getState()
+      .handleStreamEvent(event({ eventSeq: 2, kind: 'tool-call', toolCall: view }))
+    useAgentStore
+      .getState()
+      .handleStreamEvent(
+        event({ eventSeq: 3, kind: 'tool-call', toolCall: { ...view, state: 'completed' } })
+      )
+    expect(useAgentStore.getState().toolCalls.c1.state).toBe('completed')
+    await useAgentStore.getState().loadToolCallDetail('c1')
+    await useAgentStore.getState().loadToolCallDetail('c1')
+    const get = (api as unknown as { toolCalls: { get: ReturnType<typeof vi.fn> } }).toolCalls.get
+    expect(get).toHaveBeenCalledTimes(1)
+    expect(useAgentStore.getState().toolCallDetails.c1).toEqual({ ok: true, value: 3 })
+  })
+
+  it('sends a turn again with its instruction, context and mode', async () => {
+    const api = bridge(async () => ({ ok: true, value: detail() }))
+    await useAgentStore.getState().selectSession('s1')
+    await useAgentStore
+      .getState()
+      .retry(turn({ instruction: 'dịch lại', context: { workId: 'w1' }, mode: 'ask' }), model)
+    expect(api.turn.send).toHaveBeenCalledWith(
+      expect.objectContaining({
+        instruction: 'dịch lại',
+        context: { workId: 'w1' },
+        mode: 'ask',
+        modelSelection: model
+      })
+    )
   })
 })

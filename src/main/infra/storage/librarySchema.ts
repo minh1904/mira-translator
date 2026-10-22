@@ -520,6 +520,33 @@ CREATE TABLE agent_session_approval (
 );
 `
 
+/**
+ * Câu trả lời thành chuỗi phần tử (change `add-agent-response-parts`): chữ và suy nghĩ của từng vòng,
+ * tham chiếu tool call và thông báo tiến trình, theo thứ tự xảy ra. Tool call của subagent mang
+ * `parent_call_id` của call `run_subagent`; `messages_json` giữ câu mô tả lúc call được lưu.
+ */
+const version16 = `
+CREATE TABLE agent_turn_part (
+  id TEXT PRIMARY KEY,
+  turn_id TEXT NOT NULL REFERENCES agent_turn (id) ON DELETE CASCADE,
+  seq INTEGER NOT NULL CHECK (seq > 0),
+  round INTEGER NOT NULL CHECK (round >= 0),
+  kind TEXT NOT NULL CHECK (kind IN ('text', 'reasoning', 'tool_call', 'progress')),
+  text TEXT NOT NULL DEFAULT '',
+  tool_call_id TEXT,
+  duration_ms INTEGER,
+  created_at INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL,
+  UNIQUE (turn_id, seq),
+  CHECK ((kind = 'tool_call') = (tool_call_id IS NOT NULL))
+);
+ALTER TABLE agent_tool_call ADD COLUMN parent_call_id TEXT;
+ALTER TABLE agent_tool_call ADD COLUMN messages_json TEXT;
+ALTER TABLE agent_turn ADD COLUMN model_label TEXT;
+CREATE INDEX agent_tool_call_parent ON agent_tool_call (parent_call_id)
+  WHERE parent_call_id IS NOT NULL;
+`
+
 export const librarySchema: SchemaSpec = {
   applicationId: LIBRARY_APPLICATION_ID,
   migrations: [
@@ -612,6 +639,12 @@ export const librarySchema: SchemaSpec = {
       version: 15,
       up(db) {
         db.exec(version15)
+      }
+    },
+    {
+      version: 16,
+      up(db) {
+        db.exec(version16)
       }
     }
   ]

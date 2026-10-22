@@ -6,10 +6,12 @@ import type {
   AgentOperation,
   AgentPendingAction,
   AgentPermissionLevel,
+  AgentResponsePart,
   AgentSendInput,
   AgentSessionDetailView,
   AgentSessionView,
   AgentStreamEvent,
+  AgentToolCallView,
   AgentTurnView
 } from '../../../../../shared/contracts/agent'
 import { registerStoreReset } from '../../../lib/testing/resetStores'
@@ -19,7 +21,14 @@ import {
   type WorkspaceAgentAdapter,
   type TargetRef
 } from '../adapter/workspaceAdapter'
-import { DeltaBuffer } from '../components/DeltaBuffer'
+
+/** What one model round of the streaming turn has drawn before Main stored it as parts. */
+export interface LiveRound {
+  text: string
+  reasoning: string
+  reasoningStartedAt: number | null
+  reasoningEndedAt: number | null
+}
 
 /** Draft key of a chat that has no session yet. */
 export const NEW_CHAT = 'new'
@@ -43,9 +52,15 @@ export interface AgentState {
   permissionLevel: AgentPermissionLevel
   /** Capabilities the user allowed for the whole active session. */
   sessionApprovals: string[]
+  /** Answer elements of the session's turns, as Main stored them. */
+  parts: AgentResponsePart[]
+  /** Tool calls of the session by id, subagent calls included; events update them live. */
+  toolCalls: Record<string, AgentToolCallView>
+  /** Full results read when the user opens a call, by call id. */
+  toolCallDetails: Record<string, unknown>
   streamingTurnId: string | null
-  streamingAnswer: string
-  streamingReasoning: string
+  /** Rounds of the streaming turn not yet stored, by round number. */
+  live: Record<number, LiveRound>
   isStreaming: boolean
   /** Last failure to show in the live region; cleared by the next send. */
   lastError: string | null
@@ -77,6 +92,9 @@ export interface AgentState {
     label: string,
     modelSelection?: SendModel
   ) => Promise<boolean>
+  /** Sends a turn's instruction and context again as a new turn. */
+  retry: (turn: AgentTurnView, modelSelection?: SendModel) => Promise<boolean>
+  loadToolCallDetail: (toolCallId: string) => Promise<void>
   cancel: (turnId?: string) => Promise<void>
   undo: (operationId: string) => Promise<void>
   handleStreamEvent: (event: AgentStreamEvent) => void
@@ -102,8 +120,11 @@ const sortTurns = (turns: AgentTurnView[]): AgentTurnView[] =>
 
 const ACTIVE: AgentTurnView['status'][] = ['queued', 'running']
 
-let answerBuffer: DeltaBuffer | null = null
-let reasoningBuffer: DeltaBuffer | null = null
+/** Deltas waiting for the next commit: the store draws streaming text at most every 40 ms. */
+const DELTA_INTERVAL_MS = 40
+let pendingDeltas: Array<{ round: number; kind: 'text' | 'reasoning'; text: string; at: number }> =
+  []
+let deltaTimer: ReturnType<typeof setTimeout> | null = null
 /** Turns refetched once and found outside the active session: their deltas are ignored. */
 const foreignTurns = new Set<string>()
 let refreshing: Promise<void> | null = null
@@ -112,30 +133,58 @@ let listeners = 0
 let unbindAll: (() => void) | null = null
 
 export const useAgentStore = create<AgentState>((set, get) => {
+  const flushDeltas = () => {
+    if (deltaTimer) clearTimeout(deltaTimer)
+    deltaTimer = null
+    if (pendingDeltas.length === 0) return
+    const batch = pendingDeltas
+    pendingDeltas = []
+    set((s) => {
+      const live = { ...s.live }
+      for (const delta of batch) {
+        const round = live[delta.round] ?? {
+          text: '',
+          reasoning: '',
+          reasoningStartedAt: null,
+          reasoningEndedAt: null
+        }
+        live[delta.round] =
+          delta.kind === 'reasoning'
+            ? {
+                ...round,
+                reasoning: round.reasoning + delta.text,
+                reasoningStartedAt: round.reasoningStartedAt ?? delta.at
+              }
+            : {
+                ...round,
+                text: round.text + delta.text,
+                reasoningEndedAt: round.reasoningEndedAt ?? (round.reasoning ? delta.at : null)
+              }
+      }
+      return { live }
+    })
+  }
+
   const resetBuffers = () => {
-    answerBuffer?.reset()
-    reasoningBuffer?.reset()
-    answerBuffer = null
-    reasoningBuffer = null
+    if (deltaTimer) clearTimeout(deltaTimer)
+    deltaTimer = null
+    pendingDeltas = []
+  }
+
+  const queueDelta = (round: number, kind: 'text' | 'reasoning', text: string) => {
+    pendingDeltas.push({ round, kind, text, at: Date.now() })
+    deltaTimer ??= setTimeout(flushDeltas, DELTA_INTERVAL_MS)
   }
 
   const startStreaming = (turnId: string) => {
     if (get().streamingTurnId === turnId) return
     resetBuffers()
-    answerBuffer = new DeltaBuffer({
-      intervalMs: 40,
-      onCommit: (text) => set({ streamingAnswer: text })
-    })
-    reasoningBuffer = new DeltaBuffer({
-      intervalMs: 40,
-      onCommit: (text) => set({ streamingReasoning: text })
-    })
-    set({ isStreaming: true, streamingTurnId: turnId, streamingAnswer: '', streamingReasoning: '' })
+    set({ isStreaming: true, streamingTurnId: turnId, live: {} })
   }
 
   const stopStreaming = () => {
     resetBuffers()
-    set({ isStreaming: false, streamingTurnId: null, streamingAnswer: '', streamingReasoning: '' })
+    set({ isStreaming: false, streamingTurnId: null, live: {} })
   }
 
   /** Merges a snapshot without dropping rows that events added while it was being read. */
@@ -152,7 +201,17 @@ export const useAgentStore = create<AgentState>((set, get) => {
       for (const operation of detail.operations) {
         operations[operation.id] = newer(operations[operation.id], operation)
       }
+      // Rounds Main has stored are drawn from their parts, not from the deltas.
+      const live = { ...s.live }
+      for (const part of detail.parts) {
+        if (part.turnId === s.streamingTurnId) delete live[part.round]
+      }
+      const toolCalls = { ...s.toolCalls }
+      for (const call of detail.toolCalls) toolCalls[call.id] = call
       return {
+        parts: detail.parts,
+        toolCalls,
+        live,
         sessions: upsertList(s.sessions, [detail.session]).sort(
           (a, b) => b.updatedAt - a.updatedAt
         ),
@@ -182,9 +241,11 @@ export const useAgentStore = create<AgentState>((set, get) => {
     mode: 'agent',
     permissionLevel: 'default',
     sessionApprovals: [],
+    parts: [],
+    toolCalls: {},
+    toolCallDetails: {},
     streamingTurnId: null,
-    streamingAnswer: '',
-    streamingReasoning: '',
+    live: {},
     isStreaming: false,
     lastError: null,
     adapter: defaultWorkspaceAgentAdapter,
@@ -208,6 +269,8 @@ export const useAgentStore = create<AgentState>((set, get) => {
         set({
           activeSessionId: sessionId,
           turns: [],
+          parts: [],
+          toolCalls: {},
           activities: {},
           operations: {},
           pending: [],
@@ -246,6 +309,8 @@ export const useAgentStore = create<AgentState>((set, get) => {
       set({
         activeSessionId: null,
         turns: [],
+        parts: [],
+        toolCalls: {},
         activities: {},
         operations: {},
         pending: [],
@@ -391,6 +456,25 @@ export const useAgentStore = create<AgentState>((set, get) => {
       return true
     },
 
+    retry: (turn, modelSelection) =>
+      get().send(turn.instruction, {
+        context: turn.context,
+        mode: turn.mode,
+        ...(modelSelection ? { modelSelection } : {})
+      }),
+
+    loadToolCallDetail: async (toolCallId) => {
+      if (toolCallId in get().toolCallDetails) return
+      const api = bridge()
+      if (!api?.toolCalls?.get) return
+      const res = await api.toolCalls.get(toolCallId)
+      if (!res.ok) {
+        set({ lastError: res.error.message })
+        return
+      }
+      set((s) => ({ toolCallDetails: { ...s.toolCallDetails, [toolCallId]: res.value.result } }))
+    },
+
     cancel: async (turnId?: string) => {
       const pendingTurn = get().pending[0]?.turnId
       const targetId = turnId ?? get().streamingTurnId ?? pendingTurn
@@ -439,11 +523,16 @@ export const useAgentStore = create<AgentState>((set, get) => {
 
       switch (event.kind) {
         case 'reasoning-delta':
-          reasoningBuffer?.append(event.text)
+          queueDelta(event.round ?? 1, 'reasoning', event.text)
           break
         case 'answer-delta':
-          answerBuffer?.append(event.text)
+          queueDelta(event.round ?? 1, 'text', event.text)
           break
+        case 'tool-call': {
+          const call = event.toolCall as AgentToolCallView
+          set((s) => ({ toolCalls: { ...s.toolCalls, [call.id]: call } }))
+          break
+        }
         case 'activity-start':
         case 'activity-update':
         case 'activity-finish': {
@@ -471,15 +560,18 @@ export const useAgentStore = create<AgentState>((set, get) => {
         case 'done':
         case 'error':
         case 'cancelled': {
-          // The stored answer wins over what the deltas drew.
-          answerBuffer?.flush()
-          reasoningBuffer?.flush()
+          // The stored parts win over what the deltas drew; the deltas stay until they are read.
+          flushDeltas()
           if (event.kind === 'error') {
             const error = event.error as { message?: string } | null
             set({ lastError: error?.message ?? 'Lượt trả lời bị lỗi.' })
           }
-          stopStreaming()
-          void get().refresh()
+          set({ isStreaming: false })
+          void get()
+            .refresh()
+            .then(() => {
+              if (!get().isStreaming) set({ streamingTurnId: null, live: {} })
+            })
           break
         }
       }
@@ -513,9 +605,11 @@ export const useAgentStore = create<AgentState>((set, get) => {
         mode: 'agent',
         permissionLevel: 'default',
         sessionApprovals: [],
+        parts: [],
+        toolCalls: {},
+        toolCallDetails: {},
         streamingTurnId: null,
-        streamingAnswer: '',
-        streamingReasoning: '',
+        live: {},
         isStreaming: false,
         lastError: null
       })

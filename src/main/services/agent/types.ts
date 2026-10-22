@@ -1,6 +1,5 @@
 import type * as v from 'valibot'
 import type {
-  AgentActivity,
   AgentContext,
   AgentProgress,
   AgentTurnState,
@@ -51,10 +50,11 @@ export interface CapabilityDefinition<TArgs = any, TResult = any> {
   budget?: CapabilityBudget
   targetPolicy: 'requires_target' | 'no_target' | 'target_optional'
   handler: (input: CapabilityExecutionInput<TArgs>) => Promise<CapabilityExecutionResult<TResult>>
-  activityAdapter?: (
-    input: CapabilityExecutionInput<TArgs>,
-    result?: CapabilityExecutionResult<TResult>
-  ) => { label: string; kind: AgentActivity['kind']; detail?: unknown }
+  /**
+   * What a call does, as a verb phrase ("Đọc chương 12"). The runtime shows it as "Đang …" while the
+   * call runs and "Đã …" after, like VS Code's invocation and past-tense messages.
+   */
+  describe?: (input: { args: TArgs; target?: ResolvedTarget }) => string
 }
 
 export interface AgentRunner {

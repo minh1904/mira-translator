@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto'
 import type {
   AgentActivity,
   AgentActivityState,
@@ -7,6 +8,7 @@ import type {
   AgentOperationState,
   AgentPermissionLevel,
   AgentProgress,
+  AgentResponsePart,
   AgentToolApproval,
   AgentTurnState,
   ResolvedTarget
@@ -44,6 +46,8 @@ export interface AgentTurn {
   context: AgentContext
   mode: AgentChatMode
   permissionLevel: AgentPermissionLevel
+  /** Name of the model the turn ran on, for the transcript footer. */
+  modelLabel: string | null
   status: AgentTurnState
   usage: TokenUsage | null
   costUsd: number | null
@@ -71,6 +75,7 @@ interface TurnRow {
   context_json: string
   mode: AgentChatMode
   permission_level: AgentPermissionLevel
+  model_label: string | null
   status: AgentTurnState
   usage_json: string | null
   cost_usd: number | null
@@ -129,7 +134,16 @@ export interface AgentToolCall {
   approval: AgentToolApproval | null
   state: AgentToolCallState
   result: unknown | null
+  /** The `run_subagent` call this call ran under; `null` for a call of the turn itself. */
+  parentCallId: string | null
+  /** What the call does, as stored when it was persisted. */
+  messages: AgentToolCallMessages | null
   createdAt: number
+}
+
+export interface AgentToolCallMessages {
+  invocation: string
+  pastTense: string
 }
 
 interface ToolCallRow {
@@ -145,16 +159,51 @@ interface ToolCallRow {
   approval: AgentToolApproval | null
   state: AgentToolCallState
   result_json: string | null
+  parent_call_id: string | null
+  messages_json: string | null
   created_at: number
 }
 
+interface PartRow {
+  id: string
+  turn_id: string
+  seq: number
+  round: number
+  kind: AgentResponsePart['kind']
+  text: string
+  tool_call_id: string | null
+  duration_ms: number | null
+  created_at: number
+  updated_at: number
+}
+
+const PART_COLUMNS =
+  'id, turn_id, seq, round, kind, text, tool_call_id, duration_ms, created_at, updated_at'
+
+const partFrom = (row: PartRow): AgentResponsePart => ({
+  id: row.id,
+  turnId: row.turn_id,
+  seq: row.seq,
+  round: row.round,
+  kind: row.kind,
+  text: row.text,
+  toolCallId: row.tool_call_id,
+  durationMs: row.duration_ms,
+  createdAt: row.created_at,
+  updatedAt: row.updated_at
+})
+
+/** A part to store; `seq` is assigned in order of the list, after the turn's last part. */
+export type NewAgentResponsePart = Omit<AgentResponsePart, 'id' | 'turnId' | 'seq' | 'updatedAt'>
+
 const TOOL_CALL_COLUMNS = `id, turn_id, round, call_id, name, args_json, args_digest, decision, state,
-  result_json, created_at, extra_json, approval`
+  result_json, created_at, extra_json, approval, parent_call_id, messages_json`
 
 const SESSION_COLUMNS = 'id, title, permission_level, created_at, updated_at'
 
 const TURN_COLUMNS = `id, session_id, instruction, answer, reasoning, context_json, mode, permission_level,
-  status, usage_json, cost_usd, legacy_ref_json, client_command_id, payload_digest, created_at, updated_at`
+  status, usage_json, cost_usd, legacy_ref_json, client_command_id, payload_digest, created_at, updated_at,
+  model_label`
 
 const toolCallFrom = (row: ToolCallRow): AgentToolCall => ({
   id: row.id,
@@ -169,6 +218,8 @@ const toolCallFrom = (row: ToolCallRow): AgentToolCall => ({
   approval: row.approval,
   state: row.state,
   result: row.result_json ? JSON.parse(row.result_json) : null,
+  parentCallId: row.parent_call_id,
+  messages: row.messages_json ? JSON.parse(row.messages_json) : null,
   createdAt: row.created_at
 })
 
@@ -189,6 +240,7 @@ const turnFrom = (row: TurnRow): AgentTurn => ({
   context: JSON.parse(row.context_json || '{}'),
   mode: row.mode,
   permissionLevel: row.permission_level,
+  modelLabel: row.model_label,
   status: row.status,
   usage: row.usage_json ? JSON.parse(row.usage_json) : null,
   costUsd: row.cost_usd,
@@ -414,6 +466,10 @@ export class AgentRepository {
         created: true
       }
     })
+  }
+
+  setTurnModelLabel(id: string, label: string): void {
+    this.db.prepare('UPDATE agent_turn SET model_label = ? WHERE id = ?').run(label, id)
   }
 
   transitionTurn(
@@ -697,15 +753,18 @@ export class AgentRepository {
 
   insertToolCalls(
     calls: Array<
-      Omit<AgentToolCall, 'result' | 'approval'> & {
+      Omit<AgentToolCall, 'result' | 'approval' | 'parentCallId' | 'messages'> & {
         result?: unknown
         approval?: AgentToolApproval | null
+        parentCallId?: string | null
+        messages?: AgentToolCallMessages | null
       }
     >
   ): void {
     this.db.transaction(() => {
       const insert = this.db.prepare(
-        `INSERT INTO agent_tool_call (${TOOL_CALL_COLUMNS}) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+        `INSERT INTO agent_tool_call (${TOOL_CALL_COLUMNS})
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
       )
       for (const call of calls) {
         insert.run(
@@ -721,7 +780,9 @@ export class AgentRepository {
           call.result === undefined ? null : JSON.stringify(call.result),
           call.createdAt,
           call.extra === undefined ? null : JSON.stringify(call.extra),
-          call.approval ?? null
+          call.approval ?? null,
+          call.parentCallId ?? null,
+          call.messages ? JSON.stringify(call.messages) : null
         )
       }
     })
@@ -754,11 +815,96 @@ export class AgentRepository {
   listToolCalls(turnId: string): AgentToolCall[] {
     return this.db
       .prepare(
-        `SELECT ${TOOL_CALL_COLUMNS} FROM agent_tool_call WHERE turn_id = ?
+        `SELECT ${TOOL_CALL_COLUMNS} FROM agent_tool_call
+         WHERE turn_id = ? AND parent_call_id IS NULL
          ORDER BY round ASC, created_at ASC, rowid ASC`
       )
       .all<ToolCallRow>(turnId)
       .map(toolCallFrom)
+  }
+
+  /** The calls a subagent made under `parentCallId`, in order. */
+  listChildToolCalls(parentCallId: string): AgentToolCall[] {
+    return this.db
+      .prepare(
+        `SELECT ${TOOL_CALL_COLUMNS} FROM agent_tool_call WHERE parent_call_id = ?
+         ORDER BY round ASC, created_at ASC, rowid ASC`
+      )
+      .all<ToolCallRow>(parentCallId)
+      .map(toolCallFrom)
+  }
+
+  /** Every call of the session, subagent calls included, for the transcript. */
+  listSessionToolCalls(sessionId: string): AgentToolCall[] {
+    return this.db
+      .prepare(
+        `SELECT ${TOOL_CALL_COLUMNS.replace(/(\w+)/g, 'c.$1')} FROM agent_tool_call c
+         JOIN agent_turn t ON t.id = c.turn_id
+         WHERE t.session_id = ?
+         ORDER BY t.created_at ASC, c.round ASC, c.created_at ASC, c.rowid ASC`
+      )
+      .all<ToolCallRow>(sessionId)
+      .map(toolCallFrom)
+  }
+
+  /** Stores parts after the turn's last one, in the order given; returns them with their `seq`. */
+  insertParts(turnId: string, parts: NewAgentResponsePart[], now: number): AgentResponsePart[] {
+    if (parts.length === 0) return []
+    return this.db.transaction(() => {
+      const last =
+        this.db
+          .prepare('SELECT MAX(seq) AS seq FROM agent_turn_part WHERE turn_id = ?')
+          .get<{ seq: number | null }>(turnId)?.seq ?? 0
+      const insert = this.db.prepare(
+        `INSERT INTO agent_turn_part (${PART_COLUMNS}) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+      )
+      return parts.map((part, index) => {
+        const row: PartRow = {
+          id: randomUUID(),
+          turn_id: turnId,
+          seq: last + index + 1,
+          round: part.round,
+          kind: part.kind,
+          text: part.text,
+          tool_call_id: part.toolCallId,
+          duration_ms: part.durationMs,
+          created_at: part.createdAt,
+          updated_at: now
+        }
+        insert.run(
+          row.id,
+          row.turn_id,
+          row.seq,
+          row.round,
+          row.kind,
+          row.text,
+          row.tool_call_id,
+          row.duration_ms,
+          row.created_at,
+          row.updated_at
+        )
+        return partFrom(row)
+      })
+    })
+  }
+
+  listParts(turnId: string): AgentResponsePart[] {
+    return this.db
+      .prepare(`SELECT ${PART_COLUMNS} FROM agent_turn_part WHERE turn_id = ? ORDER BY seq`)
+      .all<PartRow>(turnId)
+      .map(partFrom)
+  }
+
+  listSessionParts(sessionId: string): AgentResponsePart[] {
+    return this.db
+      .prepare(
+        `SELECT ${PART_COLUMNS.replace(/(\w+)/g, 'p.$1')} FROM agent_turn_part p
+         JOIN agent_turn t ON t.id = p.turn_id
+         WHERE t.session_id = ?
+         ORDER BY t.created_at ASC, t.id ASC, p.seq ASC`
+      )
+      .all<PartRow>(sessionId)
+      .map(partFrom)
   }
 
   listSessionPendingToolCalls(sessionId: string): AgentToolCall[] {

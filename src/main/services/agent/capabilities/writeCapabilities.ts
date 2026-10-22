@@ -97,10 +97,8 @@ export function createWriteCapabilities(options: WriteCapabilitiesOptions) {
         throw error
       }
     },
-    activityAdapter: ({ target }) => ({
-      label: `Dịch chương "${target?.kind === 'chapter' ? target.chapterLabel : ''}"`,
-      kind: 'write'
-    })
+    describe: ({ target }) =>
+      `Dịch chương "${target?.kind === 'chapter' ? target.chapterLabel : ''}"`
   }
 
   const editTranslationCapability: CapabilityDefinition<{
@@ -239,10 +237,8 @@ export function createWriteCapabilities(options: WriteCapabilitiesOptions) {
         releaseLease()
       }
     },
-    activityAdapter: ({ target, args }) => ({
-      label: `Chỉnh sửa ${args.replacements.length} câu trong chương "${target?.kind === 'chapter' ? target.chapterLabel : ''}"`,
-      kind: 'write'
-    })
+    describe: ({ target, args }) =>
+      `Chỉnh sửa ${args.replacements.length} câu trong chương "${target?.kind === 'chapter' ? target.chapterLabel : ''}"`
   }
 
   const undoOperationCapability: CapabilityDefinition<{ operationId: string }> = {
@@ -285,10 +281,7 @@ export function createWriteCapabilities(options: WriteCapabilitiesOptions) {
         throw error
       }
     },
-    activityAdapter: ({ args }) => ({
-      label: `Hoàn tác tác vụ "${args.operationId}"`,
-      kind: 'write'
-    })
+    describe: () => 'Hoàn tác một thao tác'
   }
 
   return {

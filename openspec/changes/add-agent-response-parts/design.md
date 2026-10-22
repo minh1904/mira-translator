@@ -48,8 +48,9 @@ summary?, reason? }`. Phát khi lưu call (trạng thái từ quyết định: `
 bị từ chối), khi bắt đầu chạy, và khi kết thúc. `activity-*` vẫn phát cho operation và tiến trình để không phá
 `JobsScreen`/`OperationLog`; transcript không dùng activity nữa.
 
-**D4. Câu mô tả từ capability.** Đổi `activityAdapter` thành `describe({ args, target }) →
-{ invocation, pastTense, kind }`; registry có mặc định "Đang chạy {tên}" / "Đã chạy {tên}". Câu mô tả được tính khi
+**D4. Câu mô tả từ capability.** Đổi `activityAdapter` thành `describe({ args, target }) → string`: một cụm động từ
+("Đọc chương 12"); runtime ghép thành "Đang …" / "Đã …" (`toolMessages`), mặc định "Gọi công cụ {tên}". Khi apply đã
+chọn một cụm thay cho hai câu riêng của bản đặc tả đầu, để mỗi capability chỉ khai báo một lần. Câu mô tả được tính khi
 lưu call và lưu vào cột mới `agent_tool_call.messages_json`, nên snapshot không phải tính lại và không phụ thuộc đích
 còn tồn tại.
 
@@ -58,12 +59,15 @@ ký tự kết quả hoặc thông báo lỗi). Snapshot trả `toolCalls[]` v�
 IPC `agent.toolCalls.get({ toolCallId })` trả `result_json` đã lưu. Lý do: kết quả `read_chapter` tới 20.000 ký tự
 mỗi call, đưa hết vào snapshot làm mỗi lần `refresh()` nặng.
 
-**D6. Subagent qua cùng đường chạy.** Tách thân vòng chạy thành hàm dùng chung nhận `scope: { parentToolCallId,
-budget, capabilities }`. Subagent dùng hàm đó với `CallBudget` riêng (4 vòng, 10 call, 60.000 ký tự, 0 ghi), bản đồ
+**D6. Subagent qua cùng đường lưu.** Bản đặc tả đầu định tách thân vòng chạy thành hàm dùng chung. Khi apply, vòng
+của lượt chính gắn chặt với duyệt, continuation và thao tác ghi, những thứ subagent không có, nên subagent giữ vòng riêng
+nhưng dùng chung đường lưu (`insertToolCalls`, `updateToolCall`), câu mô tả, sự kiện `tool-call` và
+`TurnBudgetTracker`. Subagent có ngân sách riêng (4 vòng, 10 call, 60.000 ký tự, 0 ghi), bản đồ
 capability chỉ đọc, `resolve_target` của subagent trả ứng viên khi mơ hồ. Tool call con lưu vào `agent_tool_call`
 với `parent_call_id` (cột mới) và `round` của vòng subagent; phần tử của subagent không vào `agent_turn_part` của
-turn mà được dựng từ tool call con. Log model dùng `sessionId` của session thật và `turnRound` dạng
-`{vòng cha}.{vòng con}` (chuỗi) hoặc số không trùng; chọn theo kiểu của `chatService` khi apply. Bản tóm tắt là chữ
+turn mà được dựng từ tool call con. Log model dùng `sessionId` của session thật. `turnRound` không phải khóa log mà chỉ
+báo cho transport (header `x-initiator` của Copilot) rằng request do agent gửi, nên mọi vòng subagent dùng số vòng của
+call cha (≥ 1). Bản tóm tắt là chữ
 của vòng cuối.
 
 **D7. Renderer dựng theo phần tử.** Store giữ `parts[turnId]` và `toolCalls[id]`; delta trực tiếp cập nhật phần tạm
