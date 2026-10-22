@@ -6,7 +6,7 @@ import { cn } from '../../lib/cn'
 
 /** Bề mặt nổi (floating surface) dùng chung cho các menu và danh sách chọn. */
 export const menuSurfaceClass =
-  'rounded-md border border-default bg-surface p-2xs text-body-sm text-default shadow-sm outline-none transition-[opacity,scale] duration-(--mira-duration-fast) ease-enter data-starting-style:scale-95 data-starting-style:opacity-0 data-ending-style:scale-95 data-ending-style:opacity-0 data-ending-style:ease-exit origin-(--transform-origin)'
+  'rounded-sm border border-default bg-surface p-2xs text-body-sm text-default shadow-sm outline-none transition-[opacity,scale] duration-(--mira-duration-fast) ease-enter data-starting-style:scale-95 data-starting-style:opacity-0 data-ending-style:scale-95 data-ending-style:opacity-0 data-ending-style:ease-exit origin-(--transform-origin)'
 
 /** Một hàng trong menu hoặc danh sách chọn: chiều cao 28px theo chuẩn VS Code, hiển thị hiệu ứng hover mềm mại. */
 export const menuItemClass =

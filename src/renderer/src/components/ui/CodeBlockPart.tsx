@@ -25,7 +25,7 @@ export function CodeBlockPart({ text, language }: CodeBlockPartProps): JSX.Eleme
   const langLabel = language?.trim() ? language.trim() : 'text'
 
   return (
-    <div className="my-1.5 overflow-hidden rounded-md border border-default/70 bg-surface shadow-2xs">
+    <div className="my-1.5 overflow-hidden rounded-sm border border-default/70 bg-surface shadow-2xs">
       <div className="flex h-6 select-none items-center justify-between border-b border-default/50 bg-muted/40 px-2 text-label-xs text-muted font-mono uppercase tracking-wider">
         <span>{langLabel}</span>
         <button

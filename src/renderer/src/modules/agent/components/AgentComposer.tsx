@@ -72,7 +72,7 @@ export function AgentComposer({ placeholder }: { placeholder?: string }): JSX.El
   return (
     <div
       className={cn(
-        'flex flex-col rounded-lg border border-input bg-surface p-1.5 shadow-xs transition-shadow duration-150',
+        'flex flex-col rounded-sm border border-default bg-surface p-1.5 shadow-xs transition-shadow duration-150',
         focusWithinRing
       )}
     >

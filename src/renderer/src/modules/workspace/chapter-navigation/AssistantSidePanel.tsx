@@ -39,7 +39,7 @@ export function AssistantSidePanel({ onClose }: { onClose(): void }): JSX.Elemen
   return (
     <section
       aria-label="Bảng Trợ lý"
-      className="flex h-full min-h-0 flex-col rounded-xs border border-default bg-surface overflow-hidden shadow-xs"
+      className="flex h-full min-h-0 flex-col rounded-sm border border-default bg-surface overflow-hidden shadow-xs"
     >
       <AgentPanel onOpenTarget={openTarget} onClose={onClose} />
     </section>

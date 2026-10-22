@@ -56,7 +56,7 @@ export function PendingActionCard({ action, onReply }: PendingActionCardProps): 
       aria-keyshortcuts={action.kind === 'approve' ? 'Control+Enter Control+Alt+Enter' : undefined}
       onKeyDown={onKeyDown}
       data-pending-call={action.toolCallId}
-      className="my-1 flex flex-col gap-1.5 rounded-md border border-default bg-surface/90 p-2 text-body-xs shadow-xs"
+      className="my-1 flex flex-col gap-1.5 rounded-sm border border-default bg-surface/90 p-2 text-body-xs shadow-xs"
     >
       <p className="m-0 text-body-sm font-medium text-default">
         {isChoose ? 'Có nhiều đích khớp. Bạn muốn dùng đích nào?' : action.label}

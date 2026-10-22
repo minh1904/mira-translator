@@ -19,7 +19,7 @@ export function Card({
       data-slot="card"
       aria-label={title}
       className={cn(
-        'flex min-w-0 flex-col gap-sm rounded-lg border border-default bg-surface p-md',
+        'flex min-w-0 flex-col gap-sm rounded-sm border border-default bg-surface p-md',
         className
       )}
       {...props}

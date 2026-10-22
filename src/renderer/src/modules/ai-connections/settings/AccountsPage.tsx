@@ -228,12 +228,12 @@ export function AccountsPage(): JSX.Element {
       </p>
 
       {(flow.step === 'starting' || flow.step === 'polling') && (
-        <div className="rounded-lg border border-strong p-3">
+        <div className="rounded-sm border border-default p-3">
           <FlowPanel state={flow} onCancel={() => dispatch({ type: 'back' })} />
         </div>
       )}
       {flow.step === 'confirm_model' && (
-        <div className="rounded-lg border border-strong p-3">
+        <div className="rounded-sm border border-default p-3">
           <ConfirmModel
             connectionId={flow.connectionId}
             onBegin={(entryId) => {
@@ -248,7 +248,7 @@ export function AccountsPage(): JSX.Element {
       {flow.step === 'error' && (
         <div
           role="alert"
-          className="flex flex-col gap-2 rounded-lg border border-error/40 bg-error/5 p-3"
+          className="flex flex-col gap-2 rounded-sm border border-error/40 bg-error/5 p-3"
         >
           <p className="m-0 flex items-start gap-2 text-body-sm">
             <DangerCircleIcon size={16} className="mt-0.5 shrink-0 text-error" />

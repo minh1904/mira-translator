@@ -333,7 +333,7 @@ export function AiPanel({
 
       <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto px-3 py-3">
         {pendingCount > 0 && (
-          <div className="rounded-lg border border-strong bg-surface p-2">
+          <div className="rounded-sm border border-default bg-surface p-2">
             <Disclosure
               label={`Đề xuất chờ · ${chapterLabel} (${pendingCount})`}
               open={queueOpen}
@@ -422,7 +422,7 @@ export function AiPanel({
         )}
 
         {chat.loadError === null && chat.usable.length === 0 && (
-          <div className="flex flex-col items-start gap-2 rounded-lg border border-default bg-surface p-3">
+          <div className="flex flex-col items-start gap-2 rounded-sm border border-default bg-surface p-3">
             <p className="text-body-xs leading-normal text-subtle">
               Chưa có kết nối AI nào đang bật, nên chưa gửi được câu hỏi nào. Khai một kết nối và
               dán khóa trong Cài đặt, rồi quay lại đây.

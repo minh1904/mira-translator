@@ -294,7 +294,7 @@ export function UpdatesScreen({ initialEvents }: UpdatesScreenProps): JSX.Elemen
     >
       {/* Thông báo tiến độ đang đồng bộ */}
       {isSyncing && (
-        <div className="flex flex-col gap-xs rounded-md border border-info bg-info/10 p-md">
+        <div className="flex flex-col gap-xs rounded-sm border border-info bg-info/10 p-md">
           <div className="flex items-center justify-between text-body-sm">
             <span className="font-medium text-default">
               Đang rà soát các nguồn đang theo dõi...
@@ -327,7 +327,7 @@ export function UpdatesScreen({ initialEvents }: UpdatesScreenProps): JSX.Elemen
           {groupedDays.map(({ day, items }) => (
             <section key={day} aria-label={day} className="flex flex-col gap-xs">
               <h2 className="m-0 text-label-sm font-semibold text-subtle">{day}</h2>
-              <ul className="m-0 list-none divide-y divide-subtle rounded-lg border border-default bg-surface p-0">
+              <ul className="m-0 list-none divide-y divide-subtle rounded-sm border border-default bg-surface p-0">
                 {items.map((ev) => {
                   const info = EVENT_LABELS[ev.kind] ?? EVENT_LABELS.added
                   const payload = ev.payload ?? {}
@@ -441,13 +441,13 @@ export function UpdatesScreen({ initialEvents }: UpdatesScreenProps): JSX.Elemen
             </p>
           ) : (
             <div className="grid grid-cols-2 gap-md">
-              <div className="flex flex-col gap-xs rounded-md border border-default bg-surface p-sm">
+              <div className="flex flex-col gap-xs rounded-sm border border-default bg-surface p-sm">
                 <span className="text-label-xs font-semibold text-muted">Bản raw hiện tại:</span>
                 <pre className="m-0 max-h-60 overflow-y-auto text-body-xs font-mono whitespace-pre-wrap text-subtle">
                   {diffDialog.previewData?.oldText}
                 </pre>
               </div>
-              <div className="flex flex-col gap-xs rounded-md border border-default bg-surface p-sm">
+              <div className="flex flex-col gap-xs rounded-sm border border-default bg-surface p-sm">
                 <span className="text-label-xs font-semibold text-success">
                   Bản raw mới từ nguồn:
                 </span>

@@ -196,7 +196,7 @@ export function AddressingScreen({ workId }: AddressingScreenProps): JSX.Element
 
         {/* Nội dung tab Quan hệ xưng hô */}
         <TabsPanel value="dyads">
-          <div className="overflow-hidden rounded-lg border border-default bg-surface">
+          <div className="overflow-hidden rounded-sm border border-default bg-surface">
             <div className="grid grid-cols-[minmax(0,1.4fr)_minmax(0,1.4fr)_minmax(0,1fr)_110px_90px] items-center border-b border-default bg-subtle px-3.5 py-2.5 text-body-xs font-medium text-subtle">
               <span>Người nói → Người nghe</span>
               <span>Từ xưng hô (Tự xưng – Gọi đối phương)</span>
@@ -355,7 +355,7 @@ export function AddressingScreen({ workId }: AddressingScreenProps): JSX.Element
 
         {/* Nội dung tab Nhân vật */}
         <TabsPanel value="characters">
-          <div className="overflow-hidden rounded-lg border border-default bg-surface">
+          <div className="overflow-hidden rounded-sm border border-default bg-surface">
             <div className="grid grid-cols-[minmax(0,1.2fr)_minmax(0,1.2fr)_90px_minmax(0,1.2fr)_110px_90px] items-center border-b border-default bg-subtle px-3.5 py-2.5 text-body-xs font-medium text-subtle">
               <span>Tên tiếng Việt</span>
               <span>Tên gốc / Bí danh</span>

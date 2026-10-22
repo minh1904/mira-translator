@@ -306,7 +306,7 @@ export function SourcesArea({ workId, initialBindings, onWork }: SourcesAreaProp
   return (
     <section
       aria-labelledby="sources-heading"
-      className="flex flex-col gap-lg rounded-lg border border-default p-lg"
+      className="flex flex-col gap-lg rounded-sm border border-default p-lg"
     >
       <div className="flex flex-wrap items-start justify-between gap-md">
         <div className="flex flex-col gap-2xs">
@@ -343,7 +343,7 @@ export function SourcesArea({ workId, initialBindings, onWork }: SourcesAreaProp
 
       {/* Sync active notice */}
       {activeSync && (
-        <div className="flex flex-col gap-xs rounded-md border border-info bg-info/10 p-md">
+        <div className="flex flex-col gap-xs rounded-sm border border-info bg-info/10 p-md">
           <div className="flex items-center justify-between text-body-sm">
             <span className="font-medium text-default">
               Đang kiểm tra cập nhật nguồn: {activeSync.phase}...
@@ -394,7 +394,7 @@ export function SourcesArea({ workId, initialBindings, onWork }: SourcesAreaProp
                 key={binding.id}
                 data-slot="raw-binding-card"
                 className={cn(
-                  'flex min-w-0 flex-col justify-between gap-md rounded-md border p-md transition-colors',
+                  'flex min-w-0 flex-col justify-between gap-md rounded-sm border p-md transition-colors',
                   isPrimary ? 'border-strong bg-muted/30' : 'border-default bg-surface'
                 )}
               >
@@ -485,7 +485,7 @@ export function SourcesArea({ workId, initialBindings, onWork }: SourcesAreaProp
                 {catalogBindingId === binding.id && (
                   <div className="flex flex-col gap-xs border-t border-subtle pt-sm">
                     {/* Bulk range download toolbar */}
-                    <div className="flex flex-col gap-xs rounded-md border border-subtle bg-muted/20 p-xs">
+                    <div className="flex flex-col gap-xs rounded-sm border border-subtle bg-muted/20 p-xs">
                       <div className="flex items-center gap-xs">
                         <Input
                           placeholder="Dải chương (ví dụ: 1, 5, 10-25)"

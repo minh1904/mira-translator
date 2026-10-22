@@ -190,7 +190,7 @@ export function ChapterScreen({
           </p>
         </div>
         <div className="grid w-full max-w-[640px] gap-3 @min-[560px]:grid-cols-2">
-          <section className="flex flex-col items-start gap-2 rounded-lg border border-default bg-subtle p-3.5">
+          <section className="flex flex-col items-start gap-2 rounded-sm border border-default bg-subtle p-3.5">
             <ClipboardTextIcon size={18} className="text-subtle" />
             <h3 className="text-body-sm font-semibold">Dán văn bản</h3>
             <p className="text-body-xs leading-normal text-subtle">
@@ -202,7 +202,7 @@ export function ChapterScreen({
           </section>
           <section
             className={cn(
-              'flex flex-col items-start gap-2 rounded-lg border border-dashed p-3.5 transition-colors',
+              'flex flex-col items-start gap-2 rounded-sm border border-dashed p-3.5 transition-colors',
               dragging ? 'border-focus bg-muted' : 'border-strong bg-muted/40'
             )}
             onDragOver={(event) => {

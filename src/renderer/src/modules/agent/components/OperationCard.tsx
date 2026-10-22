@@ -70,7 +70,7 @@ export function OperationCard({
     <div
       data-operation-id={operation.id}
       data-operation-state={operation.state}
-      className="my-1 flex flex-col gap-1.5 rounded-md border border-default bg-surface/90 p-2 text-body-xs shadow-xs"
+      className="my-1 flex flex-col gap-1.5 rounded-sm border border-default bg-surface/90 p-2 text-body-xs shadow-xs"
     >
       <div className="flex items-center justify-between gap-1.5">
         <div className="flex min-w-0 items-center gap-1.5">

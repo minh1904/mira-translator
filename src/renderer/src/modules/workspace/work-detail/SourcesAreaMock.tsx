@@ -50,7 +50,7 @@ export function SourcesAreaMock(): JSX.Element {
   return (
     <section
       aria-labelledby="sources-heading"
-      className="@container flex flex-col gap-4 rounded-lg border border-default p-5"
+      className="@container flex flex-col gap-4 rounded-sm border border-default p-5"
     >
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="flex flex-col gap-1">

@@ -77,7 +77,7 @@ export function ContextAreaMock({ workId }: { workId?: string } = {}): JSX.Eleme
   return (
     <section
       aria-labelledby="context-heading"
-      className="@container flex flex-col gap-4 rounded-lg border border-default p-5"
+      className="@container flex flex-col gap-4 rounded-sm border border-default p-5"
     >
       <div className="flex flex-col gap-1">
         <h2 id="context-heading" className="flex items-center gap-2 text-body-md font-semibold">
@@ -141,7 +141,7 @@ function HonorificsTable(): JSX.Element {
           Thêm cách xưng hô
         </Button>
       </div>
-      <div className="overflow-hidden rounded-lg border border-default">
+      <div className="overflow-hidden rounded-sm border border-default">
         <div
           className={cn(
             honorificGrid,
@@ -209,7 +209,7 @@ function TermsTable(): JSX.Element {
           Thêm thuật ngữ
         </Button>
       </div>
-      <div className="overflow-hidden rounded-lg border border-default">
+      <div className="overflow-hidden rounded-sm border border-default">
         <div
           className={cn(
             termGrid,

@@ -492,7 +492,7 @@ export function TaskList({
       ) : (
         <ul
           aria-label="Tác vụ"
-          className="m-0 list-none overflow-hidden rounded-lg border border-default bg-surface p-0"
+          className="m-0 list-none overflow-hidden rounded-sm border border-default bg-surface p-0"
         >
           {shown.map((task) => (
             <TaskRow

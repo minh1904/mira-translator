@@ -168,7 +168,7 @@ export function AppShell({
             )}
             aria-label="Danh sách"
           >
-            <div className="flex min-h-0 w-(--mira-sidebar-width) min-w-(--mira-sidebar-width) flex-1 flex-col overflow-hidden rounded-xs border border-default bg-surface shadow-xs">
+            <div className="flex min-h-0 w-(--mira-sidebar-width) min-w-(--mira-sidebar-width) flex-1 flex-col overflow-hidden rounded-sm border border-default bg-surface shadow-xs">
               {sidebar}
             </div>
           </aside>
@@ -182,7 +182,7 @@ export function AppShell({
                   className={cn(
                     'min-h-0 flex-1 overflow-y-auto',
                     nav !== null &&
-                      'overflow-hidden rounded-xs border border-default bg-surface shadow-xs'
+                      'overflow-hidden rounded-sm border border-default bg-surface shadow-xs'
                   )}
                 >
                   {children}

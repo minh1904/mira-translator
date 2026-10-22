@@ -356,7 +356,7 @@ function ExportBody({
         )}
       </div>
 
-      <div className="flex flex-col gap-3 rounded-lg border border-default p-3">
+      <div className="flex flex-col gap-3 rounded-sm border border-default p-3">
         <Toggle
           label="Kèm tên truyện và tác giả"
           checked={prefs.includeTitle}

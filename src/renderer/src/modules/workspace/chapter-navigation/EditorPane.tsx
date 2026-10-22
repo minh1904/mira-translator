@@ -39,7 +39,7 @@ export function EditorPane({
   return (
     <section
       aria-label={title}
-      className="flex min-h-0 min-w-0 flex-1 flex-col rounded-xs border border-default bg-surface overflow-hidden shadow-xs"
+      className="flex min-h-0 min-w-0 flex-1 flex-col rounded-sm border border-default bg-surface overflow-hidden shadow-xs"
     >
       <div className="flex h-7 shrink-0 items-center justify-between border-b border-default bg-subtle/30 px-2.5">
         <div className="flex min-w-0 items-center gap-2">

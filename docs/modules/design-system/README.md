@@ -13,6 +13,32 @@ này giữ lịch sử quyết định, nghiên cứu, bằng chứng và giới
 
 ## Quyết định
 
+**2026-10-22: Thang bo góc theo tầng và màu viền khung chứa.** Chủ sản phẩm thấy card bo tròn và viền
+đậm hơn button, hỏi có nên đồng bộ. Đã kiểm code: ba panel khung bo 4 px nhưng card bên trong bo 12 px
+(composer Agent, TaskList, card màn chương), nên con tròn hơn cha. Ngoài dialog, code dùng lẫn `rounded-sm`,
+`rounded-md`, `rounded-lg` cho cùng loại khung. Composer Agent dùng `border-input` (`neutral-550` trên
+nền tối), sáng hơn hẳn `border-default` (`neutral-800`) của panel.
+
+Quan sát ở sản phẩm khác (số liệu từ hiểu biết chung về các hệ thiết kế, chưa đo lại trên bản mới nhất):
+
+| Sản phẩm | Button / input | Card | Menu / popover | Dialog |
+| --- | --- | --- | --- | --- |
+| VS Code | 2–4 | panel không bo | 4–6 | 6 |
+| GitHub Primer | 6 | 6 | 12 | 12 |
+| Linear | 6 | 8 | 8 | 12 |
+| macOS | 5–6 | 10 | 6 | 10–12 |
+
+Điểm chung: bo góc tăng theo kích thước chứ không theo loại; con không tròn hơn cha; viền luôn 1 px và
+chỉ khác màu (khung chứa nhạt, control tương tác đậm hơn).
+
+Quyết định (đã áp dụng, chuẩn ở [`DESIGN.md`](../../../DESIGN.md#shapes)):
+
+- Control 4 px; card, list có khung, composer, alert, menu, toast và panel khung 6 px; dialog 12 px (trước
+  ghi 16 px nhưng `Dialog` đã dùng 12 px). Thay quyết định "card 12 · dialog 16" ngày 2026-10-08.
+- `rounded-md`/`rounded-lg` ngoài dialog chỉ còn cho ô icon/avatar lớn.
+- Khung chứa dùng `border-default`; composer, `ProposalCard`, khung trong `AiPanel` và `AccountsPage` bỏ
+  `border-strong`/`border-input`. Focus thể hiện bằng outline.
+
 **2026-10-08 (lần ba)**, thay hai quyết định trước đó trong ngày (skin "paper" và khung kính). Chủ sản
 phẩm yêu cầu:
 

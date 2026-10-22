@@ -55,7 +55,7 @@ export function SentenceSuggestionPanelMock(): JSX.Element {
   return (
     <div
       aria-label={MOCK_FEATURES.sentenceModeSidePanels.label + ' (' + SOON_LABEL + ')'}
-      className="flex h-[150px] shrink-0 flex-col gap-2 rounded-lg border border-default bg-subtle p-2.5"
+      className="flex h-[150px] shrink-0 flex-col gap-2 rounded-sm border border-default bg-subtle p-2.5"
     >
       <div className="flex items-center gap-3 text-body-xs">
         <span className="rounded-sm bg-selected px-2 py-0.5 text-default">

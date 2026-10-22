@@ -677,7 +677,7 @@ export function ChapterWorkspace({
 
       {mode === 'sentence' ? (
         <div className="flex min-h-0 flex-1">
-          <div className="min-h-0 flex-1 overflow-auto rounded-xs border border-default bg-surface p-2 shadow-xs">
+          <div className="min-h-0 flex-1 overflow-auto rounded-sm border border-default bg-surface p-2 shadow-xs">
             <SentenceMode
               handleRef={sentence}
               workId={work.id}
@@ -974,7 +974,7 @@ function FoldedPane({
   return (
     <div
       ref={strip}
-      className="flex w-8 shrink-0 flex-col items-center gap-2 rounded-xs border border-default bg-surface py-3 shadow-xs transition-opacity duration-(--mira-duration-fast)"
+      className="flex w-8 shrink-0 flex-col items-center gap-2 rounded-sm border border-default bg-surface py-3 shadow-xs transition-opacity duration-(--mira-duration-fast)"
     >
       <CompactButton
         aria-label={action}

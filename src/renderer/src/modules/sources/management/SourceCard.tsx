@@ -103,7 +103,7 @@ export function SourceCard({
     <div
       data-slot="source-card"
       className={cn(
-        'flex flex-col justify-between gap-md rounded-md border border-default bg-surface p-md transition-shadow hover:shadow-xs',
+        'flex flex-col justify-between gap-md rounded-sm border border-default bg-surface p-md transition-shadow hover:shadow-xs',
         className
       )}
     >

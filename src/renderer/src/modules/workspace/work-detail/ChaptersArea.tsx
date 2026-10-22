@@ -347,7 +347,7 @@ export function ChaptersArea({
         <>
           {addRow}
           {!adding && (
-            <div className="flex flex-col items-center gap-3 rounded-lg border border-dashed border-strong px-6 py-12 text-center">
+            <div className="flex flex-col items-center gap-3 rounded-sm border border-dashed border-strong px-6 py-12 text-center">
               <DocumentTextIcon size={24} className="text-subtle" />
               <p className="text-body-sm font-semibold">Chưa có chương nào</p>
               <p className="max-w-[420px] text-body-xs leading-normal text-subtle">
@@ -374,7 +374,7 @@ export function ChaptersArea({
 
       {chapters.load === 'ready' && all.length > 0 && (
         <>
-          <div className="overflow-hidden rounded-lg border border-default">
+          <div className="overflow-hidden rounded-sm border border-default">
             <div
               className={cn(
                 CHAPTER_GRID,
@@ -661,7 +661,7 @@ function SelectionBar({
     <div
       role="toolbar"
       aria-label="Thao tác với chương đã chọn"
-      className="sticky bottom-3 z-(--mira-z-sticky) flex flex-wrap items-center gap-2 rounded-lg border border-default bg-surface px-3 py-2 shadow-sm"
+      className="sticky bottom-3 z-(--mira-z-sticky) flex flex-wrap items-center gap-2 rounded-sm border border-default bg-surface px-3 py-2 shadow-sm"
     >
       <span className="text-body-sm font-semibold tabular-nums">Đã chọn {count} chương</span>
       <Button variant="ghost" onClick={onClear} disabled={busy}>

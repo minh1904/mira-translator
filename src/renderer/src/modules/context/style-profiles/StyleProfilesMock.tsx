@@ -75,7 +75,7 @@ export function StyleProfilesMock(): JSX.Element {
 
         <section
           aria-label="Cổ trang – tu tiên"
-          className="min-w-0 flex-1 overflow-hidden rounded-lg border border-default bg-surface"
+          className="min-w-0 flex-1 overflow-hidden rounded-sm border border-default bg-surface"
         >
           <div className="flex items-center gap-xs border-b border-subtle px-md py-sm">
             <div className="min-w-0 flex-1">

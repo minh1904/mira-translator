@@ -250,7 +250,7 @@ export function GlossaryScreen({ workId }: GlossaryScreenProps): JSX.Element {
       )}
 
       {/* Danh sách thuật ngữ chính */}
-      <div className="overflow-hidden rounded-lg border border-default bg-surface">
+      <div className="overflow-hidden rounded-sm border border-default bg-surface">
         <div className="grid grid-cols-[minmax(0,1.5fr)_minmax(0,1.5fr)_100px_110px_minmax(0,1.2fr)_100px] items-center border-b border-default bg-subtle px-3 py-2 text-body-xs font-medium text-subtle">
           <span>Từ gốc / Biến thể</span>
           <span>Bản dịch đích</span>

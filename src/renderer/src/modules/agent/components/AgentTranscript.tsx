@@ -85,7 +85,7 @@ export function AgentTranscript({ onOpenTarget, className }: AgentTranscriptProp
               aria-label={`Lượt: ${turn.instruction}`}
               className="flex flex-col gap-1.5"
             >
-              <div className="rounded-md bg-muted/40 px-2.5 py-1.5">
+              <div className="rounded-sm bg-muted/40 px-2.5 py-1.5">
                 <p className="selectable m-0 whitespace-pre-wrap wrap-anywhere text-body-sm leading-normal text-default">
                   {turn.instruction}
                 </p>

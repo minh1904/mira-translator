@@ -74,7 +74,7 @@ export function UpdatesScreenMock(): JSX.Element {
       {DAYS.map(({ day, updates }) => (
         <section key={day} aria-label={day} className="flex flex-col gap-xs">
           <h2 className="m-0 text-label-sm text-subtle">{day}</h2>
-          <ul className="m-0 list-none divide-y divide-subtle rounded-lg border border-default bg-surface p-0">
+          <ul className="m-0 list-none divide-y divide-subtle rounded-sm border border-default bg-surface p-0">
             {updates.map((update) => (
               <li key={update.work.title} className="flex items-center gap-md px-md py-sm">
                 <MockCover work={update.work} size="md" />

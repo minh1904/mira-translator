@@ -22,7 +22,7 @@ function ToastCard({ toast }: { toast: Toast }): JSX.Element {
       role={loud ? 'alert' : 'status'}
       data-slot="toast"
       className={cn(
-        'pointer-events-auto flex w-80 max-w-[calc(100vw-2rem)] items-start gap-sm rounded-md border border-default bg-surface px-sm py-xs text-default shadow-sm',
+        'pointer-events-auto flex w-80 max-w-[calc(100vw-2rem)] items-start gap-sm rounded-sm border border-default bg-surface px-sm py-xs text-default shadow-sm',
         animClass
       )}
     >

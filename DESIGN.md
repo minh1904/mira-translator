@@ -176,9 +176,13 @@ components:
     padding: 10px
     rounded: "{rounded.xs}"
     typography: "{typography.body-sm}"
+  card:
+    rounded: "{rounded.sm}"
+  panel:
+    rounded: "{rounded.sm}"
   dialog-md:
     width: 512px
-    rounded: "{rounded.xl}"
+    rounded: "{rounded.lg}"
 ---
 
 # Hệ thiết kế Mira
@@ -264,9 +268,17 @@ vai trò trong một control. Màn feature chỉ dùng tên semantic như `bg-su
 ## Shapes
 
 - Radius theo thang 0/4/6/8/12/16 px; pill chỉ cho tag, switch track hoặc affordance thật sự tròn.
-- Control 24/28/32 px dùng radius 4px (rounded-xs theo chuẩn desktop VS Code). Card dùng 12 px; dialog dùng 16 px.
-- Phần tử nằm trong phần tử khác dùng radius nhỏ hơn theo khoảng cách inset; tránh nhiều đường cong cạnh
-  nhau không đồng tâm.
+- Radius tăng theo kích thước phần tử, chênh nhau tối đa một bậc giữa các tầng kề nhau:
+  - Control 24/28/32 px (button, input, kbd, badge, hàng list): 4 px (`rounded-xs`, chuẩn desktop VS Code).
+  - Card, list có khung, composer, alert, code block, menu, popover, toast: 6 px (`rounded-sm`).
+  - Panel khung của shell (thanh điều hướng, sidebar, editor, panel Agent): 6 px (`rounded-sm`).
+  - Dialog và lớp phủ cấp dialog (Cài đặt, Onboarding): 12 px (`rounded-lg`).
+  - `rounded-md`/`rounded-lg` ngoài dialog chỉ dành cho ô icon/avatar lớn (≥ 32 px), không cho khung chứa.
+- Phần tử nằm trong phần tử khác không bao giờ bo tròn hơn khung cha; dùng radius bằng hoặc nhỏ hơn theo
+  khoảng cách inset, tránh nhiều đường cong cạnh nhau không đồng tâm.
+- Viền luôn 1 px. Khung chứa (panel, card, composer lúc nghỉ) dùng `border-default`; `border-input` chỉ
+  cho ô nhập liệu đơn lẻ; `border-strong` cho hover của control và lớp phủ nằm trên backdrop. Trạng thái
+  focus thể hiện bằng outline, không làm đậm viền khung chứa.
 - Icon dùng Reicon Outline với nét mặc định 1,5 px và thang 12/14/16/18/24 px. Chỉ dùng Filled để biểu
   thị trạng thái đang chọn hoặc đã đánh dấu. Dùng glyph trơn, không khung tròn/vuông bao ngoài (X, Stop,
   Check, Add); chỉ giữ khung khi Reicon không có bản trơn, như dấu "!", "i", "?". Icon tương tác phải nằm trong hit target của component,

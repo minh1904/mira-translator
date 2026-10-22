@@ -105,7 +105,7 @@ export function AppNav({
     <aside
       aria-label="Điều hướng"
       className={cn(
-        'flex min-h-0 shrink-0 flex-col overflow-hidden rounded-xs border border-default bg-surface shadow-xs transition-[width] duration-(--mira-duration-base) ease-standard',
+        'flex min-h-0 shrink-0 flex-col overflow-hidden rounded-sm border border-default bg-surface shadow-xs transition-[width] duration-(--mira-duration-base) ease-standard',
         collapsed ? 'w-12' : 'w-[224px]'
       )}
     >

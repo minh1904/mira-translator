@@ -58,7 +58,7 @@ export function Alert({
       data-slot="alert"
       role={loud ? 'alert' : 'status'}
       className={cn(
-        'flex items-start gap-xs rounded-md border px-sm py-xs text-body-sm text-default',
+        'flex items-start gap-xs rounded-sm border px-sm py-xs text-body-sm text-default',
         TONES[tone].box,
         className
       )}

@@ -396,7 +396,7 @@ export function AddRawDialog({
                   <div
                     key={opt.kind}
                     onClick={() => setKind(opt.kind)}
-                    className={`flex cursor-pointer flex-col gap-2xs rounded-md border p-md transition-colors ${
+                    className={`flex cursor-pointer flex-col gap-2xs rounded-sm border p-md transition-colors ${
                       kind === opt.kind
                         ? 'border-selected bg-selected/10'
                         : 'border-default bg-surface hover:bg-muted/50'
@@ -462,7 +462,7 @@ export function AddRawDialog({
 
             {/* Tiêu đề/tác giả cho URL preview */}
             {kind === 'url' && previewResult.title && (
-              <div className="rounded-md border border-default bg-muted p-md">
+              <div className="rounded-sm border border-default bg-muted p-md">
                 <div className="text-label-md font-semibold text-default">
                   {previewResult.title}
                 </div>
@@ -477,7 +477,7 @@ export function AddRawDialog({
               </div>
             )}
 
-            <div className="grid grid-cols-2 gap-sm rounded-md border border-default bg-muted p-md">
+            <div className="grid grid-cols-2 gap-sm rounded-sm border border-default bg-muted p-md">
               <div className="flex flex-col gap-3xs">
                 <span className="text-body-xs text-muted">Tổng số mục / chương:</span>
                 <span className="text-heading font-semibold text-default">
@@ -512,7 +512,7 @@ export function AddRawDialog({
 
             {/* Cảnh báo */}
             {previewResult.warnings && previewResult.warnings.length > 0 && (
-              <div className="flex flex-col gap-xs rounded-md border border-warning bg-warning/10 p-sm">
+              <div className="flex flex-col gap-xs rounded-sm border border-warning bg-warning/10 p-sm">
                 <div className="flex items-center gap-xs text-warning">
                   <DangerTriangleIcon size={ICON.sm} />
                   <span className="text-label-xs font-medium">Cảnh báo</span>
@@ -531,7 +531,7 @@ export function AddRawDialog({
                 <span className="text-label-xs font-medium text-muted">
                   Một số chương đầu tiên:
                 </span>
-                <div className="flex flex-col gap-2xs rounded-md border border-default bg-surface p-sm">
+                <div className="flex flex-col gap-2xs rounded-sm border border-default bg-surface p-sm">
                   {previewResult.sample.slice(0, 5).map((item) => (
                     <div key={item.remoteChapterId} className="flex items-center gap-xs">
                       <span className="min-w-[2rem] text-body-xs text-muted tabular-nums">

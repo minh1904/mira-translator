@@ -142,7 +142,7 @@ export function AiTurn({
 
   return (
     <article className="flex flex-col gap-1.5">
-      <div className="group/question relative rounded-lg border border-default bg-muted/50 px-3 py-2">
+      <div className="group/question relative rounded-sm border border-default bg-muted/50 px-3 py-2">
         <p className="selectable m-0 whitespace-pre-wrap wrap-anywhere text-body-sm leading-normal text-default">
           {turn.question}
         </p>
@@ -184,7 +184,7 @@ export function AiTurn({
               return (
                 <div
                   key={key}
-                  className="flex flex-col gap-1.5 rounded-lg border border-default p-2 text-body-xs"
+                  className="flex flex-col gap-1.5 rounded-sm border border-default p-2 text-body-xs"
                 >
                   {targetChapterExists ? (
                     <>
@@ -233,7 +233,7 @@ export function AiTurn({
       )}
 
       {turn.status === 'error' && turn.error !== null && (
-        <div className="flex flex-col gap-1.5 rounded-lg border border-error/35 bg-error/7 px-3 py-2 text-body-xs leading-normal text-default">
+        <div className="flex flex-col gap-1.5 rounded-sm border border-error/35 bg-error/7 px-3 py-2 text-body-xs leading-normal text-default">
           <p className="m-0 flex items-start gap-1.5">
             <DangerCircleIcon size={14} className="mt-px shrink-0 text-error" />
             <span className="min-w-0">

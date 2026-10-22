@@ -52,7 +52,7 @@ export function ProposalCard({
   const [open, setOpen] = useState(false)
   const label = statusLabel ?? (status === null ? 'Đang tải…' : PART_STATUS_LABEL[status])
   return (
-    <div className="rounded-lg border border-strong bg-surface p-2 text-body-xs">
+    <div className="rounded-sm border border-default bg-surface p-2 text-body-xs">
       <div className="flex flex-wrap items-center gap-2">
         <span className="min-w-0 flex-1 truncate text-default">{title}</span>
         <span className={cn('shrink-0', status === null ? 'text-subtle' : TONE[status])}>

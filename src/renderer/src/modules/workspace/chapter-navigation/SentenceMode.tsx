@@ -220,7 +220,7 @@ export function SentenceMode({
         </div>
       )}
 
-      <ol className="min-h-0 flex-1 list-none overflow-y-auto rounded-lg border border-default">
+      <ol className="min-h-0 flex-1 list-none overflow-y-auto rounded-sm border border-default">
         {visible.map((row) => (
           <SentenceRow
             key={row.sourceId}

@@ -94,7 +94,7 @@ function ResumeCard({
 }): JSX.Element {
   const chapter = work.lastChapter
   return (
-    <section aria-label="Tiếp tục dịch" className="rounded-lg border border-default bg-surface">
+    <section aria-label="Tiếp tục dịch" className="rounded-sm border border-default bg-surface">
       <div className="flex items-center gap-lg p-lg">
         <WorkCover work={work} size="md" />
         <div className="flex min-w-0 flex-1 flex-col gap-2xs">
@@ -180,7 +180,7 @@ function StartSteps({
     }
   ]
   return (
-    <section aria-label="Bắt đầu với Mira" className="rounded-lg border border-default bg-surface">
+    <section aria-label="Bắt đầu với Mira" className="rounded-sm border border-default bg-surface">
       <header className="flex h-11 items-center justify-between border-b border-subtle px-md">
         <h2 className="m-0 text-heading">Bắt đầu với Mira</h2>
         <span className="text-body-xs text-muted">
@@ -252,7 +252,7 @@ function StatsMock(): JSX.Element {
         {stats.map((stat) => (
           <div
             key={stat.label}
-            className="flex flex-col gap-2xs rounded-lg border border-default bg-surface p-md"
+            className="flex flex-col gap-2xs rounded-sm border border-default bg-surface p-md"
           >
             <div className="flex items-center justify-between gap-xs">
               <span className="text-body-xs text-subtle">{stat.label}</span>
@@ -284,7 +284,7 @@ function MockCard({
   children: ReactNode
 }): JSX.Element {
   return (
-    <section aria-label={title} className="min-w-0 rounded-lg border border-default bg-surface">
+    <section aria-label={title} className="min-w-0 rounded-sm border border-default bg-surface">
       <header className="flex h-11 items-center justify-between gap-sm border-b border-subtle px-md">
         <h2 className="m-0 text-heading">
           <SoonTitle>{title}</SoonTitle>
