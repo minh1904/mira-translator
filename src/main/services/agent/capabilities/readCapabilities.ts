@@ -1,5 +1,12 @@
 import * as v from 'valibot'
 import { readSideContents, readText } from '../../../infra/storage/textFile'
+import {
+  AGENT_OPTION_LIMIT,
+  AGENT_QUESTION_LIMIT,
+  AGENT_QUESTION_TYPES,
+  askQuestionsArgsSchema,
+  type AgentQuestion
+} from '../../../../shared/contracts/agent'
 import type { CapabilityDefinition } from '../types'
 
 /** Characters of one side `read_chapter` returns per call; longer chapters are read by `offset`. */
@@ -273,35 +280,65 @@ export const listAddressingCapability: CapabilityDefinition<Record<string, never
 }
 
 export const askQuestionsCapability: CapabilityDefinition<{
-  question: string
-  options: string[]
+  questions: AgentQuestion[]
+  allowSkip?: boolean
 }> = {
   name: 'ask_questions',
   description:
-    'Đặt câu hỏi trắc nghiệm hoặc gợi ý phương án cho người dùng khi cần làm rõ yêu cầu hoặc cần người dùng lựa chọn hướng xử lý.',
+    'Hỏi người dùng 1–5 câu trong một lần khi cần làm rõ yêu cầu hoặc cần họ chọn hướng xử lý. Mỗi câu chọn một ' +
+    '(single), chọn nhiều (multi) hoặc nhập chữ (text); câu chọn có 2–9 lựa chọn. Đặt default cho phương án ' +
+    'bạn đề xuất: Autopilot trả lời bằng nó. Kết quả là đáp án theo nhãn, hoặc skipped khi người dùng bỏ qua.',
   kind: 'read',
-  schema: v.object({
-    question: v.pipe(v.string(), v.minLength(1, 'Câu hỏi không được để trống.')),
-    options: v.pipe(v.array(v.string()), v.minLength(1, 'Cần ít nhất 1 lựa chọn.'))
-  }),
+  schema: askQuestionsArgsSchema,
   parameters: {
     type: 'object',
     properties: {
-      question: {
-        type: 'string',
-        description: 'Nội dung câu hỏi ngắn gọn gửi tới người dùng.'
-      },
-      options: {
+      questions: {
         type: 'array',
-        items: { type: 'string' },
-        description: 'Danh sách các lựa chọn để người dùng bấm chọn.'
+        minItems: 1,
+        maxItems: AGENT_QUESTION_LIMIT,
+        items: {
+          type: 'object',
+          properties: {
+            id: { type: 'string', description: 'ID ngắn, duy nhất trong lần hỏi, ví dụ "style".' },
+            title: { type: 'string', description: 'Câu hỏi ngắn gọn.' },
+            description: { type: 'string', description: 'Giải thích thêm nếu cần.' },
+            type: { type: 'string', enum: [...AGENT_QUESTION_TYPES] },
+            options: {
+              type: 'array',
+              items: { type: 'string' },
+              minItems: 2,
+              maxItems: AGENT_OPTION_LIMIT,
+              description: 'Nhãn các lựa chọn, bắt buộc với single và multi.'
+            },
+            default: {
+              description: 'Nhãn lựa chọn đề xuất (danh sách nhãn với multi).',
+              anyOf: [{ type: 'string' }, { type: 'array', items: { type: 'string' } }]
+            },
+            allowFreeText: {
+              type: 'boolean',
+              description: 'Cho người dùng gõ câu trả lời khác ngoài các lựa chọn.'
+            },
+            required: { type: 'boolean', description: 'Mặc định true.' }
+          },
+          required: ['id', 'title', 'type']
+        }
+      },
+      allowSkip: {
+        type: 'boolean',
+        description: 'Cho người dùng bỏ qua cả lần hỏi; mặc định true.'
       }
     },
-    required: ['question', 'options']
+    required: ['questions']
   },
   targetPolicy: 'no_target',
   handler: async () => ({ ok: true, value: {} }),
-  describe: ({ args }) => `Hỏi "${(args as { question?: string }).question ?? ''}"`
+  describe: ({ args }) => {
+    const questions = (args as { questions?: Array<{ title?: string }> }).questions ?? []
+    return questions.length > 1
+      ? `Hỏi ${questions.length} câu`
+      : `Hỏi "${questions[0]?.title ?? ''}"`
+  }
 }
 
 export const runSubagentCapability: CapabilityDefinition<{

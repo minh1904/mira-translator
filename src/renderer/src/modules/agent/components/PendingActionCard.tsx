@@ -25,7 +25,8 @@ export interface PendingActionCardProps {
 }
 
 /**
- * Câu hỏi của một lượt đang chờ: duyệt một thao tác ghi, hoặc chọn một trong các đích mơ hồ. Câu trả
+ * Thẻ của một lượt đang chờ: duyệt một thao tác ghi, hoặc chọn một trong các đích mơ hồ (câu hỏi của
+ * agent nằm ở `QuestionCard` phía trên ô nhập). Câu trả
  * lời gắn với đúng call đang chờ (ID + digest), nên bấm hai lần hay bấm sau khi lượt đã đổi đều bị
  * Main từ chối thay vì chạy nhầm.
  */
@@ -40,7 +41,6 @@ export function PendingActionCard({ action, onReply }: PendingActionCardProps): 
     }
   }
 
-  const isQuestion = action.kind === 'question'
   const isChoose = action.kind === 'choose'
   const onKeyDown = (event: KeyboardEvent<HTMLDivElement>): void => {
     const choice = action.kind === 'approve' && !sending ? approvalShortcut(event) : null
@@ -52,7 +52,7 @@ export function PendingActionCard({ action, onReply }: PendingActionCardProps): 
   return (
     <div
       role="group"
-      aria-label={isQuestion ? 'Câu hỏi của Trợ lý' : isChoose ? 'Chọn đích' : 'Cần duyệt'}
+      aria-label={isChoose ? 'Chọn đích' : 'Cần duyệt'}
       aria-keyshortcuts={action.kind === 'approve' ? 'Control+Enter Control+Alt+Enter' : undefined}
       onKeyDown={onKeyDown}
       data-pending-call={action.toolCallId}
@@ -62,11 +62,11 @@ export function PendingActionCard({ action, onReply }: PendingActionCardProps): 
         {isChoose ? 'Có nhiều đích khớp. Bạn muốn dùng đích nào?' : action.label}
       </p>
       <div className="flex flex-wrap gap-1.5">
-        {isQuestion || isChoose ? (
+        {isChoose ? (
           action.candidates.map((candidate) => (
             <Button
               key={candidate.handle}
-              variant={isQuestion ? 'outline' : 'ghost'}
+              variant="ghost"
               loading={sending}
               onClick={() => void reply(candidate.handle, candidate.label)}
               className="!h-6 !px-2.5 text-label-xs"

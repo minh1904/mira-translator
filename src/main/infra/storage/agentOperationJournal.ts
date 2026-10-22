@@ -330,3 +330,85 @@ export function undoAgentOperation(
     return { checkpoint: checkpointFrom(checkpointRow(db, operationId)!), restoredRev: saved.rev }
   })
 }
+
+/** What undoing a chain of operations on one chapter side did, or would do on a dry run. */
+export interface AgentUndoChainResult {
+  /** Operations undone (or undoable), newest first. */
+  undone: string[]
+  /** The newest operation that could not be undone because the text changed after it. */
+  conflict: { operationId: string; message: string } | null
+  /** Revision of the text after the undo; the current one on a dry run or when nothing changed. */
+  restoredRev: number
+}
+
+/**
+ * Undoes several operations that wrote one chapter side, newest first. Undoing them one at a time
+ * would fail the revision guard from the second one on, because each undo writes a new revision; so
+ * the chain is walked back from the current text while every operation starts where the next one
+ * ended, and the text of the oldest operation reached is restored once. Where the user changed the
+ * text between two operations the walk stops: the older ones stay as they are and the first of them
+ * is reported as the conflict. `dryRun` reports the same without writing.
+ */
+export function undoAgentOperationChain(
+  db: Db,
+  operationIds: string[],
+  now: number,
+  newId: () => string,
+  options: { dryRun?: boolean } = {}
+): AgentUndoChainResult {
+  return db.transaction(() => {
+    const rows = operationIds
+      .map((id) => checkpointRow(db, id))
+      .filter((row): row is CheckpointRow => row !== undefined && row.state !== 'undone')
+      .sort((a, b) => a.created_at - b.created_at || a.before_rev - b.before_rev)
+    if (rows.length === 0) return { undone: [], conflict: null, restoredRev: 0 }
+    const sides = new Set(rows.map((row) => `${row.chapter_id}:${row.side}`))
+    if (sides.size > 1) {
+      throw new StorageError('validation', 'Chuỗi hoàn tác phải cùng một chương và một bản.')
+    }
+    const { chapter_id: chapterId, side } = rows[0]!
+    const current = readText(db, chapterId, side)
+
+    // Operations that never wrote anything are undone without touching the text.
+    const unapplied = rows.filter((row) => row.last_applied_rev === null)
+    const applied = rows.filter((row) => row.last_applied_rev !== null).reverse()
+    const reached: CheckpointRow[] = []
+    let expected = current.rev
+    let conflict: AgentUndoChainResult['conflict'] = null
+    for (const row of applied) {
+      if (row.last_applied_rev !== expected) {
+        conflict = {
+          operationId: row.operation_id,
+          message: 'Bản dịch đã được chỉnh sửa sau operation; không thể hoàn tác tự động.'
+        }
+        break
+      }
+      reached.push(row)
+      expected = row.before_rev
+    }
+    const undone = [...reached, ...unapplied].map((row) => row.operation_id)
+    if (options.dryRun) return { undone, conflict, restoredRev: current.rev }
+
+    let restoredRev = current.rev
+    const oldest = reached.at(-1)
+    if (oldest) {
+      restoredRev = saveText(
+        db,
+        {
+          chapterId,
+          side,
+          content: oldest.before_content,
+          expectedRev: current.rev,
+          segments: segment(oldest.before_content, 'vi')
+        },
+        now,
+        newId
+      ).rev
+    }
+    const mark = db.prepare(`UPDATE agent_operation_checkpoint
+      SET state = 'undone', terminal_state = 'undone', updated_at = ?, terminal_at = ?
+      WHERE operation_id = ?`)
+    for (const id of undone) mark.run(now, now, id)
+    return { undone, conflict, restoredRev }
+  })
+}

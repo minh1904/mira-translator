@@ -59,7 +59,7 @@ describe('work file schema', () => {
 })
 
 describe('library index schema', () => {
-  it.each([1, 2, 3, 4, 5, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16])(
+  it.each([1, 2, 3, 4, 5, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17])(
     'version %i matches its frozen snapshot',
     (version) => {
       check('library-v' + version + '.schema.sql', librarySchema, version)
@@ -68,7 +68,7 @@ describe('library index schema', () => {
 
   it('has one fixture per migration and a stable application id', () => {
     expect(librarySchema.migrations.map((m) => m.version)).toEqual([
-      1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16
+      1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17
     ])
     expect(LIBRARY_APPLICATION_ID).toBe(0x4d49524c)
   })

@@ -4,6 +4,9 @@ import type {
   AgentAttachment,
   AgentChatMode,
   AgentContext,
+  AgentEditedChapter,
+  AgentEditsResult,
+  AgentQuestionAnswers,
   AgentOperation,
   AgentPendingAction,
   AgentPermissionLevel,
@@ -37,6 +40,11 @@ export interface LiveRound {
   reasoningStartedAt: number | null
   reasoningEndedAt: number | null
 }
+
+type EditedChapterRef = { workId: string; chapterId: string }
+
+export const editKey = (chapter: EditedChapterRef): string =>
+  chapter.workId + ':' + chapter.chapterId
 
 /** Draft key of a chat that has no session yet. */
 export const NEW_CHAT = 'new'
@@ -83,6 +91,10 @@ export interface AgentState {
   permissionLevel: AgentPermissionLevel
   /** Capabilities the user allowed for the whole active session. */
   sessionApprovals: string[]
+  /** Rows of the "N chapters edited" bar of the active session. */
+  editedChapters: AgentEditedChapter[]
+  /** Why undoing a row failed, by `workId:chapterId`; cleared when the row is acted on again. */
+  editConflicts: Record<string, string>
   /** Answer elements of the session's turns, as Main stored them. */
   parts: AgentResponsePart[]
   /** Tool calls of the session by id, subagent calls included; events update them live. */
@@ -104,13 +116,19 @@ export interface AgentState {
   /** Starts a new chat; the session is created on the first send. */
   newChat: () => void
   createSession: (title?: string) => Promise<string>
-  setDraft: (text: string) => void
-  /** Adds or dims the suggested chip of the active draft. */
-  setImplicitAdded: (added: boolean) => void
-  addAttachment: (attachment: AgentAttachment) => AddAttachmentResult
-  removeAttachment: (key: string) => void
-  /** Replaces the active draft's chips, as when recalling an earlier instruction. */
-  setAttachments: (attachments: AgentAttachment[]) => void
+  /**
+   * Draft actions change the active session's draft, or the draft `draftKey` names (an earlier
+   * command edited in place).
+   */
+  setDraft: (text: string, draftKey?: string) => void
+  /** Adds or dims the suggested chip of the draft. */
+  setImplicitAdded: (added: boolean, draftKey?: string) => void
+  addAttachment: (attachment: AgentAttachment, draftKey?: string) => AddAttachmentResult
+  removeAttachment: (key: string, draftKey?: string) => void
+  /** Replaces the draft's chips, as when recalling an earlier instruction. */
+  setAttachments: (attachments: AgentAttachment[], draftKey?: string) => void
+  /** Forgets a draft and its chips. */
+  clearDraft: (draftKey: string) => void
   setModel: (model: ModelSelection | null) => void
   setMode: (mode: AgentChatMode) => void
   /** Changes the level of the active session in Main; before the first send it is kept here. */
@@ -128,6 +146,25 @@ export interface AgentState {
     choice: string,
     label: string,
     modelSelection?: SendModel
+  ) => Promise<boolean>
+  /** Answers or skips the questions of a pending `ask_questions` call. */
+  answerQuestions: (
+    action: AgentPendingAction,
+    reply: { answers: AgentQuestionAnswers } | { skipped: true },
+    modelSelection?: SendModel
+  ) => Promise<boolean>
+  keepEdits: (chapter?: EditedChapterRef) => Promise<boolean>
+  undoEdits: (chapter?: EditedChapterRef) => Promise<boolean>
+  /**
+   * Restores the checkpoint before a turn and puts its command and chips back in the composer.
+   * False when Main refused (a chapter changed after the agent wrote it); nothing changed then.
+   */
+  revertToTurn: (turnId: string) => Promise<boolean>
+  /** Restores the checkpoint before a turn, then sends the edited command as a new turn. */
+  resendEdited: (
+    turnId: string,
+    instruction: string,
+    options: { context: AgentContext; modelSelection?: SendModel; mode: AgentChatMode }
   ) => Promise<boolean>
   /** Sends a turn's instruction and context again as a new turn. */
   retry: (turn: AgentTurnView, modelSelection?: SendModel) => Promise<boolean>
@@ -214,8 +251,8 @@ export const useAgentStore = create<AgentState>((set, get) => {
   }
 
   /** Changes the chips of the active draft. */
-  const updateComposer = (change: (draft: ComposerDraft) => ComposerDraft) => {
-    const key = get().activeSessionId ?? NEW_CHAT
+  const updateComposer = (change: (draft: ComposerDraft) => ComposerDraft, draftKey?: string) => {
+    const key = draftKey ?? get().activeSessionId ?? NEW_CHAT
     set((s) => ({
       composer: { ...s.composer, [key]: change(s.composer[key] ?? EMPTY_COMPOSER) }
     }))
@@ -233,6 +270,71 @@ export const useAgentStore = create<AgentState>((set, get) => {
   }
 
   /** Merges a snapshot without dropping rows that events added while it was being read. */
+  /** Resumes a waiting turn with the user's answer to its pending call. */
+  const continueTurn = async (
+    action: AgentPendingAction,
+    instruction: string,
+    answer: { choice: string } | { answers: AgentQuestionAnswers } | { skipped: true },
+    modelSelection?: SendModel
+  ): Promise<boolean> => {
+    const api = bridge()
+    if (!api?.turn?.send) return false
+    set({ lastError: null })
+    const res = await api.turn.send({
+      ...(get().activeSessionId ? { sessionId: get().activeSessionId! } : {}),
+      clientCommandId: crypto.randomUUID(),
+      instruction,
+      ...(modelSelection ? { modelSelection } : {}),
+      continuesTurnId: action.turnId,
+      pendingReply: { toolCallId: action.toolCallId, argsDigest: action.argsDigest, ...answer }
+    })
+    if (!res.ok) {
+      set({ lastError: res.error.message })
+      await get().refresh()
+      return false
+    }
+    set({ pending: get().pending.filter((item) => item.toolCallId !== action.toolCallId) })
+    startStreaming(action.turnId)
+    await get().refresh()
+    return true
+  }
+
+  /** Keeps or undoes one row of the edited bar, or every row. */
+  const applyEdits = async (
+    action: 'keep' | 'undo',
+    chapter?: EditedChapterRef
+  ): Promise<boolean> => {
+    const api = bridge()
+    const sessionId = get().activeSessionId
+    if (!api?.edits || !sessionId) return false
+    set({ lastError: null })
+    const res = await api.edits[action]({ sessionId, ...(chapter ? { chapter } : {}) })
+    if (!res.ok) {
+      set({ lastError: res.error.message })
+      return false
+    }
+    const result: AgentEditsResult = res.value
+    set((s) => {
+      const editConflicts = { ...s.editConflicts }
+      const touched = chapter ? [chapter] : s.editedChapters
+      for (const row of touched) delete editConflicts[editKey(row)]
+      for (const conflict of result.conflicts) editConflicts[editKey(conflict)] = conflict.message
+      return { editedChapters: result.editedChapters, editConflicts }
+    })
+    if (action === 'undo') await get().refresh()
+    return result.conflicts.length === 0
+  }
+
+  /** Takes turns hidden by a restored checkpoint out of the transcript. */
+  const dropTurns = (turnIds: string[]): void => {
+    const dropped = new Set(turnIds)
+    set((s) => ({
+      turns: s.turns.filter((turn) => !dropped.has(turn.id)),
+      parts: s.parts.filter((part) => !dropped.has(part.turnId)),
+      pending: s.pending.filter((item) => !dropped.has(item.turnId))
+    }))
+  }
+
   const merge = (detail: AgentSessionDetailView) => {
     set((s) => {
       if (s.activeSessionId !== detail.session.id) return s
@@ -265,7 +367,8 @@ export const useAgentStore = create<AgentState>((set, get) => {
         operations,
         pending: detail.pending,
         permissionLevel: detail.session.permissionLevel,
-        sessionApprovals: detail.sessionApprovals
+        sessionApprovals: detail.sessionApprovals,
+        editedChapters: detail.editedChapters
       }
     })
     const state = get()
@@ -287,6 +390,8 @@ export const useAgentStore = create<AgentState>((set, get) => {
     mode: 'agent',
     permissionLevel: 'default',
     sessionApprovals: [],
+    editedChapters: [],
+    editConflicts: {},
     parts: [],
     toolCalls: {},
     toolCallDetails: {},
@@ -401,24 +506,39 @@ export const useAgentStore = create<AgentState>((set, get) => {
       return session.id
     },
 
-    setDraft: (text: string) => {
-      const key = get().activeSessionId ?? NEW_CHAT
+    setDraft: (text, draftKey) => {
+      const key = draftKey ?? get().activeSessionId ?? NEW_CHAT
       set((s) => ({ drafts: { ...s.drafts, [key]: text } }))
     },
+    clearDraft: (draftKey) =>
+      set((s) => {
+        const drafts = { ...s.drafts }
+        const composer = { ...s.composer }
+        delete drafts[draftKey]
+        delete composer[draftKey]
+        return { drafts, composer }
+      }),
 
-    setImplicitAdded: (added) => updateComposer((draft) => ({ ...draft, implicitAdded: added })),
-    addAttachment: (attachment) => {
-      const key = get().activeSessionId ?? NEW_CHAT
+    setImplicitAdded: (added, draftKey) =>
+      updateComposer((draft) => ({ ...draft, implicitAdded: added }), draftKey),
+    addAttachment: (attachment, draftKey) => {
+      const key = draftKey ?? get().activeSessionId ?? NEW_CHAT
       const result = addAttachment(get().composer[key]?.attachments ?? [], attachment)
-      if (result.ok) updateComposer((draft) => ({ ...draft, attachments: result.attachments }))
+      if (result.ok) {
+        updateComposer((draft) => ({ ...draft, attachments: result.attachments }), draftKey)
+      }
       return result
     },
-    removeAttachment: (removed) =>
-      updateComposer((draft) => ({
-        ...draft,
-        attachments: draft.attachments.filter((item) => attachmentKey(item) !== removed)
-      })),
-    setAttachments: (attachments) => updateComposer((draft) => ({ ...draft, attachments })),
+    removeAttachment: (removed, draftKey) =>
+      updateComposer(
+        (draft) => ({
+          ...draft,
+          attachments: draft.attachments.filter((item) => attachmentKey(item) !== removed)
+        }),
+        draftKey
+      ),
+    setAttachments: (attachments, draftKey) =>
+      updateComposer((draft) => ({ ...draft, attachments }), draftKey),
 
     setModel: (model) => set({ model }),
     setMode: (mode) => set({ mode }),
@@ -495,25 +615,64 @@ export const useAgentStore = create<AgentState>((set, get) => {
       return true
     },
 
-    reply: async (action, choice, label, modelSelection) => {
+    reply: (action, choice, label, modelSelection) =>
+      continueTurn(action, label, { choice }, modelSelection),
+
+    answerQuestions: (action, reply, modelSelection) =>
+      continueTurn(
+        action,
+        'skipped' in reply ? 'Bỏ qua câu hỏi' : 'Trả lời câu hỏi',
+        reply,
+        modelSelection
+      ),
+
+    keepEdits: async (chapter) => applyEdits('keep', chapter),
+    undoEdits: async (chapter) => applyEdits('undo', chapter),
+
+    revertToTurn: async (turnId) => {
       const api = bridge()
-      if (!api?.turn?.send) return false
+      if (!api?.turn?.revert || get().isStreaming) return false
       set({ lastError: null })
-      const res = await api.turn.send({
-        ...(get().activeSessionId ? { sessionId: get().activeSessionId! } : {}),
+      const res = await api.turn.revert(turnId)
+      if (!res.ok) {
+        set({ lastError: res.error.message })
+        return false
+      }
+      dropTurns(res.value.revertedTurnIds)
+      // The command and its chips go back into the composer.
+      get().setDraft(res.value.instruction)
+      get().setAttachments(res.value.context.attachments ?? [])
+      await get().refresh()
+      return true
+    },
+
+    resendEdited: async (turnId, instruction, options) => {
+      const api = bridge()
+      const sessionId = get().activeSessionId
+      if (!api?.turn?.revertAndResend || !sessionId || get().isStreaming) return false
+      set({ lastError: null })
+      const res = await api.turn.revertAndResend({
+        turnId,
         clientCommandId: crypto.randomUUID(),
-        instruction: label,
-        ...(modelSelection ? { modelSelection } : {}),
-        continuesTurnId: action.turnId,
-        pendingReply: { toolCallId: action.toolCallId, argsDigest: action.argsDigest, choice }
+        instruction,
+        context: options.context,
+        mode: options.mode,
+        ...(options.modelSelection ? { modelSelection: options.modelSelection } : {})
       })
       if (!res.ok) {
         set({ lastError: res.error.message })
-        await get().refresh()
         return false
       }
-      set({ pending: get().pending.filter((item) => item.toolCallId !== action.toolCallId) })
-      startStreaming(action.turnId)
+      // Main hid the turn and every turn after it before accepting the new one.
+      const from = get().turns.find((turn) => turn.id === turnId)
+      if (from) {
+        dropTurns(
+          get()
+            .turns.filter((turn) => turn.createdAt >= from.createdAt)
+            .map((turn) => turn.id)
+        )
+      }
+      startStreaming(res.value.turnId)
       await get().refresh()
       return true
     },
@@ -668,6 +827,8 @@ export const useAgentStore = create<AgentState>((set, get) => {
         mode: 'agent',
         permissionLevel: 'default',
         sessionApprovals: [],
+        editedChapters: [],
+        editConflicts: {},
         parts: [],
         toolCalls: {},
         toolCallDetails: {},

@@ -85,7 +85,7 @@ describe('AgentTranscript', () => {
     expect(tool).toBeGreaterThan(first)
     expect(last).toBeGreaterThan(tool)
     // The request is a right-aligned bubble.
-    expect(html).toContain('ml-auto max-w-[90%]')
+    expect(html).toContain('max-w-[90%] rounded-md')
     // The tool row opens with Enter/Space and says its state in words.
     expect(html).toContain('aria-expanded="false"')
     expect(html).toContain('(xong)')

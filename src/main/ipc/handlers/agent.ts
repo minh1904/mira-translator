@@ -7,6 +7,9 @@ import {
 import {
   agentCancelInputSchema,
   agentContextSearchInputSchema,
+  agentEditsInputSchema,
+  agentRevertAndResendInputSchema,
+  agentRevertInputSchema,
   agentSendInputSchema,
   agentSetPermissionLevelInputSchema,
   agentToolCallGetInputSchema,
@@ -14,8 +17,11 @@ import {
   agentWriteIntentAckSchema,
   type AgentCancelResult,
   type AgentContextSearchGroup,
+  type AgentEditsResult,
   type AgentOperation,
   type AgentOperationDetailView,
+  type AgentRevertResult,
+  type AgentSendInput,
   type AgentSendResult,
   type AgentSessionDetailView,
   type AgentSessionView,
@@ -25,6 +31,7 @@ import {
 import { CHANNELS, EVENT_CHANNELS } from '../../../shared/contracts/channels'
 import { idSchema } from '../../../shared/contracts/library'
 import { StorageError } from '../../infra/storage/errors'
+import type { ChangedText } from '../../services/agent/agentService'
 import { createHandler, createSinkHandler, sinkBroadcast } from '../handler'
 import { agentOf, tasksOf, type AreaHandlers, type HandlerDeps } from './deps'
 import {
@@ -63,7 +70,56 @@ const operationListSchema = v.strictObject({
   limit: v.pipe(v.number(), v.integer(), v.minValue(1), v.maxValue(500))
 })
 
+type Sink = Parameters<typeof sinkBroadcast>[0]
+
 export function agentHandlers(deps: HandlerDeps): AreaHandlers<'agent'> {
+  /** Accepts a turn and runs it in Main: closing the window that sent it does not cancel it (D8). */
+  const startTurn = (input: AgentSendInput, sink: Sink): AgentSendResult => {
+    const agent = agentOf(deps)
+    const accepted = agent.acceptTurn(input)
+    if (accepted.created) {
+      const windows = deps.windows ?? sinkBroadcast(sink)
+      setImmediate(() => {
+        void agent
+          .runExistingTurn({
+            sessionId: accepted.sessionId,
+            turnId: accepted.turnId,
+            requestId: accepted.requestId,
+            commandId: input.clientCommandId,
+            instruction: input.instruction,
+            context: input.context,
+            modelSelection: input.modelSelection,
+            onStream: (event) => windows.send(EVENT_CHANNELS.agentStreamEvent, event),
+            onWriteIntent: (intent) => windows.send(EVENT_CHANNELS.agentTargetWriteIntent, intent),
+            onTargetChanged: (event) => windows.send(EVENT_CHANNELS.agentTargetChanged, event)
+          })
+          .catch((error: unknown) => {
+            console.error(
+              'Agent runtime failed:',
+              error instanceof Error ? error.message : 'unknown'
+            )
+          })
+      })
+    }
+    return {
+      requestId: accepted.requestId,
+      turnId: accepted.turnId,
+      sessionId: accepted.sessionId
+    }
+  }
+
+  /** Open editors reload the chapter texts an undo rewrote. */
+  const announce = (changed: ChangedText[], sink: Sink): void => {
+    const windows = deps.windows ?? sinkBroadcast(sink)
+    for (const text of changed) {
+      windows.send(EVENT_CHANNELS.agentTargetChanged, {
+        target: { workId: text.workId, chapterId: text.chapterId, side: text.side },
+        lastAppliedRev: text.rev,
+        operationId: text.operationId
+      })
+    }
+  }
+
   return {
     [CHANNELS.agentSessionsList]: createHandler(
       sessionsListSchema,
@@ -94,40 +150,42 @@ export function agentHandlers(deps: HandlerDeps): AreaHandlers<'agent'> {
 
     [CHANNELS.agentTurnSend]: createSinkHandler(
       agentSendInputSchema,
-      (input, sink): AgentSendResult => {
+      (input, sink): AgentSendResult => startTurn(input, sink)
+    ),
+
+    [CHANNELS.agentTurnRevert]: createSinkHandler(
+      agentRevertInputSchema,
+      ({ turnId }, sink): AgentRevertResult => {
+        const { changed, ...result } = agentOf(deps).revertToTurn(turnId)
+        announce(changed, sink)
+        return result
+      }
+    ),
+
+    [CHANNELS.agentTurnRevertAndResend]: createSinkHandler(
+      agentRevertAndResendInputSchema,
+      ({ turnId, ...command }, sink): AgentSendResult => {
         const agent = agentOf(deps)
-        const accepted = agent.acceptTurn(input)
-        if (accepted.created) {
-          // The turn belongs to Main: closing the window that sent it does not cancel it (D8).
-          const windows = deps.windows ?? sinkBroadcast(sink)
-          setImmediate(() => {
-            void agent
-              .runExistingTurn({
-                sessionId: accepted.sessionId,
-                turnId: accepted.turnId,
-                requestId: accepted.requestId,
-                commandId: input.clientCommandId,
-                instruction: input.instruction,
-                context: input.context,
-                modelSelection: input.modelSelection,
-                onStream: (event) => windows.send(EVENT_CHANNELS.agentStreamEvent, event),
-                onWriteIntent: (intent) =>
-                  windows.send(EVENT_CHANNELS.agentTargetWriteIntent, intent),
-                onTargetChanged: (event) => windows.send(EVENT_CHANNELS.agentTargetChanged, event)
-              })
-              .catch((error: unknown) => {
-                console.error(
-                  'Agent runtime failed:',
-                  error instanceof Error ? error.message : 'unknown'
-                )
-              })
-          })
-        }
-        return {
-          requestId: accepted.requestId,
-          turnId: accepted.turnId,
-          sessionId: accepted.sessionId
-        }
+        const sessionId = agent.getTurn(turnId)?.sessionId
+        if (!sessionId) throw new StorageError('not_found', 'Không tìm thấy lượt agent.')
+        // A refused restore throws here, so nothing is sent.
+        const { changed } = agent.revertToTurn(turnId)
+        announce(changed, sink)
+        return startTurn({ ...command, sessionId }, sink)
+      }
+    ),
+
+    [CHANNELS.agentEditsKeep]: createHandler(
+      agentEditsInputSchema,
+      ({ sessionId, chapter }): AgentEditsResult => agentOf(deps).keepEdits(sessionId, chapter)
+    ),
+
+    [CHANNELS.agentEditsUndo]: createSinkHandler(
+      agentEditsInputSchema,
+      ({ sessionId, chapter }, sink): AgentEditsResult => {
+        const { changed, ...result } = agentOf(deps).undoEdits(sessionId, chapter)
+        announce(changed, sink)
+        return result
       }
     ),
 

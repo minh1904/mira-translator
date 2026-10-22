@@ -35,7 +35,7 @@ describe('library agent schema', () => {
 
     migrate(db, librarySchema)
 
-    expect(readPragmas(db).userVersion).toBe(16)
+    expect(readPragmas(db).userVersion).toBe(17)
     expect(db.prepare("SELECT title FROM work_index WHERE id = 'work'").get()).toEqual({
       title: 'A'
     })

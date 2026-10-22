@@ -401,7 +401,8 @@ export class AgentRepository {
     return this.db
       .prepare(
         `SELECT ${TURN_COLUMNS}
-         FROM agent_turn WHERE session_id = ? ORDER BY created_at ASC, id ASC`
+         FROM agent_turn WHERE session_id = ? AND reverted_at IS NULL
+         ORDER BY created_at ASC, id ASC`
       )
       .all<TurnRow>(sessionId)
       .map(turnFrom)
@@ -929,6 +930,53 @@ export class AgentRepository {
       )
       .all<ActivityRow>(sessionId)
       .map(activityFrom)
+  }
+
+  /**
+   * Chat writes of the session the user has neither kept nor undone, oldest first: the rows of the
+   * "N chapters edited" bar.
+   */
+  listUnkeptSessionOperations(sessionId: string): AgentOperation[] {
+    return this.db
+      .prepare(
+        `SELECT o.id, o.turn_id, o.task_item_id, o.command_id, o.capability, o.target_json, o.state, o.progress_json,
+                o.model_ref_json, o.usage_json, o.result_json, o.error_json, o.created_at, o.updated_at
+         FROM agent_operation o JOIN agent_turn t ON t.id = o.turn_id
+         WHERE t.session_id = ? AND o.kept_at IS NULL
+           AND o.state IN ('completed', 'partially_completed')
+         ORDER BY o.created_at ASC, o.id ASC`
+      )
+      .all<OperationRow>(sessionId)
+      .map(operationFrom)
+  }
+
+  /** Marks operations as kept: they leave the edited bar but stay undoable from the transcript. */
+  keepOperations(operationIds: string[], now: number): void {
+    const keep = this.db.prepare(
+      'UPDATE agent_operation SET kept_at = ?, updated_at = ? WHERE id = ? AND kept_at IS NULL'
+    )
+    this.transaction(() => {
+      for (const id of operationIds) keep.run(now, now, id)
+    })
+  }
+
+  /** Turns from `fromTurn` on that are not reverted yet, oldest first. */
+  listTurnsFrom(sessionId: string, fromTurn: AgentTurn): AgentTurn[] {
+    return this.listTurns(sessionId).filter(
+      (turn) =>
+        turn.createdAt > fromTurn.createdAt ||
+        (turn.createdAt === fromTurn.createdAt && turn.id >= fromTurn.id)
+    )
+  }
+
+  /** Hides turns from the transcript and the model's history; their rows stay for audit. */
+  markTurnsReverted(turnIds: string[], now: number): void {
+    const mark = this.db.prepare(
+      'UPDATE agent_turn SET reverted_at = ?, updated_at = ? WHERE id = ? AND reverted_at IS NULL'
+    )
+    this.transaction(() => {
+      for (const id of turnIds) mark.run(now, now, id)
+    })
   }
 
   listSessionOperations(sessionId: string): AgentOperation[] {

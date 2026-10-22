@@ -19,6 +19,8 @@ import type {
   AgentSessionView,
   AgentToolCallDetailView,
   AgentContextSearchGroup,
+  AgentEditsResult,
+  AgentRevertResult,
   AgentStreamEvent,
   AgentTargetChanged,
   AgentUndoResult,
@@ -559,7 +561,21 @@ const desktopApi: DesktopApi = {
     turn: {
       send: (input) =>
         ipcRenderer.invoke(CHANNELS.agentTurnSend, input) as Promise<Result<AgentSendResult>>,
-      cancel: (input) => ipcRenderer.invoke(CHANNELS.agentTurnCancel, input)
+      cancel: (input) => ipcRenderer.invoke(CHANNELS.agentTurnCancel, input),
+      revert: (turnId) =>
+        ipcRenderer.invoke(CHANNELS.agentTurnRevert, { turnId }) as Promise<
+          Result<AgentRevertResult>
+        >,
+      revertAndResend: (input) =>
+        ipcRenderer.invoke(CHANNELS.agentTurnRevertAndResend, input) as Promise<
+          Result<AgentSendResult>
+        >
+    },
+    edits: {
+      keep: (input) =>
+        ipcRenderer.invoke(CHANNELS.agentEditsKeep, input) as Promise<Result<AgentEditsResult>>,
+      undo: (input) =>
+        ipcRenderer.invoke(CHANNELS.agentEditsUndo, input) as Promise<Result<AgentEditsResult>>
     },
     toolCalls: {
       get: (toolCallId) =>

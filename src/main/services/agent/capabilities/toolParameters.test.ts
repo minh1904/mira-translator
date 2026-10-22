@@ -24,8 +24,12 @@ const chatCapabilities: CapabilityDefinition[] = [
 /** A valid and an invalid model payload per capability, both without `target`. */
 const samples: Record<string, { valid: unknown; invalid: unknown }> = {
   ask_questions: {
-    valid: { question: 'Bạn muốn chọn phong cách nào?', options: ['Thuần Việt', 'Convert'] },
-    invalid: { question: '', options: [] }
+    valid: {
+      questions: [
+        { id: 'style', title: 'Phong cách?', type: 'single', options: ['Thuần Việt', 'Convert'] }
+      ]
+    },
+    invalid: { questions: [{ id: 'style', title: 'Phong cách?', type: 'single', options: ['A'] }] }
   },
   run_subagent: {
     valid: { task: 'Tìm kiếm nhân vật', description: 'Tìm kiếm nhân vật' },

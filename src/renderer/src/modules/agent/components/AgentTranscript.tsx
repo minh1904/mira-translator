@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type JSX } from 'react'
 import type {
+  AgentAnsweredQuestion,
   AgentOperation,
   AgentPendingAction,
   AgentTurnView,
@@ -14,6 +15,7 @@ import { OperationCard } from './OperationCard'
 import { PendingActionCard } from './PendingActionCard'
 import { ThinkingPart } from './ThinkingPart'
 import { ToolCallRow } from './ToolCallRow'
+import { TurnRequest } from './TurnRequest'
 import { TurnFooter } from './TurnFooter'
 import { childCalls, turnItems, type TurnItem } from './turnItems'
 import { WorkingRow } from './WorkingRow'
@@ -31,6 +33,27 @@ function lastItemIsActive(items: TurnItem[]): boolean {
   if (last.kind === 'text' || last.kind === 'reasoning') return last.live
   if (last.kind === 'tool') return last.call.state === 'running'
   return false
+}
+
+/** What the user answered, at the place of the question in the answer (C18). */
+export function QuestionSummary({
+  answers
+}: {
+  answers: AgentAnsweredQuestion[] | 'skipped'
+}): JSX.Element {
+  if (answers === 'skipped') {
+    return <p className="m-0 px-1 text-body-xs text-muted">Đã bỏ qua câu hỏi</p>
+  }
+  return (
+    <dl className="m-0 flex flex-col gap-0.5 px-1 text-body-xs">
+      {answers.map((item) => (
+        <div key={item.id} className="flex flex-col">
+          <dt className="text-muted">H: {item.title}</dt>
+          <dd className="m-0 text-default">Đ: {item.answer}</dd>
+        </div>
+      ))}
+    </dl>
+  )
 }
 
 export interface AgentTranscriptProps {
@@ -105,8 +128,10 @@ export function AgentTranscript({ onOpenTarget, className }: AgentTranscriptProp
 
   const operationOf = (callId: string): AgentOperation[] =>
     Object.values(operations).filter((op) => op.commandId === `tool-${callId}`)
+  // Questions are answered on the card above the composer, not in the transcript.
+  const cards = pending.filter((item) => item.kind !== 'question')
   const pendingOf = (callId: string): AgentPendingAction[] =>
-    pending.filter((item) => item.toolCallId === callId)
+    cards.filter((item) => item.toolCallId === callId)
   const onReply = (item: AgentPendingAction, choice: string, label: string) =>
     reply(item, choice, label, model)
 
@@ -141,6 +166,7 @@ export function AgentTranscript({ onOpenTarget, className }: AgentTranscriptProp
           subagentCalls={childCalls(toolCalls, call.id)}
           details={details}
         />
+        {call.questionAnswers && <QuestionSummary answers={call.questionAnswers} />}
         {operationOf(call.id).map((operation) => (
           <OperationCard
             key={operation.id}
@@ -185,7 +211,7 @@ export function AgentTranscript({ onOpenTarget, className }: AgentTranscriptProp
             items.flatMap((item) => (item.kind === 'tool' ? [item.call.id] : []))
           )
           // A pending action whose call is not drawn yet still needs an answer.
-          const loose = pending.filter(
+          const loose = cards.filter(
             (item) => item.turnId === turn.id && !placed.has(item.toolCallId)
           )
           const waiting = turn.status === 'waiting_user'
@@ -199,11 +225,7 @@ export function AgentTranscript({ onOpenTarget, className }: AgentTranscriptProp
               aria-label={`Lượt: ${turn.instruction}`}
               className="flex flex-col gap-1.5"
             >
-              <div className="ml-auto max-w-[90%] rounded-md bg-muted px-2.5 py-1.5">
-                <p className="selectable m-0 whitespace-pre-wrap wrap-anywhere text-body-sm leading-normal text-default">
-                  {turn.instruction}
-                </p>
-              </div>
+              <TurnRequest turn={turn} first={turnIndex === 0} onOpenTarget={onOpenTarget} />
               {items.map((item, index) => renderItem(turn, item, index, items))}
               {loose.map((action) => (
                 <PendingActionCard key={action.toolCallId} action={action} onReply={onReply} />

@@ -547,6 +547,12 @@ CREATE INDEX agent_tool_call_parent ON agent_tool_call (parent_call_id)
   WHERE parent_call_id IS NOT NULL;
 `
 
+// Chương đã sửa được giữ, và lượt đã khôi phục về checkpoint (ẩn khỏi transcript và prompt).
+const version17 = `
+ALTER TABLE agent_operation ADD COLUMN kept_at INTEGER;
+ALTER TABLE agent_turn ADD COLUMN reverted_at INTEGER;
+`
+
 export const librarySchema: SchemaSpec = {
   applicationId: LIBRARY_APPLICATION_ID,
   migrations: [
@@ -645,6 +651,12 @@ export const librarySchema: SchemaSpec = {
       version: 16,
       up(db) {
         db.exec(version16)
+      }
+    },
+    {
+      version: 17,
+      up(db) {
+        db.exec(version17)
       }
     }
   ]

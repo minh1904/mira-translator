@@ -67,6 +67,7 @@ const activity = (patch: Partial<AgentActivity> = {}): AgentActivity => ({
 const detail = (patch: Partial<AgentSessionDetailView> = {}): AgentSessionDetailView => ({
   session,
   turns: [],
+  editedChapters: [],
   activities: [],
   operations: [],
   pending: [],

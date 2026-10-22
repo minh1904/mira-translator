@@ -4,7 +4,7 @@ import type { AgentStreamEvent } from '../../../shared/contracts/agent'
 import { validateAgentEventSequence } from '../../../shared/contracts/agent'
 import { ProviderError } from '../../infra/providers/types'
 import { callTools, say, setupAgent } from './agentTestKit'
-import { AgentService, MAX_MODEL_ROUNDS } from './agentService'
+import { AgentService, MAX_MODEL_ROUNDS, questionsOf } from './agentService'
 
 const recorder = () => {
   const events: AgentStreamEvent[] = []
@@ -463,47 +463,138 @@ describe('AgentService waiting_user and continuation', () => {
     expect(toolNames).toContain('resolve_target')
   })
 
-  it('prompts user with interactive question and continues with chosen answer', async () => {
+  it('asks two typed questions and sends the model their titles and answer labels', async () => {
     const { agent, model, modelSelection } = setupAgent()
     model.script(
       callTools({
         name: 'ask_questions',
         args: {
-          question: 'Bạn muốn dịch theo phong cách nào?',
-          options: ['Thuần Việt', 'Hán Việt / Convert']
+          questions: [
+            {
+              id: 'style',
+              title: 'Bạn muốn dịch theo phong cách nào?',
+              type: 'single',
+              options: ['Thuần Việt', 'Hán Việt / Convert'],
+              default: 'Thuần Việt',
+              allowFreeText: true
+            },
+            {
+              id: 'names',
+              title: 'Giữ tên Hán Việt cho ai?',
+              type: 'multi',
+              options: ['Lâm Động', 'Lâm Lang Thiên', 'Tiểu Điêu']
+            },
+            { id: 'note', title: 'Ghi chú thêm?', type: 'text', required: false }
+          ]
         }
       })
     )
-    const res = await agent.send({
-      instruction: 'dịch chương này',
-      modelSelection
-    })
+    const res = await agent.send({ instruction: 'dịch chương này', modelSelection })
     expect(res.status).toBe('waiting_user')
     const [pending] = agent.getSessionDetail(res.sessionId).pending
-    expect(pending).toMatchObject({
-      kind: 'question',
-      name: 'ask_questions',
-      label: 'Bạn muốn dịch theo phong cách nào?'
-    })
-    expect(pending.candidates).toEqual([
-      { handle: 'opt-1', label: 'Thuần Việt' },
-      { handle: 'opt-2', label: 'Hán Việt / Convert' }
-    ])
+    expect(pending).toMatchObject({ kind: 'question', allowSkip: true, candidates: [] })
+    expect(pending.questions!.map((q) => q.id)).toEqual(['style', 'names', 'note'])
 
-    model.script(say('Sẽ dịch theo phong cách Thuần Việt.'))
+    const reply = (answers: Record<string, string | string[]>) =>
+      agent.send({
+        continuesTurnId: res.turnId,
+        pendingReply: { toolCallId: pending.toolCallId, argsDigest: pending.argsDigest, answers },
+        instruction: 'Trả lời câu hỏi',
+        modelSelection
+      })
+    // A required question without an answer is refused and the turn keeps waiting.
+    await expect(reply({ style: 'Thuần Việt' })).rejects.toThrow('Giữ tên Hán Việt cho ai?')
+    await expect(reply({ style: 'Thuần Việt', names: ['Ai đó'] })).rejects.toThrow(
+      'không nằm trong các lựa chọn'
+    )
+    expect(agent.getTurn(res.turnId)?.status).toBe('waiting_user')
+
+    model.script((request) => {
+      const result = JSON.parse(request.messages.at(-1)!.content)
+      expect(result.value).toEqual({
+        answers: [
+          {
+            id: 'style',
+            title: 'Bạn muốn dịch theo phong cách nào?',
+            answer: 'Thuần Việt nhưng giữ tên riêng'
+          },
+          { id: 'names', title: 'Giữ tên Hán Việt cho ai?', answer: 'Lâm Động, Tiểu Điêu' }
+        ]
+      })
+      return say('Đã rõ.')
+    })
+    const resumed = await reply({
+      style: 'Thuần Việt nhưng giữ tên riêng',
+      names: ['Lâm Động', 'Tiểu Điêu']
+    })
+    expect(resumed.status).toBe('completed')
+    const view = agent.getSessionDetail(res.sessionId).toolCalls[0]
+    expect(view.questionAnswers).toHaveLength(2)
+  })
+
+  it('lets the user skip the questions unless the model turned skipping off', async () => {
+    const { agent, model, modelSelection } = setupAgent()
+    const ask = (allowSkip: boolean) =>
+      callTools({
+        name: 'ask_questions',
+        args: {
+          allowSkip,
+          questions: [{ id: 'q', title: 'Phong cách?', type: 'single', options: ['A', 'B'] }]
+        }
+      })
+    model.script(ask(false))
+    const locked = await agent.send({ instruction: 'dịch', modelSelection })
+    const [first] = agent.getSessionDetail(locked.sessionId).pending
+    await expect(
+      agent.send({
+        continuesTurnId: locked.turnId,
+        pendingReply: { toolCallId: first.toolCallId, argsDigest: first.argsDigest, skipped: true },
+        instruction: 'Bỏ qua',
+        modelSelection
+      })
+    ).rejects.toThrow('không cho bỏ qua')
+
+    model.script(ask(true))
+    const open = await agent.send({
+      sessionId: locked.sessionId,
+      instruction: 'dịch lại',
+      modelSelection
+    })
+    const [second] = agent.getSessionDetail(open.sessionId).pending
+    model.script((request) => {
+      expect(JSON.parse(request.messages.at(-1)!.content).value).toEqual({ skipped: true })
+      return say('Tôi sẽ tự chọn.')
+    })
     const resumed = await agent.send({
-      continuesTurnId: res.turnId,
-      pendingReply: {
-        toolCallId: pending.toolCallId,
-        argsDigest: pending.argsDigest,
-        choice: 'opt-1'
-      },
-      instruction: 'Thuần Việt',
+      continuesTurnId: open.turnId,
+      pendingReply: { toolCallId: second.toolCallId, argsDigest: second.argsDigest, skipped: true },
+      instruction: 'Bỏ qua',
       modelSelection
     })
     expect(resumed.status).toBe('completed')
-    expect(agent.getSessionDetail(res.sessionId).pending).toHaveLength(0)
-    expect(resumed.answer).toBe('Sẽ dịch theo phong cách Thuần Việt.')
+    expect(agent.getSessionDetail(open.sessionId).toolCalls.at(-1)?.questionAnswers).toBe('skipped')
+  })
+
+  it('refuses a choice question with more than nine options before waiting', async () => {
+    const { agent, model, modelSelection } = setupAgent()
+    const options = Array.from({ length: 12 }, (_, n) => 'Lựa chọn ' + (n + 1))
+    model.script(
+      callTools({
+        name: 'ask_questions',
+        args: { questions: [{ id: 'q', title: 'Chọn?', type: 'single', options }] }
+      }),
+      say('Tôi hỏi lại gọn hơn.')
+    )
+    const res = await agent.send({ instruction: 'dịch', modelSelection })
+    expect(res.status).toBe('completed')
+    expect(model.requests[1].messages.at(-1)!.content).toContain('"validation"')
+    expect(agent.listToolCalls(res.turnId)[0]).toMatchObject({ state: 'failed' })
+  })
+
+  it('reads a question stored in the old shape as one single-choice question', () => {
+    expect(questionsOf({ question: 'Phong cách?', options: ['A', 'B'] })).toEqual([
+      { id: 'q1', title: 'Phong cách?', type: 'single', options: ['A', 'B'], allowFreeText: false }
+    ])
   })
 
   it('keeps a waiting turn across shutdown and startup, then expires it on a new command', async () => {
@@ -548,7 +639,16 @@ describe('AgentService chat modes and permission levels', () => {
     ((request.tools ?? []) as Array<{ function: { name: string } }>).map((t) => t.function.name)
   const question = callTools({
     name: 'ask_questions',
-    args: { question: 'Phong cách nào?', options: ['Thuần Việt', 'Hán Việt'] }
+    args: {
+      questions: [
+        {
+          id: 'style',
+          title: 'Phong cách nào?',
+          type: 'single',
+          options: ['Thuần Việt', 'Hán Việt']
+        }
+      ]
+    }
   })
 
   it('keeps Ask on the turn after the user answers, so a write is still refused', async () => {
@@ -570,7 +670,7 @@ describe('AgentService chat modes and permission levels', () => {
       pendingReply: {
         toolCallId: pending.toolCallId,
         argsDigest: pending.argsDigest,
-        choice: 'opt-1'
+        answers: { style: 'Thuần Việt' }
       },
       instruction: 'Thuần Việt',
       modelSelection,
@@ -615,7 +715,7 @@ describe('AgentService chat modes and permission levels', () => {
       pendingReply: {
         toolCallId: pending.toolCallId,
         argsDigest: pending.argsDigest,
-        choice: 'opt-1'
+        answers: { style: 'Thuần Việt' }
       },
       instruction: 'Thuần Việt',
       modelSelection
@@ -678,7 +778,7 @@ describe('AgentService chat modes and permission levels', () => {
     expect(library.readText(work1.id, ch1_1.id, 'target').content).toContain('Dịch:')
   })
 
-  it('answers a question with its first option in Autopilot', async () => {
+  it('answers a question with its default, else its first option, in Autopilot', async () => {
     const { agent, model, modelSelection } = setupAgent()
     const sessionId = sessionAt(agent, 'autopilot')
     model.script(question, say('Tự động chọn Thuần Việt.'))
@@ -688,7 +788,10 @@ describe('AgentService chat modes and permission levels', () => {
     const asked = agent.listToolCalls(res.turnId)[0]
     expect(asked).toMatchObject({
       approval: 'level_autopilot',
-      result: { ok: true, value: { answer: 'Thuần Việt' } }
+      result: {
+        ok: true,
+        value: { answers: [{ id: 'style', answer: 'Thuần Việt' }], autoAnswered: true }
+      }
     })
   })
 

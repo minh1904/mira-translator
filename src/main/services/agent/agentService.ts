@@ -3,12 +3,19 @@ import * as v from 'valibot'
 import type {
   AgentActivity,
   AgentChatMode,
+  AgentAnsweredQuestion,
   AgentContext,
   AgentContextSearchGroup,
   AgentContextSearchInput,
+  AgentEditedChapter,
+  AgentEditsResult,
+  AgentRevertResult,
+  AgentUndoConflict,
   AgentOperation,
   AgentPendingAction,
   AgentPendingReply,
+  AgentQuestion,
+  AgentQuestionAnswers,
   AgentPermissionLevel,
   AgentResponsePart,
   AgentSessionDetailView,
@@ -23,8 +30,16 @@ import type {
   AgentWriteIntentAck,
   ResolvedTarget
 } from '../../../shared/contracts/agent'
+import {
+  answeredQuestions,
+  canTransitionOperation,
+  askQuestionsArgsSchema,
+  checkQuestionAnswers,
+  defaultAnswers
+} from '../../../shared/contracts/agent'
 import type { ModelRef } from '../../../shared/contracts/aiPreferences'
 import type { ContextStrategy } from '../../../shared/contracts/agentTask'
+import type { TextSide } from '../../../shared/contracts/text'
 import type { TokenUsage } from '../../../shared/contracts/usage'
 import { StorageError } from '../../infra/storage/errors'
 import { lookupModel, type ModelInfo } from '../../infra/providers/modelCatalog'
@@ -156,7 +171,55 @@ interface ToolCallResult {
   label?: string
   /** Pending choice of an ambiguous `resolve_target`. */
   candidates?: Array<{ handle: string; label: string; target: ResolvedTarget }>
-  reply?: { clientCommandId: string; instruction: string; choice: string }
+  reply?: { clientCommandId: string; instruction: string } & ReplyAnswer
+}
+
+/** The part of a reply that answers the call. */
+type ReplyAnswer = { choice: string } | { answers: AgentQuestionAnswers } | { skipped: true }
+
+function replyAnswer(reply: ReplyAnswer): ReplyAnswer {
+  if ('choice' in reply) return { choice: reply.choice }
+  if ('answers' in reply) return { answers: reply.answers }
+  return { skipped: true }
+}
+
+/**
+ * The questions of an `ask_questions` call. A call stored before questions had types asked one
+ * `{ question, options }`, read here as a single-choice question.
+ */
+export function questionsOf(args: unknown): AgentQuestion[] {
+  const parsed = v.safeParse(askQuestionsArgsSchema, args)
+  if (parsed.success) return parsed.output.questions
+  const legacy = (args ?? {}) as { question?: unknown; options?: unknown }
+  const options = Array.isArray(legacy.options) ? legacy.options.map(String) : []
+  return [
+    {
+      id: 'q1',
+      title: String(legacy.question ?? ''),
+      type: 'single',
+      options,
+      allowFreeText: options.length < 2
+    }
+  ]
+}
+
+function allowsSkip(args: unknown): boolean {
+  return (args as { allowSkip?: unknown } | null)?.allowSkip !== false
+}
+
+/** What the model receives for answered or skipped questions. */
+function questionResult(
+  questions: AgentQuestion[],
+  answer: ReplyAnswer,
+  autoAnswered = false
+): { answers: AgentAnsweredQuestion[]; autoAnswered?: true } | { skipped: true } {
+  if ('skipped' in answer) return { skipped: true }
+  if (!('answers' in answer))
+    throw new StorageError('validation', 'Câu hỏi cần đáp án hoặc bỏ qua.')
+  return {
+    answers: answeredQuestions(questions, answer.answers),
+    ...(autoAnswered ? { autoAnswered: true as const } : {})
+  }
 }
 
 /** Ends a turn as `failed` without another model call (loop, read/write budget, persistence). */
@@ -270,6 +333,22 @@ function summarizeResult(result: ToolCallResult | null): string | null {
   return text.length > SUMMARY_CHARS ? text.slice(0, SUMMARY_CHARS - 1) + '…' : text
 }
 
+/** The answers an `ask_questions` call returned, for the transcript's summary line. */
+function questionAnswersOf(row: AgentToolCall): Pick<AgentToolCallView, 'questionAnswers'> {
+  if (row.name !== ASK_QUESTIONS || row.state !== 'completed') return {}
+  const value = (row.result as ToolCallResult | null)?.value as
+    | { answers?: AgentAnsweredQuestion[]; skipped?: boolean; answer?: string }
+    | undefined
+  if (value?.skipped) return { questionAnswers: 'skipped' }
+  if (Array.isArray(value?.answers)) return { questionAnswers: value.answers }
+  // Answered before questions had types: one question, one answer.
+  if (typeof value?.answer === 'string') {
+    const [question] = questionsOf(row.args)
+    return { questionAnswers: [{ id: 'q1', title: question?.title ?? '', answer: value.answer }] }
+  }
+  return {}
+}
+
 /** Working time a subagent call stored in its result. */
 function durationOf(result: ToolCallResult | null): number | null {
   const value = result?.value as { durationMs?: unknown } | undefined
@@ -310,6 +389,7 @@ export function toolCallViewOf(row: AgentToolCall): AgentToolCallView {
     summary: state === 'completed' ? summarizeResult(result) : null,
     reason,
     durationMs: durationOf(result),
+    ...questionAnswersOf(row),
     createdAt: row.createdAt
   }
 }
@@ -405,6 +485,24 @@ function describeTarget(target: ResolvedTarget): string {
   const label = targetLabel(target)
   if (target.kind !== 'chapter' || !target.range) return label
   return `${label}, đoạn ${target.range.from}–${target.range.to} bản ${sideLabel(target.side ?? 'source')}`
+}
+
+/** Operations that wrote one chapter side, undone together. */
+interface UndoChain {
+  workId: string
+  chapterId: string
+  side: TextSide
+  chapterLabel: string
+  operationIds: string[]
+}
+
+/** A chapter text an undo rewrote, so open editors reload it. */
+export interface ChangedText {
+  workId: string
+  chapterId: string
+  side: TextSide
+  rev: number
+  operationId: string
 }
 
 /** The works and chapters of a turn's context, each with its handle. */
@@ -536,8 +634,188 @@ export class AgentService {
       pending: this.repository.listSessionPendingToolCalls(sessionId).map(pendingActionOf),
       sessionApprovals: this.repository.listSessionApprovals(sessionId),
       parts: this.sessionParts(sessionId, turns, toolCalls),
-      toolCalls: toolCalls.map(toolCallViewOf)
+      toolCalls: toolCalls.map(toolCallViewOf),
+      editedChapters: this.editedChapters(sessionId)
     }
+  }
+
+  /** Rows of the edited bar: unkept chat writes grouped by chapter, in the order first written. */
+  editedChapters(sessionId: string): AgentEditedChapter[] {
+    const rows = new Map<string, AgentEditedChapter>()
+    for (const operation of this.repository.listUnkeptSessionOperations(sessionId)) {
+      const target = operation.target
+      if (target.kind !== 'chapter') continue
+      const key = target.workId + ':' + target.chapterId
+      const row = rows.get(key) ?? {
+        workId: target.workId,
+        chapterId: target.chapterId,
+        workLabel: target.workLabel,
+        chapterLabel: target.chapterLabel,
+        operationIds: [],
+        units: 0
+      }
+      row.operationIds.push(operation.id)
+      row.units += operation.progress?.completed ?? 0
+      rows.set(key, row)
+    }
+    return [...rows.values()]
+  }
+
+  private editedRows(sessionId: string, chapter?: { workId: string; chapterId: string }) {
+    return this.editedChapters(sessionId).filter(
+      (row) => !chapter || (row.workId === chapter.workId && row.chapterId === chapter.chapterId)
+    )
+  }
+
+  /** Keeps one chapter's writes, or every row: they leave the bar and the text stays as it is. */
+  keepEdits(sessionId: string, chapter?: { workId: string; chapterId: string }): AgentEditsResult {
+    const ids = this.editedRows(sessionId, chapter).flatMap((row) => row.operationIds)
+    this.repository.keepOperations(ids, this.now())
+    return { editedChapters: this.editedChapters(sessionId), conflicts: [] }
+  }
+
+  /**
+   * Undoes one chapter's writes, or every row's, newest first. A chapter whose text changed after an
+   * operation stops there: what came before stays and the row reports the conflict.
+   */
+  undoEdits(
+    sessionId: string,
+    chapter?: { workId: string; chapterId: string }
+  ): AgentEditsResult & { changed: ChangedText[] } {
+    const conflicts: AgentUndoConflict[] = []
+    const changed: ChangedText[] = []
+    for (const row of this.editedRows(sessionId, chapter)) {
+      const outcome = this.undoChains(this.chainsOf(row.operationIds))
+      changed.push(...outcome.changed)
+      if (outcome.conflict) {
+        conflicts.push({
+          workId: row.workId,
+          chapterId: row.chapterId,
+          chapterLabel: row.chapterLabel,
+          message: outcome.conflict
+        })
+      }
+    }
+    return { editedChapters: this.editedChapters(sessionId), conflicts, changed }
+  }
+
+  /**
+   * Restores the session to before `turnId`: undoes every write of that turn and the turns after it,
+   * then hides those turns from the transcript and the model's history. All or nothing: if one chapter
+   * changed after the agent wrote it, nothing is undone or hidden. Durable tasks keep running.
+   */
+  revertToTurn(turnId: string): AgentRevertResult & { changed: ChangedText[] } {
+    const turn = this.repository.getTurn(turnId)
+    if (!turn) throw new StorageError('not_found', 'Không tìm thấy lượt agent.')
+    const turns = this.repository.listTurnsFrom(turn.sessionId, turn)
+    if (!turns.some((item) => item.id === turn.id)) {
+      throw new StorageError('conflict', 'Lượt này đã được khôi phục trước đó.')
+    }
+    if (
+      this.repository
+        .listTurns(turn.sessionId)
+        .some((item) => item.status === 'queued' || item.status === 'running')
+    ) {
+      throw new StorageError(
+        'conflict',
+        'Phiên đang chạy một lượt; dừng lượt đó trước khi khôi phục.'
+      )
+    }
+    const turnIds = new Set(turns.map((item) => item.id))
+    const operationIds = this.repository
+      .listSessionOperations(turn.sessionId)
+      .filter((op) => op.turnId !== null && turnIds.has(op.turnId) && op.state !== 'undone')
+      .map((op) => op.id)
+    const chains = this.chainsOf(operationIds)
+
+    // Check every chapter before changing any of them.
+    const blocked = chains.flatMap((chain) => {
+      const dry = this.library.undoAgentOperationChain(chain.workId, chain, chain.operationIds, {
+        dryRun: true
+      })
+      return dry.conflict ? [chain.chapterLabel] : []
+    })
+    if (blocked.length > 0) {
+      throw new StorageError(
+        'conflict',
+        `Không khôi phục được: ${blocked.map((label) => `"${label}"`).join(', ')} đã được sửa sau khi agent ghi. Không có gì thay đổi.`
+      )
+    }
+
+    const now = this.now()
+    for (const item of turns) {
+      if (item.status === 'waiting_user')
+        this.repository.settleWaitingTurn(item.id, 'cancelled', now)
+    }
+    const outcome = this.undoChains(chains)
+    if (outcome.conflict) {
+      // The text changed between the check and the undo; the revision guard stopped it.
+      throw new StorageError('conflict', outcome.conflict)
+    }
+    this.repository.markTurnsReverted([...turnIds], now)
+    return {
+      revertedTurnIds: [...turnIds],
+      instruction: turn.instruction,
+      context: turn.context,
+      changed: outcome.changed
+    }
+  }
+
+  /** Operations grouped by the chapter side they wrote, from their checkpoints. */
+  private chainsOf(operationIds: string[]): UndoChain[] {
+    const chains = new Map<string, UndoChain>()
+    for (const id of operationIds) {
+      const operation = this.repository.getOperation(id)
+      if (operation?.target.kind !== 'chapter') continue
+      const evidence = this.library.readAgentOperationEvidence(operation.target.workId, id)
+      if (!evidence) continue
+      const { chapterId, side } = evidence.checkpoint
+      const key = `${operation.target.workId}:${chapterId}:${side}`
+      const chain = chains.get(key) ?? {
+        workId: operation.target.workId,
+        chapterId,
+        side,
+        chapterLabel: operation.target.chapterLabel,
+        operationIds: []
+      }
+      chain.operationIds.push(id)
+      chains.set(key, chain)
+    }
+    return [...chains.values()]
+  }
+
+  private undoChains(chains: UndoChain[]): { changed: ChangedText[]; conflict: string | null } {
+    const changed: ChangedText[] = []
+    let conflict: string | null = null
+    for (const chain of chains) {
+      const result = this.library.undoAgentOperationChain(chain.workId, chain, chain.operationIds)
+      const now = this.now()
+      for (const id of result.undone) {
+        const operation = this.repository.getOperation(id)
+        if (operation && canTransitionOperation(operation.state, 'undone', true)) {
+          const previous =
+            operation.result !== null && typeof operation.result === 'object'
+              ? operation.result
+              : { previousResult: operation.result }
+          this.repository.transitionOperation(id, 'undone', {
+            now,
+            hasChanges: true,
+            result: { ...previous, restoredRev: result.restoredRev }
+          })
+        }
+      }
+      if (result.undone.length > 0) {
+        changed.push({
+          workId: chain.workId,
+          chapterId: chain.chapterId,
+          side: chain.side,
+          rev: result.restoredRev,
+          operationId: result.undone[0]!
+        })
+      }
+      if (result.conflict && !conflict) conflict = result.conflict.message
+    }
+    return { changed, conflict }
   }
 
   /** Stored parts, plus parts rebuilt for turns that predate them. */
@@ -739,8 +1017,9 @@ export class AgentService {
         turnId: turn.id
       }
       const previous = (call.result as ToolCallResult | null)?.reply
+      const answer = replyAnswer(input.reply)
       if (previous?.clientCommandId === input.clientCommandId) {
-        if (previous.choice !== input.reply.choice) {
+        if (JSON.stringify(replyAnswer(previous)) !== JSON.stringify(answer)) {
           throw new StorageError('conflict', 'Mã lệnh đã được dùng với nội dung khác.')
         }
         return { ...accepted, created: false }
@@ -757,10 +1036,34 @@ export class AgentService {
       const reply = {
         clientCommandId: input.clientCommandId,
         instruction: input.instruction,
-        choice: input.reply.choice
+        ...answer
       }
+      if (call.name === ASK_QUESTIONS) {
+        const questions = questionsOf(call.args)
+        // A refused answer leaves the call and the turn waiting.
+        const invalid =
+          'choice' in answer
+            ? 'Câu hỏi cần đáp án hoặc bỏ qua.'
+            : 'skipped' in answer
+              ? allowsSkip(call.args)
+                ? null
+                : 'Câu hỏi này không cho bỏ qua.'
+              : checkQuestionAnswers(questions, answer.answers)
+        if (invalid) throw new StorageError('validation', invalid)
+        this.repository.updateToolCall(call.id, 'completed', {
+          ok: true,
+          value: questionResult(questions, answer),
+          reply
+        } satisfies ToolCallResult)
+        this.repository.transitionTurn(turn.id, 'running', this.now())
+        return { ...accepted, created: true }
+      }
+      if (!('choice' in answer)) {
+        throw new StorageError('validation', 'Chỉ câu hỏi mới nhận đáp án hoặc bỏ qua.')
+      }
+      const choice = answer.choice
       if (call.name === RESOLVE_TARGET) {
-        const chosen = pending.candidates?.find((item) => item.handle === input.reply.choice)
+        const chosen = pending.candidates?.find((item) => item.handle === choice)
         if (!chosen) throw new StorageError('validation', 'Lựa chọn không nằm trong các ứng viên.')
         this.repository.updateToolCall(call.id, 'completed', {
           ok: true,
@@ -768,23 +1071,15 @@ export class AgentService {
           targets: { [chosen.handle]: chosen.target },
           reply
         } satisfies ToolCallResult)
-      } else if (call.name === ASK_QUESTIONS) {
-        const chosen = pending.candidates?.find((item) => item.handle === input.reply.choice)
-        const choiceText = chosen ? chosen.label : input.reply.choice
-        this.repository.updateToolCall(call.id, 'completed', {
-          ok: true,
-          value: { answer: choiceText },
-          reply
-        } satisfies ToolCallResult)
-      } else if (input.reply.choice === 'reject') {
+      } else if (choice === 'reject') {
         this.repository.updateToolCall(call.id, 'failed', {
           ok: false,
           error: { code: 'rejected', message: 'Người dùng không duyệt thao tác này.' },
           reply
         } satisfies ToolCallResult)
-      } else if (input.reply.choice === 'approve') {
+      } else if (choice === 'approve') {
         this.repository.updateToolCall(call.id, 'pending', { ...pending, reply }, 'user_once')
-      } else if (input.reply.choice === 'approve_session') {
+      } else if (choice === 'approve_session') {
         this.repository.updateToolCall(call.id, 'pending', { ...pending, reply }, 'user_session')
         this.repository.addSessionApproval(turn.sessionId, call.name, this.now())
       } else {
@@ -1063,15 +1358,12 @@ export class AgentService {
 
         if (row.name === ASK_QUESTIONS) {
           // Only Autopilot runs a question; otherwise the call waits for the user's answer.
-          const options = Array.isArray(args.options) ? (args.options as string[]) : []
+          const questions = questionsOf(args)
           return {
             state: 'completed',
             result: {
               ok: true,
-              value: {
-                answer: options[0] ?? 'Tự quyết định',
-                note: 'Người dùng đang ở chế độ Autopilot; đã tự động chọn phương án đầu tiên.'
-              }
+              value: questionResult(questions, { answers: defaultAnswers(questions) }, true)
             }
           }
         }
@@ -1782,21 +2074,12 @@ export class AgentService {
         }
       }
       if (call.name === ASK_QUESTIONS) {
-        const question = String(args.question ?? '')
-        const options = Array.isArray(args.options) ? (args.options as string[]) : []
-        const candidates = options.map((label, index) => ({
-          handle: `opt-${index + 1}`,
-          label,
-          target: undefined as unknown as ResolvedTarget
-        }))
+        const questions = questionsOf(args)
         return {
           ...base,
           decision: 'needs_user',
           state: 'pending',
-          result: {
-            label: question,
-            candidates
-          }
+          result: { label: questions[0]?.title ?? 'Câu hỏi' }
         }
       }
       const target = typeof args.target === 'string' ? handles.get(args.target) : undefined
@@ -2228,6 +2511,9 @@ function pendingActionOf(row: AgentToolCall): AgentPendingAction {
     kind,
     label: result.label ?? row.name,
     candidates: (result.candidates ?? []).map(({ handle, label }) => ({ handle, label })),
+    ...(kind === 'question'
+      ? { questions: questionsOf(row.args), allowSkip: allowsSkip(row.args) }
+      : {}),
     createdAt: row.createdAt
   }
 }

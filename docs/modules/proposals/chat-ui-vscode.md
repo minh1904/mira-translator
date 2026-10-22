@@ -187,7 +187,7 @@ Yêu cầu được tách thành bốn change, apply theo thứ tự (mỗi chan
 | 1 | [`fix-agent-chat-permissions`](../../../openspec/changes/fix-agent-chat-permissions/proposal.md) | C22: chế độ trên turn, ba mức quyền, cổng rủi ro Autopilot, duyệt trong phiên; sửa lỗi 1–2 | Đã triển khai 2026-10-22, chưa archive |
 | 2 | [`add-agent-response-parts`](../../../openspec/changes/add-agent-response-parts/proposal.md) | Nền 1–3, 5; C9–C17, C19, C21 | Đã triển khai 2026-10-22, chưa archive |
 | 3 | [`add-agent-composer-context`](../../../openspec/changes/add-agent-composer-context/proposal.md) | Nền 4; C1–C8 | Đã triển khai 2026-10-22, chưa archive |
-| 4 | [`add-agent-questions-and-checkpoints`](../../../openspec/changes/add-agent-questions-and-checkpoints/proposal.md) | C18, C20, C24 | Đã đặc tả, chưa làm |
+| 4 | [`add-agent-questions-and-checkpoints`](../../../openspec/changes/add-agent-questions-and-checkpoints/proposal.md) | C18, C20, C24 | Đã triển khai 2026-10-22, chưa archive |
 
 Ghi chú về phạm vi đặc tả so với yêu cầu: không stream tham số tool (provider trả tool call nguyên khối), không có gợi ý
 tiếp theo do model sinh (xóa bản gõ cứng), không có Làm lại sau checkpoint, thanh chương đã sửa mở chương chứ chưa mở diff.
@@ -210,13 +210,13 @@ Bảng ban đầu ghi theo commit `d209122`; các dòng được cập nhật kh
 | C14 | Đạt | Cao tối đa 200px, tiêu đề tiếng Việt có tiêu đề in đậm và thời lượng; suy nghĩ được lưu theo vòng |
 | C15–C16 | Đạt | Dòng tool có icon và nhãn trạng thái, "Đang …"/"Đã …"; mở xem Đầu vào/Kết quả (đọc khi mở); call bị từ chối hiện lý do |
 | C17 | Một phần | Thẻ duyệt nằm ngay sau dòng tool của nó, có phím tắt (change 1); chưa có phần Đầu vào trong thẻ, xem bằng cách mở dòng tool |
-| C18 | Một phần | Chỉ chọn một; không có mặc định, nhập tự do, bỏ qua; thẻ nằm trong luồng chứ không trên ô nhập |
+| C18 | Đạt | `ask_questions` nhận 1–5 câu chọn một, chọn nhiều hoặc nhập chữ, có mặc định, nhập tự do, bắt buộc và `allowSkip`; thẻ phía trên ô nhập với bước i/n, phím 1–9, Ctrl+Enter, Bỏ qua tất cả, thu gọn; dòng H/Đ hoặc "Đã bỏ qua câu hỏi" tại vị trí call; Autopilot trả lời bằng mặc định |
 | C19 | Đạt | Tool con lưu dưới call cha, có ngân sách riêng 4/10/60.000; dòng subagent mở ra thấy tool con, có thời gian làm |
-| C20 | Một phần | Thẻ operation (Dừng, tiến độ, Mở đích, Hoàn tác) nằm ngay sau dòng tool tạo ra nó; thanh "Đã sửa N chương" thuộc change 4 |
+| C20 | Đạt | Thẻ operation nằm sau dòng tool tạo ra nó; thanh "Đã sửa N chương" phía trên ô nhập (library v17 `agent_operation.kept_at`) có Xem, Giữ, Hoàn tác từng chương và cho tất cả, còn sau khi mở lại app. Hoàn tác nhiều lần ghi trên một chương đi ngược theo chuỗi revision và dừng ở chỗ người dùng đã sửa tay |
 | C21 | Một phần | Sao chép, Thử lại (lượt cuối), tên model, usage, khối lỗi, nhãn Đã dừng. Chưa có gợi ý tiếp theo (xóa bản gõ cứng) |
 | C22 | Đạt (sau `fix-agent-chat-permissions`) | Chế độ lưu trên turn; ba mức quyền thuộc session, chọn ở thanh dưới ô nhập, xác nhận khi nâng; Autopilot bỏ qua tạo task và ghi vào đích không nêu; thẻ duyệt có Cho phép trong phiên này / Cho phép một lần / Bỏ qua |
 | C23 | Đạt phần lớn | |
-| C24 | Chưa đạt | |
+| C24 | Đạt (không có Làm lại) | "Khôi phục checkpoint" / "Bắt đầu lại" phía trên mỗi lệnh: kiểm tra trước mọi chương, tất cả hoặc không, ẩn lượt (`agent_turn.reverted_at`) khỏi transcript và lịch sử model, đặt lệnh về ô nhập; task bền không bị hủy. Bấm bong bóng để sửa tại chỗ, gửi là khôi phục rồi gửi lệnh mới, có xác nhận "Hoàn tác thay đổi ở {n} chương?" với Không hỏi lại. Không có Làm lại vì journal chưa có redo |
 
 ## Đánh giá code 2026-10-22
 

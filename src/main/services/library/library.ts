@@ -45,7 +45,9 @@ import {
   markAgentOperationTerminal,
   prepareAgentOperation,
   readAgentOperationEvidence,
-  undoAgentOperation
+  undoAgentOperation,
+  undoAgentOperationChain,
+  type AgentUndoChainResult
 } from '../../infra/storage/agentOperationJournal'
 import { decodeCover, encodeCover } from '../../infra/storage/cover'
 import { decodeImage, encodeImage } from '../../infra/storage/image'
@@ -338,6 +340,35 @@ export class LibraryStore {
       return this.changeChapters(workId, (db, now) =>
         undoAgentOperation(db, operationId, now, this.newContentId)
       )
+    } finally {
+      release()
+    }
+  }
+
+  /**
+   * Undoes operations that wrote one chapter side, newest first, under one write lease; a dry run only
+   * reports what would be undone and where the chain stops.
+   */
+  undoAgentOperationChain(
+    workId: string,
+    target: { chapterId: string; side: TextSide },
+    operationIds: string[],
+    options: { dryRun?: boolean } = {}
+  ): AgentUndoChainResult {
+    if (options.dryRun) {
+      return this.files.withWork(workId, (db) =>
+        undoAgentOperationChain(db, operationIds, this.now(), this.newContentId, options)
+      )
+    }
+    const release = this.acquireTargetWriteLease(
+      { workId, chapterId: target.chapterId, side: target.side },
+      'undo:' + operationIds.join(',')
+    )
+    try {
+      const { work: _work, ...result } = this.changeChapters(workId, (db, now) =>
+        undoAgentOperationChain(db, operationIds, now, this.newContentId)
+      )
+      return result
     } finally {
       release()
     }

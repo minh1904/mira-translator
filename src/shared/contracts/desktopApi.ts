@@ -22,6 +22,10 @@ import type {
   AgentSessionView,
   AgentToolCallDetailView,
   AgentContextSearchGroup,
+  AgentEditsInput,
+  AgentEditsResult,
+  AgentRevertAndResendInput,
+  AgentRevertResult,
   AgentContextSearchInput,
   AgentSetPermissionLevelInput,
   AgentStreamEvent,
@@ -494,6 +498,16 @@ export interface AgentApi {
   turn: {
     send(input: AgentSendInput): Promise<Result<AgentSendResult>>
     cancel(input: AgentCancelInput): Promise<Result<AgentCancelResult>>
+    /** Restores the checkpoint before a turn: undoes its writes and the later turns', hides them. */
+    revert(turnId: string): Promise<Result<AgentRevertResult>>
+    /** Restores the checkpoint before a turn, then sends the edited command as a new turn. */
+    revertAndResend(input: AgentRevertAndResendInput): Promise<Result<AgentSendResult>>
+  }
+  edits: {
+    /** Keeps one chapter of the edited bar, or every row without `chapter`. */
+    keep(input: AgentEditsInput): Promise<Result<AgentEditsResult>>
+    /** Undoes one chapter of the edited bar, or every row without `chapter`. */
+    undo(input: AgentEditsInput): Promise<Result<AgentEditsResult>>
   }
   toolCalls: {
     /** One stored call with its full result, read when the transcript opens it. */

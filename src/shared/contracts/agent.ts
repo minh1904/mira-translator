@@ -280,6 +280,8 @@ export interface AgentToolCallView {
   reason: string | null
   /** How long a subagent call worked, when it reported it. */
   durationMs: number | null
+  /** What the user answered to `ask_questions`, or `skipped`; only on an answered question call. */
+  questionAnswers?: AgentAnsweredQuestion[] | 'skipped'
   createdAt: number
 }
 
@@ -420,7 +422,152 @@ export interface AgentTurnView {
   updatedAt: number
 }
 
-/** A tool call that waits for the user: a write needing approval or an ambiguous target. */
+export const AGENT_QUESTION_TYPES = ['single', 'multi', 'text'] as const
+export type AgentQuestionType = (typeof AGENT_QUESTION_TYPES)[number]
+
+/** Most questions in one `ask_questions` call, and options of one question. */
+export const AGENT_QUESTION_LIMIT = 5
+export const AGENT_OPTION_LIMIT = 9
+
+/** One question of an `ask_questions` call. Options are labels; answers are labels or free text. */
+export interface AgentQuestion {
+  id: string
+  title: string
+  description?: string
+  type: AgentQuestionType
+  options?: string[]
+  /** Label (or labels for `multi`) chosen before the user answers; Autopilot answers with it. */
+  default?: string | string[]
+  /** Whether the user may type an answer instead of picking an option. */
+  allowFreeText?: boolean
+  /** Required unless `false`. */
+  required?: boolean
+}
+
+const questionTextSchema = v.pipe(v.string(), v.trim(), v.minLength(1), v.maxLength(500))
+
+export const agentQuestionSchema = v.pipe(
+  v.object({
+    id: v.pipe(v.string(), v.trim(), v.minLength(1), v.maxLength(64)),
+    title: questionTextSchema,
+    description: v.optional(v.pipe(v.string(), v.maxLength(1000))),
+    type: v.picklist(AGENT_QUESTION_TYPES),
+    options: v.optional(v.array(questionTextSchema)),
+    default: v.optional(v.union([v.string(), v.array(v.string())])),
+    allowFreeText: v.optional(v.boolean()),
+    required: v.optional(v.boolean())
+  }),
+  v.check(
+    (q) =>
+      q.type === 'text' ||
+      (q.options !== undefined && q.options.length >= 2 && q.options.length <= AGENT_OPTION_LIMIT),
+    `Câu chọn một hoặc chọn nhiều cần 2–${AGENT_OPTION_LIMIT} lựa chọn.`
+  ),
+  v.check(
+    (q) => q.options === undefined || new Set(q.options).size === q.options.length,
+    'Các lựa chọn của một câu không được trùng nhau.'
+  ),
+  v.check((q) => {
+    if (q.default === undefined) return true
+    if (q.type === 'multi') {
+      const values = Array.isArray(q.default) ? q.default : [q.default]
+      return values.every((value) => q.allowFreeText || q.options?.includes(value))
+    }
+    if (Array.isArray(q.default)) return false
+    return q.type === 'text' || q.allowFreeText === true || q.options?.includes(q.default) === true
+  }, 'Đáp án mặc định phải là một lựa chọn của câu.')
+)
+
+export const askQuestionsArgsSchema = v.pipe(
+  v.object({
+    questions: v.pipe(
+      v.array(agentQuestionSchema),
+      v.minLength(1, 'Cần ít nhất 1 câu hỏi.'),
+      v.maxLength(AGENT_QUESTION_LIMIT, `Tối đa ${AGENT_QUESTION_LIMIT} câu hỏi một lần.`)
+    ),
+    allowSkip: v.optional(v.boolean())
+  }),
+  v.check(
+    (input) => new Set(input.questions.map((q) => q.id)).size === input.questions.length,
+    'ID câu hỏi không được trùng nhau.'
+  )
+)
+
+/** Answers by question id: a label or text for `single`/`text`, labels for `multi`. */
+export type AgentQuestionAnswers = Record<string, string | string[]>
+
+/** What the transcript and the model see of one answered question. */
+export interface AgentAnsweredQuestion {
+  id: string
+  title: string
+  answer: string
+}
+
+function isEmptyAnswer(answer: string | string[] | undefined): boolean {
+  return (
+    answer === undefined || (Array.isArray(answer) ? answer.length === 0 : answer.trim() === '')
+  )
+}
+
+/**
+ * Why answers do not fit their questions, or null when they do: a required question without an
+ * answer, an answer of the wrong shape, or a label outside the options when free text is off.
+ */
+export function checkQuestionAnswers(
+  questions: AgentQuestion[],
+  answers: AgentQuestionAnswers
+): string | null {
+  for (const id of Object.keys(answers)) {
+    if (!questions.some((q) => q.id === id)) return `Không có câu hỏi "${id}".`
+  }
+  for (const q of questions) {
+    const answer = answers[q.id]
+    if (isEmptyAnswer(answer)) {
+      if (q.required !== false) return `Câu "${q.title}" cần trả lời.`
+      continue
+    }
+    if ((q.type === 'multi') !== Array.isArray(answer)) {
+      return `Câu "${q.title}" cần ${q.type === 'multi' ? 'danh sách lựa chọn' : 'một câu trả lời'}.`
+    }
+    if (q.type === 'text' || q.allowFreeText) continue
+    const values = Array.isArray(answer) ? answer : [answer!]
+    if (values.some((value) => !q.options?.includes(value))) {
+      return `Câu trả lời của "${q.title}" không nằm trong các lựa chọn.`
+    }
+  }
+  return null
+}
+
+/** Answers in question order, as the model receives them; unanswered optional questions are left out. */
+export function answeredQuestions(
+  questions: AgentQuestion[],
+  answers: AgentQuestionAnswers
+): AgentAnsweredQuestion[] {
+  return questions
+    .filter((q) => !isEmptyAnswer(answers[q.id]))
+    .map((q) => {
+      const answer = answers[q.id]!
+      return {
+        id: q.id,
+        title: q.title,
+        answer: Array.isArray(answer) ? answer.join(', ') : answer
+      }
+    })
+}
+
+/** The answer Autopilot gives: the default, else the first option. */
+export function defaultAnswers(questions: AgentQuestion[]): AgentQuestionAnswers {
+  const answers: AgentQuestionAnswers = {}
+  for (const q of questions) {
+    if (q.default !== undefined) answers[q.id] = q.default
+    else if (q.options?.[0] !== undefined)
+      answers[q.id] = q.type === 'multi' ? [q.options[0]] : q.options[0]
+    else answers[q.id] = 'Tự quyết định'
+  }
+  return answers
+}
+
+/** A tool call that waits for the user: a write needing approval, an ambiguous target or questions. */
 export interface AgentPendingAction {
   turnId: string
   toolCallId: string
@@ -428,7 +575,12 @@ export interface AgentPendingAction {
   name: string
   kind: 'approve' | 'choose' | 'question'
   label: string
+  /** Targets to choose from (`choose`). */
   candidates: Array<{ handle: string; label: string }>
+  /** Questions in order (`question`). */
+  questions?: AgentQuestion[]
+  /** Whether the user may skip every question (`question`). */
+  allowSkip?: boolean
   createdAt: number
 }
 
@@ -444,17 +596,36 @@ export interface AgentSessionDetailView {
   pending: AgentPendingAction[]
   /** Capability người dùng đã cho phép trong phiên này. */
   sessionApprovals: string[]
+  /** Chương agent đã sửa trong phiên mà người dùng chưa giữ hay hoàn tác. */
+  editedChapters: AgentEditedChapter[]
 }
 
-export interface AgentPendingReply {
-  toolCallId: string
-  argsDigest: string
-  /**
-   * `approve` (một lần), `approve_session` (cả phiên) hoặc `reject` cho call cần duyệt; handle của
-   * ứng viên cho đích mơ hồ; handle của lựa chọn cho câu hỏi.
-   */
-  choice: string
-}
+/**
+ * The user's answer to one pending call: `choice` is `approve` (once), `approve_session` or `reject` for
+ * an approval and a candidate's handle for an ambiguous target; questions get `answers` or `skipped`.
+ */
+export type AgentPendingReply = { toolCallId: string; argsDigest: string } & (
+  | { choice: string }
+  | { answers: AgentQuestionAnswers }
+  | { skipped: true }
+)
+
+const replyBase = { toolCallId: idSchema, argsDigest: v.pipe(v.string(), v.minLength(1)) }
+
+export const agentPendingReplySchema = v.union([
+  v.strictObject({ ...replyBase, choice: v.pipe(v.string(), v.minLength(1)) }),
+  v.strictObject({
+    ...replyBase,
+    answers: v.record(
+      v.pipe(v.string(), v.maxLength(64)),
+      v.union([
+        v.pipe(v.string(), v.maxLength(2000)),
+        v.pipe(v.array(v.pipe(v.string(), v.maxLength(500))), v.maxLength(AGENT_OPTION_LIMIT))
+      ])
+    )
+  }),
+  v.strictObject({ ...replyBase, skipped: v.literal(true) })
+])
 
 export interface AgentSendInput {
   sessionId?: string
@@ -489,13 +660,7 @@ export const agentSendInputSchema = v.strictObject({
     })
   ),
   continuesTurnId: v.optional(idSchema),
-  pendingReply: v.optional(
-    v.strictObject({
-      toolCallId: idSchema,
-      argsDigest: v.pipe(v.string(), v.minLength(1)),
-      choice: v.pipe(v.string(), v.minLength(1))
-    })
-  ),
+  pendingReply: v.optional(agentPendingReplySchema),
   mode: v.optional(v.picklist(AGENT_CHAT_MODES))
 })
 
@@ -542,6 +707,68 @@ export const agentUndoInputSchema = v.strictObject({
 export interface AgentUndoResult {
   targetRev: number
 }
+
+/** One row of the "N chapters edited" bar: chat writes of a chapter the user has not kept or undone. */
+export interface AgentEditedChapter {
+  workId: string
+  chapterId: string
+  workLabel: string
+  chapterLabel: string
+  operationIds: string[]
+  /** Units the operations changed, summed from their progress. */
+  units: number
+}
+
+/** A chapter whose text changed after the agent wrote it, so its writes were not undone. */
+export interface AgentUndoConflict {
+  workId: string
+  chapterId: string
+  chapterLabel: string
+  message: string
+}
+
+/** Keep or undo the rows of the edited bar: one chapter, or every row when `chapter` is absent. */
+export const agentEditsInputSchema = v.strictObject({
+  sessionId: idSchema,
+  chapter: v.optional(v.strictObject({ workId: idSchema, chapterId: idSchema }))
+})
+export type AgentEditsInput = v.InferOutput<typeof agentEditsInputSchema>
+
+export interface AgentEditsResult {
+  /** Rows left in the bar. */
+  editedChapters: AgentEditedChapter[]
+  conflicts: AgentUndoConflict[]
+}
+
+export const agentRevertInputSchema = v.strictObject({ turnId: idSchema })
+
+/** What restoring the checkpoint before a turn did; the composer gets the turn's command back. */
+export interface AgentRevertResult {
+  revertedTurnIds: string[]
+  instruction: string
+  context: AgentContext
+}
+
+/** Restores the checkpoint before `turnId`, then sends the edited command as a new turn. */
+export const agentRevertAndResendInputSchema = v.strictObject({
+  turnId: idSchema,
+  clientCommandId: idSchema,
+  instruction: v.pipe(
+    v.string('Câu hỏi/lệnh phải là chuỗi ký tự.'),
+    v.trim(),
+    v.minLength(1, 'Câu hỏi/lệnh không được để trống.')
+  ),
+  context: v.optional(agentContextSchema),
+  modelSelection: v.optional(
+    v.strictObject({
+      connectionId: idSchema,
+      entryId: idSchema,
+      settingsKey: v.optional(v.pipe(v.string(), v.trim(), v.minLength(1)))
+    })
+  ),
+  mode: v.optional(v.picklist(AGENT_CHAT_MODES))
+})
+export type AgentRevertAndResendInput = v.InferOutput<typeof agentRevertAndResendInputSchema>
 
 export interface AgentWriteIntent {
   intentId: string
