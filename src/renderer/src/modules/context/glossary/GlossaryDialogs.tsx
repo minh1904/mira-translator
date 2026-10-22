@@ -79,7 +79,7 @@ function EditGlossaryForm({
   const [target, setTarget] = useState(entry?.target ?? '')
   const [aliasesText, setAliasesText] = useState((entry?.aliases ?? []).join(', '))
   const [forbidden, setForbidden] = useState(entry?.forbidden ?? false)
-  const [status, setStatus] = useState<ContextStatus>(entry?.status ?? 'approved')
+
   const [fromChapterId, setFromChapterId] = useState<string>(entry?.fromChapterId ?? 'none')
   const [toChapterId, setToChapterId] = useState<string>(entry?.toChapterId ?? 'none')
   const [notes, setNotes] = useState(entry?.notes ?? '')
@@ -93,12 +93,6 @@ function EditGlossaryForm({
       value: c.id,
       label: `Chương ${c.number}: ${c.title || 'Không tiêu đề'}`
     }))
-  ]
-
-  const statusOptions: SelectOption<ContextStatus>[] = [
-    { value: 'approved', label: 'Đã duyệt (Gửi cho AI)' },
-    { value: 'pending', label: 'Chờ duyệt (Chưa gửi)' },
-    { value: 'rejected', label: 'Từ chối (Không gửi)' }
   ]
 
   const handleSubmit = async (e: React.FormEvent): Promise<void> => {
@@ -126,7 +120,7 @@ function EditGlossaryForm({
         target: target.trim(),
         aliases,
         forbidden,
-        status,
+        status: 'approved',
         fromChapterId: fromChapterId === 'none' ? null : fromChapterId,
         toChapterId: toChapterId === 'none' ? null : toChapterId,
         notes: notes.trim() || null
@@ -170,23 +164,11 @@ function EditGlossaryForm({
         placeholder="Ví dụ: Trúc Cơ Kỳ, Lập Ca, ..."
       />
 
-      <div className="grid grid-cols-2 gap-3 items-end">
-        <div className="flex flex-col gap-1.5">
-          <label className="font-medium text-default">Trạng thái duyệt</label>
-          <Select
-            label="Trạng thái"
-            value={status}
-            options={statusOptions}
-            onChange={(val) => setStatus(val)}
-          />
-        </div>
-
-        <div className="flex items-center gap-2 pb-2">
-          <Switch id="forbidden-switch" checked={forbidden} onCheckedChange={setForbidden} />
-          <label htmlFor="forbidden-switch" className="cursor-pointer font-medium text-default">
-            Thuật ngữ bị cấm (Cảnh báo khi dùng)
-          </label>
-        </div>
+      <div className="flex items-center gap-2 py-1">
+        <Switch id="forbidden-switch" checked={forbidden} onCheckedChange={setForbidden} />
+        <label htmlFor="forbidden-switch" className="cursor-pointer font-medium text-default">
+          Thuật ngữ bị cấm (Cảnh báo khi dùng)
+        </label>
       </div>
 
       <div className="grid grid-cols-2 gap-3">

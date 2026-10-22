@@ -80,7 +80,6 @@ describe('GlossaryScreen component', () => {
     expect(html).toContain('Thêm thuật ngữ')
     expect(html).toContain('Từ gốc / Biến thể')
     expect(html).toContain('Bản dịch đích')
-    expect(html).toContain('Trạng thái')
     expect(html).toContain('Hiệu lực')
   })
 })

@@ -20,7 +20,7 @@ export const createTranslationTaskCapability: CapabilityDefinition<{
   description:
     'Tạo tác vụ dịch nền cho một dải chương của tác phẩm (theo số chương). Người dùng phải duyệt trước; ' +
     'tác vụ chạy tiếp sau khi lượt chat kết thúc và được điều khiển ở màn Tác vụ. contextStrategy là tùy ' +
-    'chọn: bỏ trống thì tác phẩm chưa có glossary sẽ được trích thuật ngữ trước rồi chờ duyệt. Chỉ truyền ' +
+    'chọn: bỏ trống thì tác phẩm chưa có glossary sẽ được trích thuật ngữ trước và tự động áp dụng. Chỉ truyền ' +
     '"approved_only" khi người dùng nói rõ dịch luôn, không trích; "extract_then_review" khi họ muốn trích ' +
     'thuật ngữ cho các chương mới dù đã có glossary.',
   kind: 'external',

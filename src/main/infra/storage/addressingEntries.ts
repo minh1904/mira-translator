@@ -763,7 +763,7 @@ export function saveAddressingProposals(
           target: person.target || person.source,
           gender: person.gender,
           thirdPerson: person.thirdPerson,
-          status: 'pending'
+          status: 'approved'
         },
         now
       )
@@ -799,7 +799,7 @@ export function saveAddressingProposals(
           recipientPronoun: proposal.address,
           secondPerson: proposal.secondPerson ?? null,
           notes: proposal.notes ?? null,
-          status: 'pending'
+          status: 'approved'
         },
         now
       )

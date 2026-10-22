@@ -1,8 +1,6 @@
 import { useEffect, useState, type JSX } from 'react'
 import {
   AddIcon,
-  CheckIcon,
-  CloseCircleIcon,
   PenNewSquareIcon,
   TrashBinMinimalisticIcon,
   UsersGroupRoundedIcon,
@@ -11,11 +9,8 @@ import {
 
 import type { ChapterItem } from '../../../../../shared/contracts/chapters'
 import type { AddressingDyadItem, CharacterItem } from '../../../../../shared/contracts/addressing'
-import type { ContextStatus } from '../../../../../shared/contracts/glossary'
-import { Badge } from '../../../components/ui/Badge'
 import { Button } from '../../../components/ui/Button'
 import { cn } from '../../../lib/cn'
-import { ButtonGroup } from '../../../components/ui/ButtonGroup'
 import { CompactButton } from '../../../components/ui/CompactButton'
 import { ICON } from '../../../components/ui/icon'
 import { TabsList, TabsPanel, TabsRoot, TabsTab } from '../../../components/ui/Tabs'
@@ -30,13 +25,6 @@ import {
 } from './AddressingDialogs'
 import { useAddressing } from './useAddressing'
 
-const STATUS_FILTER_OPTIONS = [
-  { value: 'all', label: 'Tất cả' },
-  { value: 'approved', label: 'Đã duyệt' },
-  { value: 'pending', label: 'Chờ duyệt' },
-  { value: 'rejected', label: 'Từ chối' }
-] as const
-
 export interface AddressingScreenProps {
   workId: string
 }
@@ -49,8 +37,6 @@ export function AddressingScreen({ workId }: AddressingScreenProps): JSX.Element
     error,
     query,
     setQuery,
-    statusFilter,
-    setStatusFilter,
     chapterFilter,
     setChapterFilter,
     createCharacter,
@@ -93,29 +79,6 @@ export function AddressingScreen({ workId }: AddressingScreenProps): JSX.Element
     return `${from} → ${to}`
   }
 
-  const handleQuickDyadStatus = async (
-    dyad: AddressingDyadItem,
-    nextStatus: ContextStatus
-  ): Promise<void> => {
-    try {
-      await setDyad({
-        dyadId: dyad.id,
-        sourceCharacterId: dyad.sourceCharacterId,
-        targetCharacterId: dyad.targetCharacterId,
-        speakerPronoun: dyad.speakerPronoun,
-        recipientPronoun: dyad.recipientPronoun,
-        secondPerson: dyad.secondPerson,
-        formality: dyad.formality,
-        fromChapterId: dyad.fromChapterId,
-        toChapterId: dyad.toChapterId,
-        notes: dyad.notes,
-        status: nextStatus
-      })
-    } catch (err) {
-      console.error('Không thể cập nhật trạng thái dyad:', err)
-    }
-  }
-
   const chapterOptions = [
     { value: 'all', label: 'Tất cả chương' },
     ...chapters.map((c) => ({
@@ -145,13 +108,6 @@ export function AddressingScreen({ workId }: AddressingScreenProps): JSX.Element
               onChange={setChapterFilter}
             />
           </div>
-
-          <ButtonGroup
-            label="Lọc theo trạng thái"
-            value={statusFilter}
-            options={STATUS_FILTER_OPTIONS}
-            onChange={setStatusFilter}
-          />
         </div>
 
         <div className="flex items-center gap-2">
@@ -197,11 +153,10 @@ export function AddressingScreen({ workId }: AddressingScreenProps): JSX.Element
         {/* Nội dung tab Quan hệ xưng hô */}
         <TabsPanel value="dyads">
           <div className="overflow-hidden rounded-sm border border-default bg-surface">
-            <div className="grid grid-cols-[minmax(0,1.4fr)_minmax(0,1.4fr)_minmax(0,1fr)_110px_90px] items-center border-b border-default bg-subtle px-3.5 py-2.5 text-body-xs font-medium text-subtle">
+            <div className="grid grid-cols-[minmax(0,1.4fr)_minmax(0,1.4fr)_minmax(0,1fr)_90px] items-center border-b border-default bg-subtle px-3.5 py-2.5 text-body-xs font-medium text-subtle">
               <span>Người nói → Người nghe</span>
               <span>Từ xưng hô (Tự xưng – Gọi đối phương)</span>
               <span>Phạm vi hiệu lực</span>
-              <span>Trạng thái</span>
               <span className="text-right">Thao tác</span>
             </div>
 
@@ -249,7 +204,7 @@ export function AddressingScreen({ workId }: AddressingScreenProps): JSX.Element
                     <li
                       key={dyad.id}
                       className={cn(
-                        'grid grid-cols-[minmax(0,1.4fr)_minmax(0,1.4fr)_minmax(0,1fr)_110px_90px] items-center border-b border-default px-3.5 py-3 text-body-sm last:border-b-0 hover:bg-surface/50 transition-colors',
+                        'grid grid-cols-[minmax(0,1.4fr)_minmax(0,1.4fr)_minmax(0,1fr)_90px] items-center border-b border-default px-3.5 py-3 text-body-sm last:border-b-0 hover:bg-surface/50 transition-colors',
                         dyad.status === 'pending' && 'bg-warning/5',
                         dyad.status === 'rejected' && 'opacity-60 bg-line/10'
                       )}
@@ -292,45 +247,8 @@ export function AddressingScreen({ workId }: AddressingScreenProps): JSX.Element
                       {/* Phạm vi áp dụng */}
                       <span className="text-body-xs text-subtle">{formatChapterScope(dyad)}</span>
 
-                      {/* Trạng thái */}
-                      <div>
-                        {dyad.status === 'approved' && (
-                          <Badge variant="outline" dot color="success">
-                            Đã duyệt
-                          </Badge>
-                        )}
-                        {dyad.status === 'pending' && (
-                          <Badge variant="outline" dot color="warning">
-                            Chờ duyệt
-                          </Badge>
-                        )}
-                        {dyad.status === 'rejected' && (
-                          <Badge variant="outline" dot color="error">
-                            Từ chối
-                          </Badge>
-                        )}
-                      </div>
-
                       {/* Các thao tác */}
                       <div className="flex items-center justify-end gap-1">
-                        {dyad.status === 'pending' && (
-                          <>
-                            <CompactButton
-                              tone="success"
-                              icon={<CheckIcon size={ICON.sm} />}
-                              aria-label="Duyệt quy ước"
-                              title="Duyệt quy ước"
-                              onClick={() => void handleQuickDyadStatus(dyad, 'approved')}
-                            />
-                            <CompactButton
-                              tone="danger"
-                              icon={<CloseCircleIcon size={ICON.sm} />}
-                              aria-label="Từ chối quy ước"
-                              title="Từ chối quy ước"
-                              onClick={() => void handleQuickDyadStatus(dyad, 'rejected')}
-                            />
-                          </>
-                        )}
                         <CompactButton
                           icon={<PenNewSquareIcon size={ICON.sm} />}
                           aria-label="Chỉnh sửa quy ước"
@@ -356,7 +274,7 @@ export function AddressingScreen({ workId }: AddressingScreenProps): JSX.Element
         {/* Nội dung tab Nhân vật */}
         <TabsPanel value="characters">
           <div className="overflow-hidden rounded-sm border border-default bg-surface">
-            <div className="grid grid-cols-[minmax(0,1.2fr)_minmax(0,1.2fr)_90px_minmax(0,1.2fr)_110px_90px] items-center border-b border-default bg-subtle px-3.5 py-2.5 text-body-xs font-medium text-subtle">
+            <div className="grid grid-cols-[minmax(0,1.2fr)_minmax(0,1.2fr)_90px_minmax(0,1.2fr)_90px] items-center border-b border-default bg-subtle px-3.5 py-2.5 text-body-xs font-medium text-subtle">
               <span>Tên tiếng Việt</span>
               <span>Tên gốc / Bí danh</span>
               <span>Giới tính</span>
@@ -393,7 +311,7 @@ export function AddressingScreen({ workId }: AddressingScreenProps): JSX.Element
                 {characters.map((char) => (
                   <li
                     key={char.id}
-                    className="grid grid-cols-[minmax(0,1.2fr)_minmax(0,1.2fr)_90px_minmax(0,1.2fr)_110px_90px] items-center border-b border-default px-3.5 py-3 text-body-sm last:border-b-0 hover:bg-surface/50 transition-colors"
+                    className="grid grid-cols-[minmax(0,1.2fr)_minmax(0,1.2fr)_90px_minmax(0,1.2fr)_90px] items-center border-b border-default px-3.5 py-3 text-body-sm last:border-b-0 hover:bg-surface/50 transition-colors"
                   >
                     <span className="font-semibold text-default">{char.target}</span>
 
@@ -422,24 +340,6 @@ export function AddressingScreen({ workId }: AddressingScreenProps): JSX.Element
                         <span className="text-body-xs text-subtle truncate italic">
                           {char.notes}
                         </span>
-                      )}
-                    </div>
-
-                    <div>
-                      {char.status === 'approved' && (
-                        <Badge variant="outline" dot color="success">
-                          Đã duyệt
-                        </Badge>
-                      )}
-                      {char.status === 'pending' && (
-                        <Badge variant="outline" dot color="warning">
-                          Chờ duyệt
-                        </Badge>
-                      )}
-                      {char.status === 'rejected' && (
-                        <Badge variant="outline" dot color="error">
-                          Từ chối
-                        </Badge>
                       )}
                     </div>
 

@@ -97,7 +97,7 @@ describe('ContextExtractionService', () => {
       library.withWork(work.id, (db) =>
         db.prepare('SELECT status, origin FROM context_entry').all()
       )
-    ).toEqual([{ status: 'pending', origin: 'ai' }])
+    ).toEqual([{ status: 'approved', origin: 'ai' }])
   })
 
   it('sends only chapters no run scanned yet', async () => {
@@ -134,7 +134,7 @@ describe('ContextExtractionService', () => {
     )
     expect(rows).toEqual([
       { source: '墨大夫', status: 'approved' },
-      { source: '韩立', status: 'pending' }
+      { source: '韩立', status: 'approved' }
     ])
   })
 
@@ -174,7 +174,7 @@ describe('ContextExtractionService', () => {
     )
     expect(rows).toEqual([
       { source: '东西', target: '', status: 'rejected' },
-      { source: '李伟', target: 'Li Wei', status: 'pending' }
+      { source: '李伟', target: 'Li Wei', status: 'approved' }
     ])
     expect(library.withWork(work.id, (db) => readReviewInfo(db, result.pending))[0]?.flags).toEqual(
       [{ code: 'script_mismatch' }]

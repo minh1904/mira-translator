@@ -2,8 +2,6 @@ import { useEffect, useState, type JSX } from 'react'
 import {
   AddIcon,
   BookBookmarkIcon,
-  CheckIcon,
-  CloseCircleIcon,
   ImportIcon,
   PenNewSquareIcon,
   TrashBinMinimalisticIcon
@@ -13,26 +11,17 @@ import type { ChapterItem } from '../../../../../shared/contracts/chapters'
 import type {
   ContextEntryItem,
   ContextReviewInfo,
-  ContextStatus,
   ReviewFlag
 } from '../../../../../shared/contracts/glossary'
 import { Badge } from '../../../components/ui/Badge'
 import { Button } from '../../../components/ui/Button'
 import { cn } from '../../../lib/cn'
-import { ButtonGroup } from '../../../components/ui/ButtonGroup'
 import { CompactButton } from '../../../components/ui/CompactButton'
 import { ICON } from '../../../components/ui/icon'
 import { EmptyState } from '../../../components/ui/EmptyState'
 import { SearchInput } from '../../../components/ui/Input'
 import { DeleteGlossaryDialog, EditGlossaryDialog, ImportNamesDialog } from './GlossaryDialogs'
 import { useGlossary } from './useGlossary'
-
-const STATUS_FILTER_OPTIONS = [
-  { value: 'all', label: 'Tất cả' },
-  { value: 'approved', label: 'Đã duyệt' },
-  { value: 'pending', label: 'Chờ duyệt' },
-  { value: 'rejected', label: 'Từ chối' }
-] as const
 
 /** Term types an extraction run writes (`TERM_TYPES` of glossaryExtraction). */
 export const TERM_TYPE_LABELS: Record<string, string> = {
@@ -109,17 +98,12 @@ export function GlossaryScreen({ workId }: GlossaryScreenProps): JSX.Element {
     error,
     query,
     setQuery,
-    statusFilter,
-    setStatusFilter,
     createEntry,
     updateEntry,
     deleteEntry,
     importNames,
-    reviewInfo,
-    review,
-    bulkApprove
+    reviewInfo
   } = useGlossary({ workId })
-  const [reviewMessage, setReviewMessage] = useState<string | null>(null)
 
   const [chapters, setChapters] = useState<ChapterItem[]>([])
   const [editingEntry, setEditingEntry] = useState<ContextEntryItem | null | 'new'>(null)
@@ -149,51 +133,8 @@ export function GlossaryScreen({ workId }: GlossaryScreenProps): JSX.Element {
     return `${from} → ${to}`
   }
 
-  const handleQuickStatus = async (
-    entry: ContextEntryItem,
-    nextStatus: ContextStatus
-  ): Promise<void> => {
-    setReviewMessage(null)
-    try {
-      if (entry.status !== 'pending') {
-        await updateEntry(entry.id, { status: nextStatus })
-      } else if (nextStatus === 'approved') {
-        await review({ kind: 'approve', entryId: entry.id, expectedUpdatedAt: entry.updatedAt })
-      } else {
-        // shortcut: a fixed reason; a reason field belongs in the dialog once reviewers ask for it.
-        await review({
-          kind: 'reject',
-          entryId: entry.id,
-          expectedUpdatedAt: entry.updatedAt,
-          reason: entry.notes || 'Người dịch từ chối khi duyệt.'
-        })
-      }
-    } catch (err) {
-      setReviewMessage(err instanceof Error ? err.message : 'Không cập nhật được trạng thái.')
-    }
-  }
-
-  const handleBulkApprove = async (selected: ContextEntryItem[]): Promise<void> => {
-    setReviewMessage(null)
-    try {
-      const results = await bulkApprove(selected)
-      const failed = results.filter((result) => !result.ok)
-      const approved = results.length - failed.length
-      setReviewMessage(
-        failed.length === 0
-          ? `Đã duyệt ${approved} mục.`
-          : `Đã duyệt ${approved} mục; ${failed.length} mục cần xem lại: ${failed
-              .map((result) => (result.ok ? '' : result.message))
-              .join(' ')}`
-      )
-    } catch (err) {
-      setReviewMessage(err instanceof Error ? err.message : 'Không duyệt được.')
-    }
-  }
-
   const chapterNumber = (chapterId: string | null): number | undefined =>
     chapterId ? chapterMap.get(chapterId)?.number : undefined
-  const groups = statusFilter === 'pending' ? pendingByType(entries, reviewInfo) : []
 
   return (
     <div className="flex flex-col gap-4">
@@ -206,13 +147,6 @@ export function GlossaryScreen({ workId }: GlossaryScreenProps): JSX.Element {
             onChange={(e) => setQuery(e.target.value)}
             placeholder="Tìm theo từ gốc, bản dịch, alias..."
             className="w-64"
-          />
-
-          <ButtonGroup
-            label="Lọc theo trạng thái"
-            value={statusFilter}
-            options={STATUS_FILTER_OPTIONS}
-            onChange={setStatusFilter}
           />
         </div>
 
@@ -231,30 +165,12 @@ export function GlossaryScreen({ workId }: GlossaryScreenProps): JSX.Element {
       </div>
 
       {error && <div className="rounded-sm bg-error/10 p-3 text-body-xs text-error">{error}</div>}
-      <p role="status" aria-live="polite" className={reviewMessage ? 'text-body-xs' : 'sr-only'}>
-        {reviewMessage}
-      </p>
-
-      {groups.length > 0 && (
-        <div className="flex flex-wrap items-center gap-2" aria-label="Duyệt hàng loạt theo loại">
-          {groups.map((group) => (
-            <Button
-              key={group.type}
-              leftIcon={<CheckIcon size={ICON.sm} />}
-              onClick={() => void handleBulkApprove(group.entries)}
-            >
-              Duyệt {group.entries.length} mục · {TERM_TYPE_LABELS[group.type] ?? group.type}
-            </Button>
-          ))}
-        </div>
-      )}
 
       {/* Danh sách thuật ngữ chính */}
       <div className="overflow-hidden rounded-sm border border-default bg-surface">
-        <div className="grid grid-cols-[minmax(0,1.5fr)_minmax(0,1.5fr)_100px_110px_minmax(0,1.2fr)_100px] items-center border-b border-default bg-subtle px-3 py-2 text-body-xs font-medium text-subtle">
+        <div className="grid grid-cols-[minmax(0,1.5fr)_minmax(0,1.5fr)_110px_minmax(0,1.2fr)_80px] items-center border-b border-default bg-subtle px-3 py-2 text-body-xs font-medium text-subtle">
           <span>Từ gốc / Biến thể</span>
           <span>Bản dịch đích</span>
-          <span>Trạng thái</span>
           <span>Hiệu lực</span>
           <span>Ghi chú</span>
           <span className="text-right">Thao tác</span>
@@ -286,7 +202,7 @@ export function GlossaryScreen({ workId }: GlossaryScreenProps): JSX.Element {
               <li
                 key={entry.id}
                 className={cn(
-                  'grid grid-cols-[minmax(0,1.5fr)_minmax(0,1.5fr)_100px_110px_minmax(0,1.2fr)_100px] items-center px-3 py-2.5 text-body-xs transition-colors hover:bg-hover',
+                  'grid grid-cols-[minmax(0,1.5fr)_minmax(0,1.5fr)_110px_minmax(0,1.2fr)_80px] items-center px-3 py-2.5 text-body-xs transition-colors hover:bg-hover',
                   entry.status === 'pending' && 'bg-warning/5',
                   entry.status === 'rejected' && 'opacity-60'
                 )}
@@ -326,25 +242,6 @@ export function GlossaryScreen({ workId }: GlossaryScreenProps): JSX.Element {
                   )}
                 </div>
 
-                {/* Trạng thái */}
-                <div>
-                  {entry.status === 'approved' && (
-                    <Badge variant="outline" dot color="success">
-                      Đã duyệt
-                    </Badge>
-                  )}
-                  {entry.status === 'pending' && (
-                    <Badge variant="outline" dot color="warning">
-                      Chờ duyệt
-                    </Badge>
-                  )}
-                  {entry.status === 'rejected' && (
-                    <Badge variant="outline" dot color="neutral">
-                      Từ chối
-                    </Badge>
-                  )}
-                </div>
-
                 {/* Phạm vi hiệu lực */}
                 <span className="text-body-xs text-subtle">{formatChapterScope(entry)}</span>
 
@@ -355,33 +252,6 @@ export function GlossaryScreen({ workId }: GlossaryScreenProps): JSX.Element {
 
                 {/* Các thao tác */}
                 <div className="flex items-center justify-end gap-1">
-                  {entry.status === 'pending' && (
-                    <>
-                      <CompactButton
-                        tone="success"
-                        icon={<CheckIcon size={ICON.sm} />}
-                        aria-label="Duyệt mục này"
-                        title="Duyệt mục này"
-                        onClick={() => handleQuickStatus(entry, 'approved')}
-                      />
-                      <CompactButton
-                        tone="danger"
-                        icon={<CloseCircleIcon size={ICON.sm} />}
-                        aria-label="Từ chối mục này"
-                        title="Từ chối mục này"
-                        onClick={() => handleQuickStatus(entry, 'rejected')}
-                      />
-                    </>
-                  )}
-                  {entry.status === 'rejected' && (
-                    <CompactButton
-                      tone="success"
-                      icon={<CheckIcon size={ICON.sm} />}
-                      aria-label="Phục hồi (Duyệt lại)"
-                      title="Phục hồi (Duyệt lại)"
-                      onClick={() => handleQuickStatus(entry, 'approved')}
-                    />
-                  )}
                   <CompactButton
                     icon={<PenNewSquareIcon size={ICON.sm} />}
                     aria-label="Chỉnh sửa"
@@ -413,24 +283,6 @@ export function GlossaryScreen({ workId }: GlossaryScreenProps): JSX.Element {
         onSave={async (data) => {
           if (editingEntry === 'new') {
             await createEntry(data)
-          } else if (
-            editingEntry &&
-            editingEntry.status === 'pending' &&
-            data.status === 'approved' &&
-            data.source === editingEntry.source &&
-            data.forbidden === editingEntry.forbidden
-          ) {
-            // Edit then approve: guarded by the version the reviewer opened.
-            await review({
-              kind: 'edit_approve',
-              entryId: editingEntry.id,
-              expectedUpdatedAt: editingEntry.updatedAt,
-              target: data.target,
-              aliases: data.aliases,
-              fromChapterId: data.fromChapterId,
-              toChapterId: data.toChapterId,
-              notes: data.notes
-            })
           } else if (editingEntry) {
             await updateEntry(editingEntry.id, data)
           }

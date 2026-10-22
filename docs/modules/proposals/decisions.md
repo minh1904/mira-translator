@@ -30,12 +30,16 @@ sản phẩm chốt lấy UX/UI chat của VS Code làm chuẩn và cho phép s�
    đó panel có hai chế độ Trợ lý và Ngữ cảnh). Trên cửa sổ hẹp, panel trở thành drawer phủ từ bên phải.
 8. **Ngữ cảnh dịch được quản lý ở khu Context cấp tác phẩm**: xem mục đang áp dụng, duyệt, import, lọc
    nâng cao và thao tác hàng loạt (sửa ngày 2026-10-22; trước đó có chế độ Ngữ cảnh nhanh trong side panel).
-9. **Pending không đi vào prompt; tên riêng đủ bằng chứng được dùng tạm.** Mục context chờ duyệt phải có
-   trạng thái nhìn thấy rõ và không được gửi cho model cho tới khi được duyệt. Ngoại lệ (chủ sản phẩm chốt
-   2026-10-22, cách A của [Agent toàn diện](autonomous-agent.md) mục 7): tên riêng đủ điều kiện thì thành
-   **dùng tạm**, vào prompt kèm đánh dấu và có truy vết theo chương, để task dịch không phải dừng chờ duyệt.
-   Cặp xưng hô, mục khái niệm và mục xung đột không bao giờ dùng tạm. **Chưa triển khai**: code hiện vẫn
-   chặn mọi mục pending.
+9. **Bãi bỏ cơ chế duyệt tiền kiểm cho ngữ cảnh (thuật ngữ và xưng hô); chuyển sang từ điển phẳng tự động áp dụng (chốt 2026-10-23).**
+   Thay thế toàn bộ mô hình trạng thái duyệt phân tầng (Approved / Pending / Rejected / Dùng tạm). Mọi thuật ngữ,
+   nhân vật và cặp xưng hô trong kho (do người dùng thêm, import hoặc AI trích xuất) đều tự động có hiệu lực và đi
+   thẳng vào bản chụp ngữ cảnh (`ContextSnapshot`) của prompt dịch/hỗ trợ mà không cần bước duyệt thủ công.
+   Bỏ trạng thái "Chờ duyệt", bỏ thanh lọc trạng thái `[ Tất cả | Đã duyệt | Chờ duyệt | Từ chối ]` và các nút duyệt/từ
+   chối trên giao diện Thuật ngữ và Xưng hô.
+   Khâu kiểm soát chất lượng chuyển từ **tiền kiểm chặn cửa** sang **hậu kiểm**: người dùng sửa trực tiếp trong bảng,
+   xóa hoặc đánh dấu cấm dùng khi phát hiện sai. Pipeline dịch tự động (Translation Tasks) chạy xuyên suốt và không
+   bao giờ dừng chờ duyệt ngữ cảnh (`waiting_user(context_review)` bị loại bỏ). (Quyết định ngày 2026-10-23 thay thế
+   quyết định cũ về việc chặn pending và khái niệm dùng tạm phức tạp).
 
 ## Dữ liệu cũ
 

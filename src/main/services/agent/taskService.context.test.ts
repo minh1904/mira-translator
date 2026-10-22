@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import type { ContextStrategy } from '../../../shared/contracts/agentTask'
 import { segment } from '../../../shared/segmentation/segmenter'
-import { listDyads, setDyad } from '../../infra/storage/addressingEntries'
+import { listDyads } from '../../infra/storage/addressingEntries'
 import { AgentRepository } from '../../infra/storage/agentRepository'
 import { AgentTaskRepository } from '../../infra/storage/agentTaskRepository'
 import type { ExtractionMessage } from '../ai/glossaryExtraction'
@@ -128,41 +128,15 @@ describe('AgentTaskService: context before translating', () => {
     expect(kit.tasks.get(task.id).task.extracting).toBeUndefined()
   })
 
-  it('waits for review with every item queued, survives a restart, and Continue translates', async () => {
+  it('extracts terms and translates without stopping for review', async () => {
     const kit = contextKit([HAN_LAP])
     const task = kit.create('extract_then_review')
     await kit.tasks.idle()
 
-    expect(kit.tasks.get(task.id).task).toMatchObject({
-      state: 'waiting_user',
-      reason: 'context_review'
-    })
-    expect(kit.tasks.get(task.id).items.map((item) => item.state)).toEqual(['queued', 'queued'])
-    expect(kit.translations.requests).toEqual([])
-    expect(kit.entries()).toEqual([{ source: '韩立', status: 'pending' }])
-    expect(kit.tasks.get(task.id).task.usage).toBeNull()
-
-    // Quit and reopen while waiting: nothing changes and nothing runs.
-    kit.tasks.shutdown()
-    const restarted = kit.make()
-    kit.services.agent.reconcileOnStartup()
-    restarted.reconcileOnStartup()
-    await restarted.idle()
-    expect(restarted.get(task.id).task).toMatchObject({
-      state: 'waiting_user',
-      reason: 'context_review'
-    })
-    expect(kit.entries()).toEqual([{ source: '韩立', status: 'pending' }])
-    expect(kit.translations.requests).toEqual([])
-
-    // Continue without reviewing: no new scan, the pending entry stays out of the prompt.
-    const calls = kit.extractionCalls()
-    kit.control(restarted, task.id, 'continue')
-    await restarted.idle()
-    expect(kit.extractionCalls()).toBe(calls)
-    expect(restarted.get(task.id).task.state).toBe('completed')
+    expect(kit.tasks.get(task.id).task.state).toBe('completed')
+    expect(kit.entries()).toEqual([{ source: '韩立', status: 'approved' }])
     expect(kit.translations.requests.length).toBeGreaterThan(0)
-    expect(kit.translations.prompts.some((prompt) => prompt.includes('Hàn Lập'))).toBe(false)
+    expect(kit.translations.prompts.some((prompt) => prompt.includes('Hàn Lập'))).toBe(true)
   })
 
   it('translates the first item without stopping when the scan finds nothing new', async () => {
@@ -179,12 +153,13 @@ describe('AgentTaskService: context before translating', () => {
     const first = kit.create(undefined)
     expect(first.options.contextStrategy).toBe('extract_then_review')
     await kit.tasks.idle()
-    expect(kit.tasks.get(first.id).task.reason).toBe('context_review')
+    expect(kit.tasks.get(first.id).task.state).toBe('completed')
 
-    // The pending candidate counts as a glossary: the next default task translates right away.
+    // The extracted candidate counts as a glossary: the next default task translates right away.
     const second = kit.create(undefined)
     expect(second.options.contextStrategy).toBe('approved_only')
     await kit.tasks.idle()
+    expect(kit.tasks.get(second.id).task.state).toBe('completed')
   })
 
   it('never extracts for a task that translates with the approved context only', async () => {
@@ -196,14 +171,15 @@ describe('AgentTaskService: context before translating', () => {
     expect(kit.tasks.get(task.id).task.state).toBe('completed')
   })
 
-  it('keeps the candidates when a waiting task is cancelled', async () => {
+  it('keeps the candidates when a paused task is cancelled', async () => {
     const kit = contextKit([HAN_LAP])
-    const task = kit.create('extract_then_review')
+    const task = kit.create('extract_then_review', { maxCalls: 2 })
     await kit.tasks.idle()
+    expect(kit.tasks.get(task.id).task).toMatchObject({ state: 'paused', reason: 'budget' })
     kit.control(kit.tasks, task.id, 'cancel')
     await kit.tasks.idle()
     expect(kit.tasks.get(task.id).task.state).toBe('cancelled')
-    expect(kit.entries()).toEqual([{ source: '韩立', status: 'pending' }])
+    expect(kit.entries()).toEqual([{ source: '韩立', status: 'approved' }])
   })
 
   it('pauses for the call cap before the next extraction request, writing nothing', async () => {
@@ -246,29 +222,17 @@ describe('AgentTaskService: context before translating', () => {
     const task = kit.create('extract_then_review')
     await kit.tasks.idle()
 
-    expect(kit.tasks.get(task.id).task).toMatchObject({
-      state: 'waiting_user',
-      reason: 'context_review'
-    })
+    expect(kit.tasks.get(task.id).task.state).toBe('completed')
     const dyads = () => kit.library.withWork(kit.work1.id, (db) => listDyads(db))
     expect(dyads()).toEqual([
       expect.objectContaining({
         speakerPronoun: 'ta',
         recipientPronoun: 'Nam Cung sư muội',
         secondPerson: 'muội',
-        status: 'pending'
+        status: 'approved'
       })
     ])
-    expect(kit.translations.requests).toEqual([])
-
-    // Approving the pair approves its two pending characters; the glossary terms stay pending.
-    const pair = dyads()[0]!
-    kit.library.withWork(kit.work1.id, (db) =>
-      setDyad(db, { ...pair, dyadId: pair.id, status: 'approved' })
-    )
-    kit.control(kit.tasks, task.id, 'continue')
-    await kit.tasks.idle()
-    expect(kit.tasks.get(task.id).task.state).toBe('completed')
+    expect(kit.translations.requests.length).toBeGreaterThan(0)
     expect(
       kit.translations.prompts.some((prompt) =>
         prompt.includes('Hàn Lập → Nam Cung Uyển: Hàn Lập tự xưng')

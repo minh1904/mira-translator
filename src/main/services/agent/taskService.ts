@@ -874,11 +874,7 @@ export class AgentTaskService {
         }
         return false
       }
-      if (result.pending.length === 0) return true
-      this.notify(
-        this.tasks.transitionTask(task.id, 'waiting_user', { now, reason: 'context_review' })
-      )
-      return false
+      return true
     } catch (error) {
       running.extractCalls = null
       if (this.closed) return false

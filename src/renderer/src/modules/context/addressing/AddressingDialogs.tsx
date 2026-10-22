@@ -78,7 +78,7 @@ function EditCharacterForm({
   const [gender, setGender] = useState<CharacterGender>(character?.gender ?? 'unknown')
   const [role, setRole] = useState(character?.role ?? '')
   const [aliasesText, setAliasesText] = useState((character?.aliases ?? []).join(', '))
-  const [status, setStatus] = useState<ContextStatus>(character?.status ?? 'approved')
+
   const [notes, setNotes] = useState(character?.notes ?? '')
 
   const [saving, setSaving] = useState(false)
@@ -104,7 +104,7 @@ function EditCharacterForm({
         target: target.trim(),
         gender,
         role: role.trim() || null,
-        status,
+        status: 'approved',
         notes: notes.trim() || null,
         aliases
       })
@@ -121,12 +121,6 @@ function EditCharacterForm({
     { value: 'male', label: 'Nam' },
     { value: 'female', label: 'Nữ' },
     { value: 'other', label: 'Khác' }
-  ]
-
-  const statusOptions: SelectOption<ContextStatus>[] = [
-    { value: 'approved', label: 'Đã duyệt (dùng cho AI)' },
-    { value: 'pending', label: 'Chờ duyệt (chỉ lưu nháp)' },
-    { value: 'rejected', label: 'Từ chối (không dùng)' }
   ]
 
   return (
@@ -175,13 +169,6 @@ function EditCharacterForm({
         value={aliasesText}
         onChange={(e) => setAliasesText(e.target.value)}
         placeholder="Ví dụ: Lập Ca, Hàn Trưởng Lão"
-      />
-
-      <Select
-        label="Trạng thái duyệt"
-        value={status}
-        options={statusOptions}
-        onChange={(val) => setStatus(val as ContextStatus)}
       />
 
       <TextareaField
@@ -341,7 +328,7 @@ function EditDyadForm({
   const [formality, setFormality] = useState(dyad?.formality ?? '')
   const [fromChapterId, setFromChapterId] = useState(dyad?.fromChapterId ?? 'all')
   const [toChapterId, setToChapterId] = useState(dyad?.toChapterId ?? 'all')
-  const [status, setStatus] = useState<ContextStatus>(dyad?.status ?? 'approved')
+
   const [notes, setNotes] = useState(dyad?.notes ?? '')
 
   const [saving, setSaving] = useState(false)
@@ -374,7 +361,7 @@ function EditDyadForm({
         formality: formality.trim() || null,
         fromChapterId: fromChapterId === 'all' ? null : fromChapterId,
         toChapterId: toChapterId === 'all' ? null : toChapterId,
-        status,
+        status: 'approved',
         notes: notes.trim() || null
       })
       onClose()
@@ -396,12 +383,6 @@ function EditDyadForm({
       value: c.id,
       label: `Chương ${c.number}: ${c.title || 'Không tiêu đề'}`
     }))
-  ]
-
-  const statusOptions: SelectOption<ContextStatus>[] = [
-    { value: 'approved', label: 'Đã duyệt (tiêm vào AI prompt)' },
-    { value: 'pending', label: 'Chờ duyệt (chỉ lưu nháp)' },
-    { value: 'rejected', label: 'Từ chối (không dùng)' }
   ]
 
   return (
@@ -466,13 +447,6 @@ function EditDyadForm({
           onChange={setToChapterId}
         />
       </div>
-
-      <Select
-        label="Trạng thái duyệt"
-        value={status}
-        options={statusOptions}
-        onChange={(val) => setStatus(val as ContextStatus)}
-      />
 
       <TextareaField
         label="Ghi chú hoàn cảnh xưng hô"

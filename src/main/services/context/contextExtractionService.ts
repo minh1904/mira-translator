@@ -235,7 +235,7 @@ export class ContextExtractionService {
               source: term.source,
               target,
               termType: term.type,
-              status: 'pending' as const,
+              status: 'approved' as const,
               aliases: term.aliases,
               notes: term.note ?? null,
               flags,

@@ -84,3 +84,11 @@ Ca khó phải có trong đánh giá: đổi người nghe giữa cảnh, nhóm 
 Phản hồi cộng đồng do người dùng cung cấp ủng hộ nhiều lựa chọn và tính nhất quán, nhưng chưa có URL/khung lấy mẫu; đây là quan sát định tính, không đại diện toàn cộng đồng. Mẫu người dịch đã khảo sát và giới hạn nằm ở [bằng chứng](evidence.md).
 
 [Về mục lục](README.md)
+
+
+> [!IMPORTANT]
+> **Cập nhật quyết định sản phẩm (2026-10-23):**
+> Chủ sản phẩm đã chốt bãi bỏ hoàn toàn cơ chế duyệt tiền kiểm đối với cả thuật ngữ và xưng hô.
+> 1. AI trích xuất thuật ngữ/xưng hô sẽ lưu trực tiếp vào từ điển ở trạng thái có hiệu lực (active), không còn trạng thái `pending` hay `rejected`.
+> 2. Pipeline dịch tự động chạy xuyên suốt, không ngắt luồng sang `waiting_user(context_review)`.
+> 3. Toàn bộ thanh lọc trạng thái `[ Tất cả | Đã duyệt | Chờ duyệt | Từ chối ]`, các nút Duyệt/Từ chối trên UI được dọn dẹp. Người dùng kiểm soát chất lượng qua hậu kiểm (sửa, xóa, cấm dùng trực tiếp trong bảng).

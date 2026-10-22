@@ -503,7 +503,7 @@ export interface ExtractedCandidateWrite {
   target: string
   termType: string
   /** `rejected` for what the model called `not-a-term`, so it is not proposed again. */
-  status: 'pending' | 'rejected'
+  status: 'pending' | 'rejected' | 'approved'
   aliases?: string[]
   notes?: string | null
   /** Flags the caller already knows (`script_mismatch`); alias conflicts are found here. */
@@ -648,7 +648,7 @@ export function saveExtraction(db: Db, input: SaveExtractionInput): SaveExtracti
       )
       for (const form of aliases) insertAlias.run(newId(), id, form, now)
       addEvidence(id, candidate.evidence)
-      if (candidate.status === 'pending') pending.push(id)
+      if (candidate.status !== 'rejected') pending.push(id)
     }
 
     const scan = db.prepare(

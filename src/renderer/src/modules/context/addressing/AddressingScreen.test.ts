@@ -119,7 +119,6 @@ describe('AddressingScreen component', () => {
     expect(html).toContain('Người nói → Người nghe')
     expect(html).toContain('Từ xưng hô (Tự xưng – Gọi đối phương)')
     expect(html).toContain('Phạm vi hiệu lực')
-    expect(html).toContain('Trạng thái')
     expect(html).toContain('Thao tác')
   })
 })
