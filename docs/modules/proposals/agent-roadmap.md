@@ -106,7 +106,7 @@ rename/pin/archive session hay framework LangGraph. Chỉ bổ sung khi một wo
 Sau sáu lát trên, giao diện chat được làm lại theo [quyết định 11–17](decisions.md) qua bốn change, apply theo thứ tự:
 `fix-agent-chat-permissions`, `add-agent-response-parts`, `add-agent-composer-context`,
 `add-agent-questions-and-checkpoints`. Phạm vi, ánh xạ yêu cầu và trạng thái nằm ở
-[Giao diện chat theo VS Code](chat-ui-vscode.md#openspec). Cả bốn đã đặc tả và triển khai ngày 2026-10-22, chưa archive.
+[Giao diện chat theo VS Code](chat-ui-vscode.md#openspec). Cả bốn đã đặc tả, triển khai và archive ngày 2026-10-22; spec nằm ở `openspec/specs/`.
 
 ## Nguồn kỹ thuật
 

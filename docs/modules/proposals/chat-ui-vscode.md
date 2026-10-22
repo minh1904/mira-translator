@@ -184,10 +184,10 @@ Yêu cầu được tách thành bốn change, apply theo thứ tự (mỗi chan
 
 | # | Change | Phạm vi | Trạng thái |
 | --- | --- | --- | --- |
-| 1 | [`fix-agent-chat-permissions`](../../../openspec/changes/fix-agent-chat-permissions/proposal.md) | C22: chế độ trên turn, ba mức quyền, cổng rủi ro Autopilot, duyệt trong phiên; sửa lỗi 1–2 | Đã triển khai 2026-10-22, chưa archive |
-| 2 | [`add-agent-response-parts`](../../../openspec/changes/add-agent-response-parts/proposal.md) | Nền 1–3, 5; C9–C17, C19, C21 | Đã triển khai 2026-10-22, chưa archive |
-| 3 | [`add-agent-composer-context`](../../../openspec/changes/add-agent-composer-context/proposal.md) | Nền 4; C1–C8 | Đã triển khai 2026-10-22, chưa archive |
-| 4 | [`add-agent-questions-and-checkpoints`](../../../openspec/changes/add-agent-questions-and-checkpoints/proposal.md) | C18, C20, C24 | Đã triển khai 2026-10-22, chưa archive |
+| 1 | [`fix-agent-chat-permissions`](../../../openspec/changes/archive/2026-10-22-fix-agent-chat-permissions/proposal.md) | C22: chế độ trên turn, ba mức quyền, cổng rủi ro Autopilot, duyệt trong phiên; sửa lỗi 1–2 | Đã triển khai và archive 2026-10-22 |
+| 2 | [`add-agent-response-parts`](../../../openspec/changes/archive/2026-10-22-add-agent-response-parts/proposal.md) | Nền 1–3, 5; C9–C17, C19, C21 | Đã triển khai và archive 2026-10-22 |
+| 3 | [`add-agent-composer-context`](../../../openspec/changes/archive/2026-10-22-add-agent-composer-context/proposal.md) | Nền 4; C1–C8 | Đã triển khai và archive 2026-10-22 |
+| 4 | [`add-agent-questions-and-checkpoints`](../../../openspec/changes/archive/2026-10-22-add-agent-questions-and-checkpoints/proposal.md) | C18, C20, C24 | Đã triển khai và archive 2026-10-22 |
 
 Ghi chú về phạm vi đặc tả so với yêu cầu: không stream tham số tool (provider trả tool call nguyên khối), không có gợi ý
 tiếp theo do model sinh (xóa bản gõ cứng), không có Làm lại sau checkpoint, thanh chương đã sửa mở chương chứ chưa mở diff.

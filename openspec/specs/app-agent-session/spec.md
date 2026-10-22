@@ -2,9 +2,7 @@
 
 ## Purpose
 Quy định phiên Mira Agent ở phạm vi toàn ứng dụng, đồng thời lưu riêng context lúc người dùng gửi và target thực tế của từng operation để hội thoại có thể làm việc qua nhiều tác phẩm mà không ghi nhầm đích.
-
 ## Requirements
-
 ### Requirement: Phiên agent thuộc toàn ứng dụng
 
 Phiên agent mới SHALL thuộc phạm vi ứng dụng, không thuộc một tác phẩm hay chương. Chuyển tác phẩm, chuyển chương, ẩn panel hoặc đóng rồi mở lại ứng dụng SHALL không tự tạo phiên khác hoặc xóa lịch sử. Người dùng SHALL có thể tiếp tục cùng phiên sau khi context hiện tại thay đổi.
@@ -59,15 +57,19 @@ Khi đã chứa bảng agent, `library.db` SHALL là dữ liệu bền. Migratio
 
 ### Requirement: Mỗi lượt chụp context giao diện
 
-Mỗi lượt gửi SHALL lưu context tại thời điểm gửi gồm tác phẩm và chương đang mở nếu có, vị trí con trỏ mỗi phía và vùng chọn nếu có. Context SHALL là dữ liệu gợi ý để hiểu các từ như “truyện này”, “chương này” và “đoạn này”; context SHALL NOT giới hạn agent chỉ được thao tác các resource đó.
+Mỗi lượt gửi SHALL lưu context tại thời điểm gửi gồm đúng những gì ô nhập sẽ gửi theo capability `agent-composer`: chương đang mở khi chip gợi ý đã được thêm, vùng chọn kèm chương của nó, vị trí con trỏ của chương được gửi, và các đính kèm. Context SHALL là dữ liệu gợi ý để hiểu các từ như “truyện này”, “chương này” và “đoạn này”; context SHALL NOT giới hạn agent chỉ được thao tác các resource đó.
 
 #### Scenario: Gửi rồi đổi chương
-- **WHEN** người dùng gửi từ chương 1 rồi chuyển sang chương 3 trước khi lượt kết thúc
+- **WHEN** người dùng gửi với chip chương 1 rồi chuyển sang chương 3 trước khi lượt kết thúc
 - **THEN** lượt đã gửi vẫn giữ context chương 1 và operation của nó không đổi đích theo giao diện mới
 
 #### Scenario: Gửi từ màn không có tác phẩm
-- **WHEN** người dùng gửi từ màn toàn ứng dụng không có tác phẩm đang mở
-- **THEN** lượt được lưu với context tác phẩm và chương rỗng, và yêu cầu cần resource phải tự resolve hoặc hỏi lại
+- **WHEN** người dùng gửi từ màn toàn ứng dụng không có tác phẩm đang mở và không thêm chip
+- **THEN** lượt được lưu với context rỗng, và yêu cầu cần resource phải tự resolve hoặc hỏi lại
+
+#### Scenario: Chip chương còn mờ
+- **WHEN** người dùng ở chương 1, chế độ Agent, không chọn đoạn và chưa bấm chip gợi ý
+- **THEN** lượt được lưu với context rỗng dù chương 1 đang mở
 
 ### Requirement: Operation lưu target độc lập với context
 
@@ -104,3 +106,4 @@ Phiên và lượt được lưu theo tác phẩm trước change này SHALL v�
 #### Scenario: Duyệt proposal của lượt legacy đã import
 - **WHEN** người dùng Accept hoặc Deny proposal dưới một lượt legacy trong phiên toàn ứng dụng
 - **THEN** panel định tuyến thao tác về work/session/turn gốc, cập nhật đúng proposal cũ và không tạo proposal bản sao
+

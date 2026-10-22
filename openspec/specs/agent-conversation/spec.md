@@ -2,9 +2,7 @@
 
 ## Purpose
 TBD - created by archiving change add-agent-conversation. Update Purpose after archive.
-
 ## Requirements
-
 ### Requirement: Session toàn ứng dụng và lịch sử bền
 Mira SHALL cho tạo và tiếp tục session Trợ lý từ Trang chủ, Thư viện hoặc màn chương, đọc từ cùng library DB. Đổi màn, đóng panel hay mở tác phẩm khác SHALL không tạo lịch sử thứ hai. Một session MAY chứa turn liên quan nhiều tác phẩm; mỗi turn SHALL giữ context snapshot riêng. Dữ liệu chat legacy SHALL vẫn đọc được trong luồng legacy.
 
@@ -14,18 +12,22 @@ Mira SHALL cho tạo và tiếp tục session Trợ lý từ Trang chủ, Thư v
 
 #### Scenario: Mở lại ứng dụng
 - **WHEN** app mở lại sau các turn đã kết thúc
-- **THEN** danh sách session và transcript, gồm activity và operation của từng turn, được đọc từ library DB theo thứ tự ổn định
+- **THEN** danh sách session và transcript, gồm chuỗi phần tử câu trả lời, tool call, suy nghĩ và operation của từng turn, được đọc từ library DB theo thứ tự ổn định
 
 ### Requirement: Context được chụp tại lúc gửi
-Composer SHALL hiện context chip cho work, chapter, selection và caret hiện tại, và cho bỏ từng chip trước khi gửi. Main SHALL lưu snapshot context chỉ gồm các chip còn lại khi chấp nhận turn; navigation sau đó SHALL không đổi context của turn.
+Composer SHALL hiện chip cho mọi ngữ cảnh sẽ gửi theo capability `agent-composer`: chương đang mở khi đã thêm, vùng chọn, và các đính kèm người dùng thêm bằng nút +; chip gợi ý mờ không được gửi. Main SHALL lưu snapshot context gồm đúng các chip được gửi khi chấp nhận turn; navigation sau đó SHALL không đổi context của turn. Main SHALL cấp một handle cho mỗi tác phẩm hoặc chương trong snapshot (`ctx` cho chương hoặc tác phẩm chính, `ctx2`, `ctx3`… cho đính kèm khác) và SHALL đưa nội dung của mục glossary và cặp xưng hô đính kèm vào prompt của turn; mục không còn ở trạng thái đã duyệt SHALL bị bỏ kèm ghi chú cho model.
 
 #### Scenario: Đổi chương sau khi gửi
-- **WHEN** người dùng gửi yêu cầu khi đang ở chương A rồi chuyển UI sang chương B
+- **WHEN** người dùng gửi yêu cầu với chip chương A rồi chuyển UI sang chương B
 - **THEN** tool call của turn vẫn dùng chương A và Mở đích quay về A
 
 #### Scenario: Bỏ context chip
 - **WHEN** người dùng bỏ chip chương rồi gửi câu hỏi
 - **THEN** snapshot của turn không chứa chương đó, model không nhận handle của chương đó và mọi tool cần chương phải qua `resolve_target`
+
+#### Scenario: Hai chương đính kèm
+- **WHEN** người dùng gửi "so sánh xưng hô hai chương" với chip chương 3 và chương 5
+- **THEN** model nhận hai handle `ctx` và `ctx2` ứng với chương 3 và chương 5
 
 ### Requirement: Target chỉ đi qua handle do runtime cấp
 Runtime SHALL cấp handle theo turn cho target của context snapshot và cho kết quả của capability `resolve_target(description)`. `resolve_target` SHALL tìm target bằng resolver xác định của Mira và trả `resolved` với một handle, `ambiguous` với danh sách ứng viên có handle, hoặc `not_found`. Tham số target của mọi capability khác SHALL là handle; runtime SHALL từ chối ID thô hoặc handle không do turn cấp và không chạy call đó.
@@ -114,15 +116,19 @@ Mỗi vòng model SHALL được lắp theo thứ tự: system policy và tool d
 - **THEN** model đọc chương qua tool phân trang thay vì nhận toàn chương trong prompt
 
 ### Requirement: Turn chờ người dùng và continuation ràng buộc đúng call
-Khi một tool call nhận `needs_user` hoặc `resolve_target` trả `ambiguous`, runtime SHALL giữ call đó ở `pending` và chuyển turn sang `waiting_user`. Turn `waiting_user` SHALL chỉ chuyển sang `running`, `cancelled` hoặc `expired`. Câu trả lời SHALL gửi kèm `continuesTurnId`, ID của tool call và digest tham số của nó; runtime SHALL chỉ chạy hoặc hoàn tất đúng call `pending` có digest khớp, rồi đánh giá lại policy trước khi chạy. Duyệt một call SHALL không áp dụng cho call khác, kể cả cùng tên tool. Stop trên turn `waiting_user` SHALL chuyển nó sang `cancelled`. Turn `waiting_user` SHALL vẫn chờ sau khi app mở lại.
+Khi một tool call nhận `needs_user` mà mức quyền và danh sách duyệt trong phiên không tự duyệt nó, hoặc `resolve_target` trả `ambiguous`, runtime SHALL giữ call đó ở `pending` và chuyển turn sang `waiting_user`. Turn `waiting_user` SHALL chỉ chuyển sang `running`, `cancelled` hoặc `expired`. Câu trả lời SHALL gửi kèm `continuesTurnId`, ID của tool call và digest tham số của nó; runtime SHALL chỉ chạy hoặc hoàn tất đúng call `pending` có digest khớp, rồi đánh giá lại policy trước khi chạy. Duyệt một lần (`approve`) SHALL không áp dụng cho call khác, kể cả cùng tên tool. Duyệt trong phiên (`approve_session`) SHALL duyệt đúng call đó và ghi nhớ capability cho session theo capability `agent-chat-permissions`. Vòng tiếp tục SHALL dùng chế độ và mức quyền đã lưu của turn, không dùng giá trị trong lệnh tiếp tục. Stop trên turn `waiting_user` SHALL chuyển nó sang `cancelled`. Turn `waiting_user` SHALL vẫn chờ sau khi app mở lại.
 
 #### Scenario: Chọn một trong hai tác phẩm
 - **WHEN** người dùng chọn một ứng viên cho turn đang chờ với ID và digest hợp lệ
 - **THEN** cùng turn tiếp tục với handle đã chọn, không tạo turn mới hay operation trùng
 
 #### Scenario: Duyệt rồi model đổi tham số
-- **WHEN** người dùng duyệt một call ghi và vòng sau model gọi lại cùng tool với tham số khác
+- **WHEN** người dùng duyệt một lần một call ghi và vòng sau model gọi lại cùng tool với tham số khác
 - **THEN** call mới được đánh giá policy riêng và không dùng lại lần duyệt trước
+
+#### Scenario: Duyệt trong phiên rồi model gọi lại
+- **WHEN** người dùng duyệt trong phiên một call ghi và vòng sau model gọi lại cùng tool vào đích khác không do người dùng nêu
+- **THEN** call mới được đánh giá policy, nhận `needs_user` và được tự duyệt theo danh sách duyệt trong phiên
 
 #### Scenario: Câu trả lời cho turn đã hết hạn
 - **WHEN** client gửi continuation cho turn không còn `waiting_user` hoặc với digest không khớp
@@ -133,7 +139,7 @@ Khi một tool call nhận `needs_user` hoặc `resolve_target` trả `ambiguous
 - **THEN** turn thành `cancelled`, pending call không chạy và session nhận lệnh mới
 
 ### Requirement: Mọi cửa sổ thấy turn qua event và snapshot
-Main SHALL phát event của turn tới mọi cửa sổ đang mở. Snapshot session SHALL gồm turn, activity, operation và pending action. Renderer SHALL upsert turn, activity và operation theo ID, chỉ thay bản có `updatedAt` mới hơn, và SHALL đọc lại snapshot khi nhận event terminal hoặc event của turn chưa có trong store. Answer delta SHALL chỉ là bản trình bày tạm; câu trả lời đã lưu thắng sau khi đọc lại.
+Main SHALL phát event của turn tới mọi cửa sổ đang mở. Snapshot session SHALL gồm turn, chuỗi phần tử câu trả lời, tool call, activity, operation và pending action. Renderer SHALL upsert turn, phần tử, tool call, activity và operation theo ID, chỉ thay bản có `updatedAt` mới hơn, và SHALL đọc lại snapshot khi nhận event terminal hoặc event của turn chưa có trong store. Answer delta SHALL chỉ là bản trình bày tạm; phần tử đã lưu thắng sau khi đọc lại.
 
 #### Scenario: Mất event sau khi operation commit
 - **WHEN** renderer bỏ lỡ event sau khi operation commit nhưng trước terminal
@@ -141,10 +147,10 @@ Main SHALL phát event của turn tới mọi cửa sổ đang mở. Snapshot se
 
 #### Scenario: Hai cửa sổ
 - **WHEN** turn được gửi từ cửa sổ thứ nhất trong khi cửa sổ thứ hai đang mở cùng session
-- **THEN** cả hai cửa sổ hiện cùng activity và câu trả lời cuối
+- **THEN** cả hai cửa sổ hiện cùng chuỗi phần tử, dòng tool và câu trả lời cuối
 
 ### Requirement: Giao diện chat dùng chung state và truy cập được
-Màn Trợ lý SHALL có Chat mới, danh sách session, transcript, composer, activity và Mở đích. Màn chương SHALL dùng cùng agent store trong side panel `Trợ lý | Ngữ cảnh | Chat cũ`; change này cung cấp shell, tab Trợ lý và tab Chat cũ giữ nguyên chat legacy theo tác phẩm. Draft SHALL được giữ theo session trong renderer. Auto-scroll SHALL không kéo người dùng đang đọc lịch sử. Mọi thao tác SHALL dùng được bằng bàn phím, và trạng thái streaming, chờ người dùng và lỗi SHALL có nhãn cho trình đọc màn hình.
+Màn Trợ lý SHALL có Chat mới, danh sách session bật/tắt được, transcript, composer và Mở đích. Side panel màn chương SHALL chỉ chứa chat Trợ lý, dùng cùng agent store và cùng component transcript và composer với màn Trợ lý; header có tiêu đề session, lịch sử, Chat mới và Đóng. Draft SHALL được giữ theo session trong renderer. Auto-scroll SHALL không kéo người dùng đang đọc lịch sử. Mọi thao tác SHALL dùng được bằng bàn phím, và trạng thái streaming, chờ người dùng và lỗi SHALL có nhãn cho trình đọc màn hình.
 
 #### Scenario: Đổi bề mặt
 - **WHEN** người dùng viết draft ở panel chương rồi mở màn Trợ lý cùng session
@@ -155,5 +161,6 @@ Màn Trợ lý SHALL có Chat mới, danh sách session, transcript, composer, a
 - **THEN** scroll không bị cưỡng bức và có nút về nội dung mới
 
 #### Scenario: Chỉ dùng bàn phím và trình đọc màn hình
-- **WHEN** người dùng chỉ dùng bàn phím để gửi, chọn ứng viên của turn đang chờ và bấm Stop
-- **THEN** mọi control nhận focus theo thứ tự đọc, lựa chọn được kích hoạt bằng Enter hoặc Space, và vùng live thông báo đang trả lời, đang chờ lựa chọn hoặc lỗi
+- **WHEN** người dùng chỉ dùng bàn phím để gửi, mở một dòng tool, duyệt một call và bấm Stop
+- **THEN** mọi control nhận focus theo thứ tự đọc, dòng tool và lựa chọn được kích hoạt bằng Enter hoặc Space, và vùng live thông báo đang trả lời, đang chờ người dùng hoặc lỗi
+
