@@ -100,7 +100,8 @@ export function ToolCallRow({
         variant="ghost"
         aria-expanded={open}
         onClick={toggle}
-        className="h-auto min-h-5 w-full justify-start gap-1.5 px-1 py-0.5 text-left font-normal text-subtle hover:text-default"
+        // Button wraps its children in an inline-flex span; it must shrink for the label to truncate.
+        className="h-auto min-h-5 w-full min-w-0 justify-start gap-1.5 px-1 py-0.5 text-left font-normal text-subtle hover:text-default [&>span]:min-w-0 [&>span]:flex-1"
       >
         <span className="flex size-3 shrink-0 items-center justify-center">
           <StateIcon state={call.state} />
