@@ -6,6 +6,7 @@ import {
   SunIcon
 } from '@renderer/components/ui/reicon'
 
+import logoUrl from '../assets/logo.png'
 import { Button } from '../components/ui/Button'
 import { CompactButton } from '../components/ui/CompactButton'
 import { cn } from '../lib/cn'
@@ -102,13 +103,19 @@ export function AppShell({
       {/* 1. Thanh tiêu đề duy nhất chuẩn VS Code: cao 35px, logo + breadcrumb + command center + actions */}
       <header
         data-slot="app-titlebar"
-        className="window-drag flex h-(--mira-header-height) shrink-0 min-w-0 items-center justify-between border-b border-default bg-subtle px-2 pr-sm text-body-sm"
+        className="window-drag flex h-(--mira-header-height) shrink-0 min-w-0 items-center justify-between border-b border-default bg-subtle pl-1.5 pr-sm text-body-sm"
         style={{ paddingRight: BAR_END_PADDING }}
       >
         {/* Mép trái: Logo Mira + Breadcrumb / Tiêu đề màn hình */}
         <div className="flex min-w-0 items-center gap-2">
-          <span className="text-label-sm font-semibold tracking-heading select-none text-emphasis">
-            Mira
+          {/* Rộng bằng thanh điều hướng thu gọn (w-9, cùng lề p-1.5) để icon thẳng tâm với cột icon. */}
+          <span className="flex w-9 shrink-0 justify-center">
+            <img
+              src={logoUrl}
+              alt="Mira"
+              draggable={false}
+              className="size-4.5 select-none rounded-xs"
+            />
           </span>
           <span className="h-3.5 w-px bg-line" aria-hidden="true" />
           <div ref={setTitleSlot} className="flex min-w-0 items-center gap-xs" />

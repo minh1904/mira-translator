@@ -106,7 +106,7 @@ export function AppNav({
       aria-label="Điều hướng"
       className={cn(
         'flex min-h-0 shrink-0 flex-col overflow-hidden rounded-sm border border-default bg-surface shadow-xs transition-[width] duration-(--mira-duration-base) ease-standard',
-        collapsed ? 'w-12' : 'w-[224px]'
+        collapsed ? 'w-9' : 'w-[224px]'
       )}
     >
       <div
@@ -125,7 +125,12 @@ export function AppNav({
         </Tip>
       </div>
 
-      <nav className="flex min-h-0 flex-1 flex-col gap-2xs overflow-y-auto p-xs">
+      <nav
+        className={cn(
+          'flex min-h-0 flex-1 flex-col gap-2xs overflow-y-auto',
+          collapsed ? 'p-2xs' : 'p-xs'
+        )}
+      >
         <Item
           collapsed={collapsed}
           label="Tìm"
@@ -147,7 +152,8 @@ export function AppNav({
 
       <div
         className={cn(
-          'flex shrink-0 border-t border-default p-xs',
+          'flex shrink-0 border-t border-default',
+          collapsed ? 'p-2xs' : 'p-xs',
           collapsed ? 'flex-col items-stretch gap-2xs' : 'items-center gap-2xs'
         )}
       >
@@ -214,7 +220,8 @@ function Item({
       aria-label={ariaLabel ?? (collapsed ? label : undefined)}
       leading={leading}
       trailing={trailing}
-      className={className}
+      // Thu gọn chỉ còn 26px cho nút: bỏ lề ngang để icon 16px nằm giữa.
+      className={cn(collapsed && 'justify-center px-0', className)}
     >
       {collapsed ? null : (children ?? label)}
     </NavItem>
