@@ -121,6 +121,8 @@ và dùng **phương án A** của wireframe: thanh bên có nhãn, rộng 224 p
 - Không hiện "tác phẩm đang mở" trên thanh bên (phương án C không chọn).
 - **Màn Chương tạm để ngoài**: ở màn Chương thanh bên ẩn, màn giữ nguyên cột danh sách chương và hai
   editor; Cài đặt và đổi nền trở lại cuối thanh trên. Bố cục màn Chương khi có thanh bên chốt sau.
+  Ngày 2026-10-22: màn Chương có **activity bar** đổi nội dung sidebar như VS Code, xem
+  [Tìm và thay thế](find-replace.md#6-chỗ-đặt-activity-bar-ở-màn-dịch-chương).
 - Các mục chưa có tính năng thật vẫn hiện trên thanh bên và mở ra màn minh hoạ gắn nhãn "Sắp có", để
   chủ sản phẩm xem trước toàn bộ bố cục.
 

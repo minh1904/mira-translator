@@ -131,7 +131,41 @@ Rút ra:
 - **Gióng hàng:** thay chữ làm đổi độ dài đoạn; liên kết theo phân đoạn sẽ được đánh dấu cần soát như mọi
   lần sửa tay.
 
-## 6. Câu hỏi cho chủ sản phẩm
+## 6. Chỗ đặt: activity bar ở màn dịch chương
+
+Trạng thái: **đã dựng khung, panel là màn minh hoạ** (2026-10-22). Mục này mở lại "Màn Chương tạm để
+ngoài" trong [quyết định thanh bên](app-level-features.md#5-quyết-định).
+
+**Hành vi đã có**, theo activity bar của VS Code:
+
+- Màn dịch chương có activity bar rộng 40 px, icon 18 px, dính liền sidebar thành một khối. Mỗi nút
+  **chỉ đổi nội dung sidebar**; hai editor giữ nguyên. Bấm lại nút của panel đang mở thì ẩn sidebar, như
+  Ctrl+B; activity bar luôn hiện.
+- Thứ tự: Chương (danh sách chương thật) · Tìm và thay · Ngữ cảnh · Kiểm tra · Tác vụ. Bốn panel sau là màn
+  minh hoạ gắn nhãn "Sắp có", dữ liệu cố định. Panel Tìm và thay lọc trên đoạn mẫu để thấy cách gom kết quả
+  theo chương và cách hiện chữ thay.
+- Màn tác phẩm giữ thanh bên chung và tab khu vực như cũ.
+- Mã: [`ActivityBarItem`](../../../src/renderer/src/components/ui/ActivityBarItem.tsx),
+  [`ChapterActivityBar`](../../../src/renderer/src/modules/workspace/chapter-screen/ChapterActivityBar.tsx),
+  [`ChapterSidePanel`](../../../src/renderer/src/modules/workspace/chapter-screen/ChapterSidePanel.tsx),
+  [`SidePanelMocks`](../../../src/renderer/src/modules/workspace/chapter-screen/SidePanelMocks.tsx);
+  panel đang mở là `chapterPanel` trong `workspaceStore`, không lưu qua phiên.
+
+**Còn lại:**
+
+- Bố cục các panel mock còn lộn xộn; chủ sản phẩm chọn căn chỉnh sau khi luồng thật chạy.
+- Chuyển khỏi panel Chương rồi quay lại thì ô lọc chương bị xoá, vì danh sách được dựng lại.
+- Badge số đếm đã có trong `ActivityBarItem` nhưng chưa bật, để màn minh hoạ không hiện số giả.
+- Tra thuật ngữ khi đang dịch vẫn ở panel phải; panel Ngữ cảnh ở sidebar để lướt và lọc. Khu Ngữ cảnh đầy
+  đủ ở màn tác phẩm cần **thiết kế lại**
+  ([`ContextAreaMock.tsx`](../../../src/renderer/src/modules/workspace/work-detail/ContextAreaMock.tsx)),
+  thuộc module [Ngữ cảnh](../context/README.md), chưa nghiên cứu.
+
+**Phương án đã bỏ (lịch sử, 2026-10-22):** rail tác phẩm hai tầng, nút rail đổi cả màn (Chương, Ngữ cảnh,
+Bản raw, Tác vụ) còn tab ở đầu cột trái đổi danh sách. Đã dựng thử; chủ sản phẩm thấy nút đổi cả màn sai
+kỳ vọng và chọn mô hình VS Code: mọi nút chỉ đổi sidebar.
+
+## 7. Câu hỏi cho chủ sản phẩm
 
 1. Làm Lát 1 trước rồi mới tính Lát 2–3, hay cần thay toàn truyện sớm để mở đường cho L2 của agent?
 2. Ctrl+F khi focus ngoài editor mở trên bản dịch, hay trên pane được bấm gần nhất?
