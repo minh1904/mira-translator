@@ -1,5 +1,5 @@
 import type { JSX, ReactNode } from 'react'
-import { AddIcon, CopyIcon } from '@renderer/components/ui/reicon'
+import { CopyIcon } from '@renderer/components/ui/reicon'
 
 import { PageFrame } from '../../../components/ui/PageFrame'
 import { Badge } from '../../../components/ui/Badge'
@@ -58,16 +58,7 @@ function Field({
  */
 export function StyleProfilesMock(): JSX.Element {
   return (
-    <PageFrame
-      title="Prompt & văn phong"
-      soon
-      wide
-      actions={
-        <Button disabled leftIcon={<AddIcon size={ICON.sm} />}>
-          Tạo hồ sơ
-        </Button>
-      }
-    >
+    <PageFrame title="Prompt & văn phong" soon wide>
       <div className="flex items-start gap-lg">
         <nav aria-label="Hồ sơ văn phong" className="flex w-[260px] shrink-0 flex-col gap-2xs">
           {PROFILES.map((profile, index) => (

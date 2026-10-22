@@ -1,6 +1,5 @@
 import type { JSX, ReactNode } from 'react'
 import {
-  AddIcon,
   CheckCircleIcon,
   DocumentTextIcon,
   ChecklistMinimalisticIcon,
@@ -63,14 +62,7 @@ export function HomeScreen({
 
   const [latest, ...others] = active
   return (
-    <PageFrame
-      title="Trang chủ"
-      actions={
-        <Button leftIcon={<AddIcon size={ICON.sm} />} onClick={onCreateWork}>
-          Tạo tác phẩm
-        </Button>
-      }
-    >
+    <PageFrame title="Trang chủ">
       <ResumeCard
         work={latest!}
         others={others.slice(0, 3)}

@@ -143,7 +143,10 @@ export function AppShell({
       </header>
 
       {/* 2. Thân chính ứng dụng: Activity Bar + Primary Sidebar + Vùng làm việc */}
-      <div data-slot="app-workspace" className="flex min-h-0 min-w-0 flex-1">
+      <div
+        data-slot="app-workspace"
+        className="flex min-h-0 min-w-0 flex-1 gap-1.5 bg-default p-1.5"
+      >
         {nav}
         {sidebar !== null && (
           <aside
@@ -151,12 +154,12 @@ export function AppShell({
             inert={!sidebarOpen || undefined}
             aria-hidden={!sidebarOpen || undefined}
             className={cn(
-              'flex min-h-0 shrink-0 flex-col overflow-hidden border-r border-default bg-subtle transition-[width] duration-(--mira-duration-base) ease-standard',
-              sidebarOpen ? 'w-(--mira-sidebar-width)' : 'w-0 border-r-0'
+              'flex min-h-0 shrink-0 flex-col overflow-hidden transition-[width] duration-(--mira-duration-base) ease-standard',
+              sidebarOpen ? 'w-(--mira-sidebar-width)' : 'w-0'
             )}
             aria-label="Danh sách"
           >
-            <div className="flex min-h-0 w-(--mira-sidebar-width) min-w-(--mira-sidebar-width) flex-1 flex-col">
+            <div className="flex min-h-0 w-(--mira-sidebar-width) min-w-(--mira-sidebar-width) flex-1 flex-col overflow-hidden rounded-xs border border-default bg-surface shadow-xs">
               {sidebar}
             </div>
           </aside>
@@ -165,7 +168,15 @@ export function AppShell({
         <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
           <TopBarTitleSlotContext.Provider value={titleSlot}>
             <TopBarSlotContext.Provider value={slot}>
-              <main className="min-h-0 flex-1 overflow-y-auto">{children}</main>
+              <main
+                className={cn(
+                  'min-h-0 flex-1 overflow-y-auto',
+                  nav !== null &&
+                    'overflow-hidden rounded-xs border border-default bg-surface shadow-xs'
+                )}
+              >
+                {children}
+              </main>
             </TopBarSlotContext.Provider>
           </TopBarTitleSlotContext.Provider>
         </div>

@@ -61,7 +61,7 @@ describe('title bar height', () => {
 
   it('is the bar at the page zoom less its bottom border row', () => {
     expect(ZOOM_FACTOR).toBe(1)
-    expect(TOP_BAR_HEIGHT).toBe(39)
+    expect(TOP_BAR_HEIGHT).toBe(34)
   })
 })
 

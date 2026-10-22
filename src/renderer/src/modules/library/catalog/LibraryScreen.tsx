@@ -67,7 +67,6 @@ export function LibraryScreen({
           ? `${works.length - archived} tác phẩm${archived ? ` · ${archived} trong Lưu trữ` : ''}`
           : undefined
       }
-      actions={create}
       wide
     >
       {problems > 0 && (
@@ -106,6 +105,7 @@ export function LibraryScreen({
               onChange={(event) => setQuery(event.target.value)}
               className="w-[240px]"
             />
+            {create}
           </div>
           {shown.length === 0 ? (
             <p className="m-0 py-xl text-center text-body-sm text-subtle">

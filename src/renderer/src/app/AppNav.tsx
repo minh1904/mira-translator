@@ -105,13 +105,13 @@ export function AppNav({
     <aside
       aria-label="Điều hướng"
       className={cn(
-        'flex min-h-0 shrink-0 flex-col overflow-hidden border-r border-default bg-subtle transition-[width] duration-(--mira-duration-base) ease-standard',
+        'flex min-h-0 shrink-0 flex-col overflow-hidden rounded-xs border border-default bg-surface shadow-xs transition-[width] duration-(--mira-duration-base) ease-standard',
         collapsed ? 'w-12' : 'w-[224px]'
       )}
     >
       <div
         className={cn(
-          'flex h-(--mira-header-height) shrink-0 items-center',
+          'flex h-7 shrink-0 items-center border-b border-default bg-subtle/30',
           collapsed ? 'justify-center' : 'justify-end pr-xs'
         )}
       >
@@ -125,7 +125,7 @@ export function AppNav({
         </Tip>
       </div>
 
-      <nav className="flex min-h-0 flex-1 flex-col gap-2xs overflow-y-auto p-xs pt-0">
+      <nav className="flex min-h-0 flex-1 flex-col gap-2xs overflow-y-auto p-xs">
         <Item
           collapsed={collapsed}
           label="Tìm"

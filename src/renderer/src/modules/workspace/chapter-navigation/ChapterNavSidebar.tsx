@@ -236,7 +236,7 @@ export function ChapterNavSidebar({
 
   return (
     <>
-      <div className="flex h-(--mira-header-height) shrink-0 items-center gap-1.5 border-b border-default px-2">
+      <div className="flex h-7 shrink-0 items-center gap-1.5 border-b border-default bg-subtle/30 px-2">
         <div className="min-w-0 flex-1">
           <SearchInput
             ref={inputRef}
@@ -264,7 +264,7 @@ export function ChapterNavSidebar({
           <CompactButton
             aria-label="Thêm chương"
             onClick={() => void handleAddChapter()}
-            icon={<AddIcon size={16} />}
+            icon={<AddIcon size={14} />}
           />
         </Tip>
       </div>

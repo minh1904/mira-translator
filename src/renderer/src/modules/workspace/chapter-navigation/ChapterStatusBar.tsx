@@ -51,27 +51,37 @@ export function ChapterStatusBar({
   return (
     <footer
       aria-label="Trạng thái chương"
-      className="flex h-[22px] shrink-0 items-center justify-end gap-1.5 border-t border-default bg-subtle px-2 text-body-xs text-subtle tabular-nums select-none"
+      className="flex h-[22px] shrink-0 items-center justify-between border-t border-default bg-subtle px-2.5 text-body-xs text-subtle tabular-nums select-none"
     >
-      {pending > 0 && (
-        <LinkButton
-          color="warning"
-          onClick={onOpenProposals}
-          leftIcon={<span aria-hidden="true" className="size-1.5 rounded-full bg-warning" />}
-        >
-          {pending.toLocaleString('vi')} đề xuất chờ duyệt
-        </LinkButton>
-      )}
-      <span className="px-1">
-        Bản dịch: {words.toLocaleString('vi')} chữ · {characters.toLocaleString('vi')} ký tự
-      </span>
-      <span role="status" className="flex items-center gap-1.5 px-1">
-        <span
-          aria-hidden="true"
-          className={cn('size-1.5 rounded-full', save.safe ? 'bg-success' : 'bg-warning')}
-        />
-        {save.label}
-      </span>
+      <div className="flex items-center gap-2">
+        <span className="flex items-center gap-1 font-medium text-default">
+          <span className="size-1.5 rounded-full bg-success" aria-hidden="true" />
+          Soạn thảo
+        </span>
+        {pending > 0 && (
+          <LinkButton
+            color="warning"
+            onClick={onOpenProposals}
+            leftIcon={<span aria-hidden="true" className="size-1.5 rounded-full bg-warning" />}
+          >
+            {pending.toLocaleString('vi')} đề xuất chờ duyệt
+          </LinkButton>
+        )}
+      </div>
+
+      <div className="flex items-center gap-3">
+        <span>
+          Bản dịch: {words.toLocaleString('vi')} chữ · {characters.toLocaleString('vi')} ký tự
+        </span>
+        <span role="status" className="flex items-center gap-1.5">
+          <span
+            aria-hidden="true"
+            className={cn('size-1.5 rounded-full', save.safe ? 'bg-success' : 'bg-warning')}
+          />
+          {save.label}
+        </span>
+        <span className="text-muted">UTF-8</span>
+      </div>
     </footer>
   )
 }

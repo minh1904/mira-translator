@@ -9,7 +9,7 @@ import { ZOOM_FACTOR } from './zoom'
 export const OVERLAY_TITLE_BAR = process.platform !== 'darwin'
 
 /** `--mira-header-height` trong styles/tokens/foundation.css, trước khi áp dụng tỉ lệ thu phóng (zoom). */
-export const HEADER_HEIGHT = 40
+export const HEADER_HEIGHT = 35
 
 /**
  * Chiều cao của các nút theo pixel cửa sổ: chiều cao thanh sau khi thu phóng, trừ đi hàng viền dưới,

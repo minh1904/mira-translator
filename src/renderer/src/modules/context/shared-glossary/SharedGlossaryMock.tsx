@@ -1,5 +1,5 @@
 import type { JSX } from 'react'
-import { AddIcon, FileDownloadIcon, MenuDotsIcon } from '@renderer/components/ui/reicon'
+import { AddIcon, MenuDotsIcon } from '@renderer/components/ui/reicon'
 
 import { PageFrame } from '../../../components/ui/PageFrame'
 import { Badge } from '../../../components/ui/Badge'
@@ -43,16 +43,7 @@ const ENTRIES: { source: string; target: string; kind: string; hits: string; not
  */
 export function SharedGlossaryMock(): JSX.Element {
   return (
-    <PageFrame
-      title="Kho dùng chung"
-      soon
-      wide
-      actions={
-        <Button disabled leftIcon={<FileDownloadIcon size={ICON.sm} />}>
-          Nhập Names.txt / VietPhrase.txt
-        </Button>
-      }
-    >
+    <PageFrame title="Kho dùng chung" soon wide>
       <div className="flex items-start gap-lg">
         <nav aria-label="Các bộ" className="flex w-[260px] shrink-0 flex-col gap-2xs">
           {SETS.map((set, index) => (

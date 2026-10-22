@@ -676,7 +676,7 @@ export function ChapterWorkspace({
       )}
 
       {mode === 'sentence' ? (
-        <div className="flex min-h-0 flex-1 p-1.5">
+        <div className="flex min-h-0 flex-1">
           <div className="min-h-0 flex-1 overflow-auto rounded-xs border border-default bg-surface p-2 shadow-xs">
             <SentenceMode
               handleRef={sentence}
@@ -690,7 +690,7 @@ export function ChapterWorkspace({
           </div>
         </div>
       ) : (
-        <div ref={panes} className="flex min-h-0 flex-1 gap-1.5 bg-default p-1.5">
+        <div ref={panes} className="flex min-h-0 flex-1 gap-1.5">
           {sourceHidden && (
             <FoldedPane
               label="Bản gốc"
@@ -892,7 +892,7 @@ export function ChapterWorkspace({
             style={{ width: dockOpen ? aiWidth : 0 }}
           >
             {dockOpen && <PanelResizeHandle width={aiWidth} onWidthChange={setAiWidth} />}
-            <div className="flex h-full min-h-0 flex-col pl-1.5" style={{ width: aiWidth }}>
+            <div className="flex h-full min-h-0 flex-col" style={{ width: aiWidth }}>
               {tabActive && !narrow && sidePanel}
             </div>
           </div>
