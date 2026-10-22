@@ -26,6 +26,7 @@ Tập hợp những gì đã nghiên cứu về glossary, nhân vật, xưng hô
 | Sau lượt dịch: kiểm, tự sửa, trau chuốt và để người duyệt thế nào? | [Kiểm, tự sửa và trau chuốt](post-editing.md) |
 | Thế nào là bản dịch tiểu thuyết tốt, mỗi ngôn ngữ nguồn cần lưu ý gì? | [Văn phong bản dịch theo ngôn ngữ](translation-style-research.md) |
 | Model từ chối dịch một phần chương thì sao? | [Đoạn bị nhà cung cấp từ chối](content-refusals.md) |
+| Task dịch thật lệch xưng hô, văn phong ở đâu và vì sao? | [Soát task dịch thật 2026-10-22](translation-run-2026-10-22.md) |
 | Học gì từ harness của một agent khác, làm theo thứ tự nào? | [Đối chiếu harness Hermes](harness-review.md) |
 | Cần dữ liệu gì để đo cách người dịch xử lý xưng hô và độ linh hoạt? | [Kho đối chiếu bản dịch người](human-translation-corpus.md) |
 | Làm theo thứ tự nào, còn phải chốt gì? | [Lộ trình và câu hỏi mở](roadmap.md) |

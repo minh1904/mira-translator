@@ -23,7 +23,7 @@ Vị trí system/user/assistant và số message là biến thiết kế cần k
 
 ## Chọn theo loại thông tin
 
-Glossary khớp văn bản của lô là điểm khởi đầu hợp lý; so sánh với gửi toàn bộ glossary còn là thí nghiệm. Nhân vật/xưng hô cần phạm vi rộng hơn một đoạn vì tiếng Nhật thường không nhắc lại tên. Dàn nhân vật toàn chương chỉ là tập ứng viên, không chứng minh các vai trong từng câu.
+Glossary khớp văn bản của lô là điểm khởi đầu hợp lý; so sánh với gửi toàn bộ glossary còn là thí nghiệm. Nhân vật/xưng hô cần phạm vi rộng hơn một đoạn vì tiếng Nhật thường không nhắc lại tên. Dàn nhân vật toàn chương chỉ là tập ứng viên, không chứng minh các vai trong từng câu. Code hiện tại lọc cặp xưng hô theo tên có trong chương nên bỏ mất cặp của người kể ngôi thứ nhất; xem [Soát task dịch thật 2026-10-22](translation-run-2026-10-22.md).
 
 Mục không duyệt, bị loại, ngoài hiệu lực hoặc không được phép gửi phải bị loại ở **mọi đường**, kể cả summary, mẫu và ghi chú sao chép nội dung của chúng. Không thể cam kết riêng tư bằng cách chỉ lọc danh sách glossary rồi gửi summary chứa cùng thông tin.
 
