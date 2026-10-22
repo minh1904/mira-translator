@@ -19,9 +19,10 @@ import type { ChapterItem } from '../../../../../shared/contracts/chapters'
 import type { SourceCatalogItem } from '../../../../../shared/contracts/sources'
 import { extractChapterNumber } from '../../../../../shared/text/chapterNumber'
 import type { TextRecord } from '../../../../../shared/contracts/text'
-import { StatusBarActions, TopBarTitle } from '../../../components/ui/TopBarActions'
+import { TopBarActions, TopBarTitle } from '../../../components/ui/TopBarActions'
 import { WorkTabActiveContext } from '../../../components/ui/topBarSlot'
 import { cn } from '../../../lib/cn'
+import { Breadcrumb } from '../../../components/ui/Breadcrumb'
 import { Button } from '../../../components/ui/Button'
 import { CompactButton } from '../../../components/ui/CompactButton'
 import { MenuItem, MenuPopup, MenuRoot, MenuTrigger } from '../../../components/ui/DropdownMenu'
@@ -561,11 +562,87 @@ export function ChapterWorkspace({
 
   return (
     <div className="flex h-full min-h-0 flex-col">
-      <TopBarTitle size="sm">
-        <span className="font-medium text-default">
-          {work.title} <span className="text-muted">/</span> {headingTitle(chapter)}
-        </span>
+      <TopBarTitle onBack={onBackToWork} backLabel={`Về tác phẩm: ${work.title}`} size="sm">
+        <Breadcrumb
+          items={[
+            { label: work.title, onClick: onBackToWork, title: `Về tác phẩm: ${work.title}` },
+            { label: headingTitle(chapter) }
+          ]}
+        />
       </TopBarTitle>
+
+      {/* Các nút thao tác chế độ câu/toàn văn, Hỏi AI, chế độ tập trung và menu chương hiển thị trên thanh tiêu đề cửa sổ. */}
+      <TopBarActions>
+        {SENTENCE_MODE_ENABLED && (
+          <TabsRoot
+            value={mode}
+            aria-label="Chế độ soạn thảo"
+            onValueChange={(value) => void switchMode(value as 'full' | 'sentence')}
+          >
+            <TabsList variant="pill">
+              <TabsTab variant="pill" value="full">
+                Toàn văn
+              </TabsTab>
+              <TabsTab variant="pill" value="sentence">
+                Từng câu
+              </TabsTab>
+            </TabsList>
+          </TabsRoot>
+        )}
+        {mode === 'full' && (
+          <CompactButton
+            aria-pressed={aiOpen}
+            aria-label="Hỏi AI (Ctrl+K)"
+            title="Hỏi AI (Ctrl+K)"
+            onClick={toggleAi}
+            icon={<StarsIcon size={16} />}
+          />
+        )}
+        <CompactButton
+          aria-pressed={focused}
+          aria-label={focusLabel}
+          title={focusLabel}
+          onClick={onToggleFocus}
+          icon={focused ? <MaximizeSquareIcon size={16} /> : <MinimizeSquareIcon size={16} />}
+        />
+        <MenuRoot>
+          <MenuTrigger
+            render={
+              <CompactButton aria-label="Thêm thao tác chương" icon={<MenuDotsIcon size={16} />} />
+            }
+          />
+          <MenuPopup>
+            <MenuItem
+              onClick={() => {
+                translateOpener.current =
+                  document.activeElement instanceof HTMLElement ? document.activeElement : null
+                // Bản dịch đang có chữ chưa lưu thì xử lý trước: AI ghi thẳng vào kho.
+                void confirmLeave({ reloadOnDiscard: true }).then((proceed) => {
+                  if (proceed) setTranslateOpen(true)
+                })
+              }}
+            >
+              <StarsIcon size={14} className="text-subtle" />
+              Dịch bằng AI
+            </MenuItem>
+            <MenuItem
+              onClick={() => {
+                // Lưu bản dịch mới nhất trước khi mở hộp thoại xuất chương.
+                void (targetEditor.current?.save() ?? Promise.resolve()).finally(() =>
+                  setExportOpen(true)
+                )
+              }}
+            >
+              <UploadMinimalisticIcon size={14} className="text-subtle" />
+              Xuất chương…
+            </MenuItem>
+            <MenuItem onClick={onBackToWork}>
+              <AltArrowLeftIcon size={14} className="text-subtle" />
+              Về tác phẩm
+            </MenuItem>
+          </MenuPopup>
+        </MenuRoot>
+      </TopBarActions>
 
       {gapPrompt && (
         <section
@@ -752,99 +829,17 @@ export function ChapterWorkspace({
                 subtitle="Tiếng Việt"
                 status={targetStatus}
                 actions={
-                  <>
-                    {SENTENCE_MODE_ENABLED && (
-                      <TabsRoot
-                        value={mode}
-                        aria-label="Chế độ soạn thảo"
-                        onValueChange={(value) => void switchMode(value as 'full' | 'sentence')}
-                      >
-                        <TabsList variant="pill">
-                          <TabsTab variant="pill" value="full">
-                            Toàn văn
-                          </TabsTab>
-                          <TabsTab variant="pill" value="sentence">
-                            Từng câu
-                          </TabsTab>
-                        </TabsList>
-                      </TabsRoot>
-                    )}
-                    {mode === 'full' && (
-                      <CompactButton
-                        aria-pressed={aiOpen}
-                        aria-label="Hỏi AI (Ctrl+K)"
-                        title="Hỏi AI (Ctrl+K)"
-                        onClick={toggleAi}
-                        icon={<StarsIcon size={16} />}
-                      />
-                    )}
-                    <CompactButton
-                      aria-pressed={focused}
-                      aria-label={focusLabel}
-                      title={focusLabel}
-                      onClick={onToggleFocus}
-                      icon={
-                        focused ? (
-                          <MaximizeSquareIcon size={16} />
-                        ) : (
-                          <MinimizeSquareIcon size={16} />
-                        )
-                      }
-                    />
-                    <MenuRoot>
-                      <MenuTrigger
-                        render={
-                          <CompactButton
-                            aria-label="Thêm thao tác chương"
-                            icon={<MenuDotsIcon size={16} />}
-                          />
-                        }
-                      />
-                      <MenuPopup align="end">
-                        <MenuItem
-                          onClick={() => {
-                            translateOpener.current =
-                              document.activeElement instanceof HTMLElement
-                                ? document.activeElement
-                                : null
-                            // Bản dịch đang có chữ chưa lưu thì xử lý trước: AI ghi thẳng vào kho.
-                            void confirmLeave({ reloadOnDiscard: true }).then((proceed) => {
-                              if (proceed) setTranslateOpen(true)
-                            })
-                          }}
-                        >
-                          <StarsIcon size={14} className="text-subtle" />
-                          Dịch bằng AI
-                        </MenuItem>
-                        <MenuItem
-                          onClick={() => {
-                            // Lưu bản dịch mới nhất trước khi mở hộp thoại xuất chương.
-                            void (targetEditor.current?.save() ?? Promise.resolve()).finally(() =>
-                              setExportOpen(true)
-                            )
-                          }}
-                        >
-                          <UploadMinimalisticIcon size={14} className="text-subtle" />
-                          Xuất chương…
-                        </MenuItem>
-                        <MenuItem onClick={onBackToWork}>
-                          <AltArrowLeftIcon size={14} className="text-subtle" />
-                          Về tác phẩm
-                        </MenuItem>
-                      </MenuPopup>
-                    </MenuRoot>
-                    <CompactButton
-                      aria-label={'Thu gọn bản dịch (' + TARGET_SHORTCUT + ')'}
-                      title={
-                        aiOpen
-                          ? 'Hỏi AI đang dùng bản dịch; đóng Hỏi AI để thu gọn'
-                          : 'Thu gọn bản dịch (' + TARGET_SHORTCUT + ')'
-                      }
-                      disabled={aiOpen}
-                      onClick={toggleTarget}
-                      icon={<SidebarCloseIcon size={16} className="-scale-x-100" />}
-                    />
-                  </>
+                  <CompactButton
+                    aria-label={'Thu gọn bản dịch (' + TARGET_SHORTCUT + ')'}
+                    title={
+                      aiOpen
+                        ? 'Hỏi AI đang dùng bản dịch; đóng Hỏi AI để thu gọn'
+                        : 'Thu gọn bản dịch (' + TARGET_SHORTCUT + ')'
+                    }
+                    disabled={aiOpen}
+                    onClick={toggleTarget}
+                    icon={<SidebarCloseIcon size={16} className="-scale-x-100" />}
+                  />
                 }
               >
                 <TextEditor
@@ -910,17 +905,15 @@ export function ChapterWorkspace({
       )}
 
       {mode === 'full' && (
-        <StatusBarActions>
-          <ChapterStatusBar
-            workId={work.id}
-            chapterId={chapter.id}
-            translation={translation}
-            statuses={[sourceStatus, targetStatus]}
-            onOpenProposals={() => {
-              if (!aiOpen) toggleAi()
-            }}
-          />
-        </StatusBarActions>
+        <ChapterStatusBar
+          workId={work.id}
+          chapterId={chapter.id}
+          translation={translation}
+          statuses={[sourceStatus, targetStatus]}
+          onOpenProposals={() => {
+            if (!aiOpen) toggleAi()
+          }}
+        />
       )}
 
       <AiTranslateDialog
