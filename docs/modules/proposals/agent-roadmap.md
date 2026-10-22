@@ -1,6 +1,12 @@
 # Roadmap Trợ lý AI
 
-Cập nhật: 2026-10-13 · Trạng thái: **roadmap hiện hành**.
+Cập nhật: 2026-10-22 · Trạng thái: **roadmap hiện hành**.
+
+> **2026-10-22:** `add-agent-default-context` đã triển khai trong code: tác phẩm đang mở luôn là ngữ cảnh
+> mặc định (chip tác phẩm), capability đọc `get_work_overview`, `list_glossary` và `list_addressing` nhận
+> handle tác phẩm, lượt không có phản hồi hiện thông báo kèm nút **Tiếp tục**, system prompt hướng dẫn dùng
+> `ctx` và gọi lệnh đọc song song. Chưa đo số vòng trên app thật. Các bước tiếp theo xem
+> [Agent toàn diện](autonomous-agent.md) mục 10.2.
 
 ## Đích sản phẩm
 

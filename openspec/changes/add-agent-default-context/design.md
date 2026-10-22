@@ -88,9 +88,11 @@ state machine của turn.
 
 ### D7. Tiếp tục gửi lượt mới bằng ngữ cảnh đã lưu của turn
 
-Nút Tiếp tục gửi lệnh "Tiếp tục" qua đường gửi lượt hiện có, với chế độ, mức quyền và context snapshot đã lưu của
-turn rỗng, không lấy từ ô nhập hiện tại (người dùng có thể đã chuyển chương). Nếu snapshot session gửi cho renderer
-chưa có context của turn, thêm trường đó vào view của turn.
+Nút Tiếp tục gửi lệnh "Tiếp tục" qua đường gửi lượt hiện có, với chế độ và context snapshot đã lưu của turn rỗng,
+không lấy từ ô nhập hiện tại (người dùng có thể đã chuyển chương). Nếu snapshot session gửi cho renderer chưa có
+context của turn, thêm trường đó vào view của turn. Mức quyền không gửi kèm: nó thuộc về phiên, nên turn mới nhận mức
+hiện tại của phiên; tự nâng lại mức cũ sau khi người dùng đã hạ là sai. Lượt gửi từ nút (Tiếp tục, Thử lại) không xóa
+bản nháp của ô nhập.
 
 ### D8. System prompt
 

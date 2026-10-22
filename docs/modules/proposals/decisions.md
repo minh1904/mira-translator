@@ -58,7 +58,10 @@ Chi tiết từng yêu cầu, mã `C<n>` và nguồn VS Code nằm ở [Giao di�
     chọn đoạn luôn được gửi. **Tác phẩm đang mở luôn là ngữ cảnh mặc định của lượt, không cần bấm chip**
     (chủ sản phẩm chốt 2026-10-22): agent chỉ sang tác phẩm khác khi người dùng nêu rõ, và hỏi lại khi lệnh
     mơ hồ. Lý do: log ngày 2026-10-22 cho thấy mọi lượt đều có `context_json` rỗng dù đang mở chương, nên
-    agent tốn 3–4 vòng để tự tìm ra tác phẩm. **Chưa triển khai.**
+    agent tốn 3–4 vòng để tự tìm ra tác phẩm. **Đã triển khai trong code** (OpenSpec
+    `add-agent-default-context`): chip tác phẩm đứng đầu hàng chip ở cả Ask và Agent, không mờ, tắt được cho
+    phiên hiện tại; chip chương vẫn mờ ở Agent. Chưa đo lại số vòng trên app thật với Gemini (task 6.2 của
+    change).
 14. **Ba mức quyền: Mặc định, Cho phép tất cả, Autopilot.** Mặc định hỏi theo bảng policy. Cho phép tất cả tự
     duyệt mọi lời gọi cần duyệt. Autopilot là Cho phép tất cả cộng tự trả lời câu hỏi bằng đáp án mặc định.
     Hai mức trên Mặc định phải qua hộp xác nhận và chỉ có hiệu lực trong phiên hiện tại. Mọi mức đều không

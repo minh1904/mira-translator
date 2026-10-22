@@ -55,6 +55,11 @@ Gốc của các chặn: luật quyền hiện hỏi **"người dùng có nêu 
 | Hai lệnh gọi song song của Gemini bị nối thành `{...}{...}` (`_raw`) | Đã sửa trong `openAiChatTransport.ts` (slot mới khi `id` hoặc tên hàm khác trên cùng index) |
 | Sau khi tạo task, chat không có thẻ tiến độ | Người dùng không biết có đang dịch hay không |
 
+**Trạng thái xử lý (2026-10-22):** ngữ cảnh rỗng, `list_glossary` cấp tác phẩm, lỗi validation không chỉ
+cách sửa và lượt rỗng im lặng đã được sửa trong code bằng `add-agent-default-context`, có test. **Chưa đo**:
+số vòng trước `create_translation_task` khi gửi "dịch toàn bộ truyện" ở chương 1 của tác phẩm 30 chương với
+Gemini, mức Cho phép tất cả (mục tiêu: không quá 2 vòng). Kết quả đo ghi tại đây khi có.
+
 Các lỗi này được xử lý ở mục 5.1 (thẻ tiến độ trong chat), 6 (phạm vi lệnh và ngữ cảnh mặc định), 8 (tool
 tổng quan, sửa `list_glossary`) và 9 (lượt rỗng, nút Tiếp tục).
 
@@ -299,6 +304,7 @@ Thứ tự đề xuất sau khi đối chiếu với log chat thật (mục 2.1)
 
 1. `add-agent-default-context`: tác phẩm đang mở là ngữ cảnh mặc định; `get_work_overview`; sửa
    `list_glossary`; lượt rỗng hiện thông báo kèm Tiếp tục; gọi lệnh đọc song song. Sửa quyết định 13.
+   **Đã triển khai trong code 2026-10-22**; còn thiếu phép đo trên app thật (mục 2.1).
 2. `add-agent-task-tools`: `extract_terms` ngoài task (chỉ ghi `pending`), `list_task`, `control_task`, thẻ
    task có tiến độ trong chat.
 3. `add-agent-plan-and-budget`: thẻ kế hoạch, Tiếp tục khi chạm trần, nâng trần lượt, cầu dao, mô hình

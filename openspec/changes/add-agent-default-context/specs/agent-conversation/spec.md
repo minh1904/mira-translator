@@ -23,8 +23,9 @@ khớp duy nhất tác phẩm đó.
 Khi turn kết thúc mà không có phần tử chữ trả lời khác rỗng và không có thao tác ghi nào thành công, runtime SHALL
 thêm một phần tử thông báo tiến trình "Lượt kết thúc mà không có phản hồi" vào cuối chuỗi phần tử của turn trước khi
 turn kết thúc. Transcript SHALL hiện thông báo đó kèm nút **Tiếp tục** ở turn mới nhất của phiên; bấm Tiếp tục SHALL
-gửi một lượt mới trong cùng phiên với lệnh "Tiếp tục" và cùng chế độ, mức quyền, ngữ cảnh của turn đó. Trạng thái
-turn và câu trả lời đã lưu dùng làm lịch sử SHALL không đổi.
+gửi một lượt mới trong cùng phiên với lệnh "Tiếp tục" và cùng chế độ, ngữ cảnh của turn đó; mức quyền là mức hiện
+tại của phiên, vì mức quyền thuộc về phiên chứ không thuộc về turn. Bấm Tiếp tục SHALL không xóa chữ và chip người
+dùng đang soạn trong ô nhập. Trạng thái turn và câu trả lời đã lưu dùng làm lịch sử SHALL không đổi.
 
 #### Scenario: Hết vòng không có chữ
 - **WHEN** vòng cuối không tool trả về chuỗi rỗng sau năm vòng chỉ đọc
@@ -36,7 +37,8 @@ turn và câu trả lời đã lưu dùng làm lịch sử SHALL không đổi.
 
 #### Scenario: Bấm Tiếp tục
 - **WHEN** người dùng bấm Tiếp tục ở thông báo lượt rỗng
-- **THEN** một turn mới với lệnh "Tiếp tục" được gửi trong cùng phiên với cùng chế độ và mức quyền
+- **THEN** một turn mới với lệnh "Tiếp tục" được gửi trong cùng phiên với cùng chế độ và ngữ cảnh của turn rỗng,
+  và ô nhập vẫn giữ chữ người dùng đang gõ
 
 #### Scenario: Mở lại app
 - **WHEN** app mở lại sau một lượt rỗng
