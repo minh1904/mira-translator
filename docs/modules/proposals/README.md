@@ -17,6 +17,7 @@ của một lượt.
 | Người dùng gói thuê bao (Kimi, Claude/Antigravity qua gateway) kết nối thế nào? | [`add-subscription-gateway-auth`](../../../openspec/changes/add-subscription-gateway-auth/proposal.md) — track riêng, **hoãn** (chủ sản phẩm, 2026-10-14) |
 | Gemini CLI, Gemini web hoặc web app riêng có thể điều khiển Mira thế nào? | [Tích hợp agent bên ngoài](external-agent-integration.md) |
 | Chat Trợ lý phải giống VS Code tới mức nào, còn thiếu gì? | [Giao diện chat theo VS Code](chat-ui-vscode.md) — chuẩn VS Code chốt 2026-10-22 (quyết định 11–17), kèm hiện trạng và đánh giá code |
+| Agent toàn diện (người dùng chỉ ra lệnh) cần luồng, quyền và glossary thế nào? | [Agent toàn diện](autonomous-agent.md) — **đề xuất** 2026-10-22, chưa chốt; đụng quyết định 8, 9, 14 |
 | Session, turn, operation và task khác nhau thế nào? | [Phiên và tác vụ](sessions-and-jobs.md) |
 | Ghi dữ liệu và hoàn tác phải an toàn ra sao? | [Dữ liệu và an toàn](data-and-safety.md) |
 | Proposal cũ được duyệt thế nào? | [Luồng duyệt proposal legacy](review-flow.md) |
