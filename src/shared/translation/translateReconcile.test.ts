@@ -162,6 +162,17 @@ describe('translateReconcile — Đối soát hợp đồng Lõi dịch', () => 
     expect(result.matched).toEqual([{ id: 'u2', text: '「――――？」' }])
   })
 
+  it('nhận bản chép nguyên ở lượt hỏi lại: đoạn không dịch được thì giữ nguyên là đúng', () => {
+    const units = [{ id: 'u1', text: 'asdsadfghgjghj' }]
+    const { sendable, tempToId } = mapToTempIds(units)
+    const items = [{ tempId: '[1]', text: 'asdsadfghgjghj' }]
+
+    expect(reconcileTempItems(sendable, tempToId, items).empty).toEqual(['u1'])
+    const repaired = reconcileTempItems(sendable, tempToId, items, { acceptEcho: true })
+    expect(repaired.empty).toEqual([])
+    expect(repaired.matched).toEqual([{ id: 'u1', text: 'asdsadfghgjghj' }])
+  })
+
   it('bỏ qua ID lạ ngoài danh sách yêu cầu', () => {
     const units = [{ id: 'u1', text: 'Alpha' }]
     const { sendable, tempToId } = mapToTempIds(units)

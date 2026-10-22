@@ -98,11 +98,14 @@ export function normalizeTempId(rawId: string): string {
 
 /**
  * Đối soát kết quả phân tích từ mô hình với danh sách đơn vị gốc yêu cầu.
+ * `acceptEcho`: nhận bản chép nguyên bản gốc làm bản dịch. Lượt hỏi lại bật cờ này: model đã được hỏi
+ * đích danh đoạn đó mà vẫn giữ nguyên (chữ gõ bừa, mã, tên Latin) thì đó là câu trả lời, không phải thiếu.
  */
 export function reconcileTempItems(
   sendable: TempMappedUnit[],
   tempToId: Map<string, string>,
-  items: ParsedTranslateItem[]
+  items: ParsedTranslateItem[],
+  options: { acceptEcho?: boolean } = {}
 ): ReconciliationResult {
   const matched: TranslateUnit[] = []
   const missing: string[] = []
@@ -132,7 +135,7 @@ export function reconcileTempItems(
     // Chép lại nguyên bản gốc (thường khi bản dịch được đọc từ khóa `src`) không phải bản dịch: coi như
     // rỗng để lượt hỏi lại dịch đoạn đó. Đoạn không có chữ (「――――？」) dịch ra vẫn y nguyên, giữ lại.
     const source = sourceOf.get(originalId) ?? ''
-    const echoed = item.text.trim() === source && /\p{L}/u.test(source)
+    const echoed = !options.acceptEcho && item.text.trim() === source && /\p{L}/u.test(source)
     if (item.text.trim() === '' || echoed) {
       empty.push(originalId)
       seenOriginalIds.add(originalId)

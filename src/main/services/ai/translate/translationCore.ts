@@ -355,7 +355,9 @@ async function runTranslateBatch({
 
         if (repairCall !== null && repairCall.finishReason !== 'length') {
           const repairParsed = parseTranslationResponse(repairCall.text)
-          const repairReconciliation = reconcileTempItems(missingUnits, tempToId, repairParsed)
+          const repairReconciliation = reconcileTempItems(missingUnits, tempToId, repairParsed, {
+            acceptEcho: true
+          })
 
           matched.push(...repairReconciliation.matched)
           const newlyMatchedIds = new Set(repairReconciliation.matched.map((m) => m.id))
