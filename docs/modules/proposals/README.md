@@ -16,6 +16,7 @@ của một lượt.
 | Agent được tách thành những lát/spec nào, dựa trên nghiên cứu gì? | [Chương trình đặc tả Agent](agent-spec-program.md) — 6 change độc lập; lát 1–3 đã triển khai, lát 4–6 chưa; lát MCP đã bỏ |
 | Người dùng gói thuê bao (Kimi, Claude/Antigravity qua gateway) kết nối thế nào? | [`add-subscription-gateway-auth`](../../../openspec/changes/add-subscription-gateway-auth/proposal.md) — track riêng, **hoãn** (chủ sản phẩm, 2026-10-14) |
 | Gemini CLI, Gemini web hoặc web app riêng có thể điều khiển Mira thế nào? | [Tích hợp agent bên ngoài](external-agent-integration.md) |
+| Chat Trợ lý phải giống VS Code tới mức nào, còn thiếu gì? | [Giao diện chat theo VS Code](chat-ui-vscode.md) — chuẩn VS Code chốt 2026-10-22 (quyết định 11–17), kèm hiện trạng và đánh giá code |
 | Session, turn, operation và task khác nhau thế nào? | [Phiên và tác vụ](sessions-and-jobs.md) |
 | Ghi dữ liệu và hoàn tác phải an toàn ra sao? | [Dữ liệu và an toàn](data-and-safety.md) |
 | Proposal cũ được duyệt thế nào? | [Luồng duyệt proposal legacy](review-flow.md) |
@@ -72,12 +73,11 @@ này.
 
 ### Chat legacy còn lại
 
-Chat theo tác phẩm (`AiPanel`, spec `ai-chat-tools`) chưa bị gỡ. Ngày 2026-10-13 chủ sản phẩm chốt đặt
-nó ở tab thứ ba **Chat cũ** của side panel màn chương (`Trợ lý | Ngữ cảnh | Chat cũ`), Trợ lý là tab mặc
-định. Tab Chat cũ giữ nguyên hành vi: lịch sử theo tác phẩm, proposal chờ duyệt và Accept/Deny; nút
-"đề xuất chờ duyệt" ở thanh trạng thái chương mở thẳng tab này. Chat legacy vẫn tự chuyển sang model
-dự phòng khi lỗi và có 6 vòng gọi tool cộng một vòng trả lời; Trợ lý mới không fallback và tổng cộng 6
-vòng. Gỡ chat legacy cần một change riêng.
+Chat theo tác phẩm (`AiPanel`, spec `ai-chat-tools`) chưa bị gỡ khỏi code nhưng từ commit `d99e027`
+(2026-10-22) không còn chỗ hiển thị: side panel màn chương chỉ chứa Trợ lý ([quyết định 7](decisions.md)),
+tab **Chat cũ** và **Ngữ cảnh** đã bỏ, `AiPanel` không còn được import. Proposal chờ duyệt của chat cũ vì
+vậy không duyệt được từ giao diện. Gỡ hẳn chat legacy, hoặc giữ một lối đọc dữ liệu cũ theo quyết định 10,
+cần một change riêng.
 
 Proposal theo tác phẩm và Accept/Deny vẫn tồn tại để đọc dữ liệu cũ và phục vụ các luồng legacy chưa
 chuyển đổi. Không dùng thiết kế proposal-only cũ làm contract cho lượt agent mới.

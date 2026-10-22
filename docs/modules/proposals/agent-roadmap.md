@@ -101,6 +101,13 @@ model.
 Chưa làm multi-agent, DAG tổng quát, marketplace skill, scheduler song song, attachment, memory tự động,
 rename/pin/archive session hay framework LangGraph. Chỉ bổ sung khi một workflow đã chạy chứng minh cần.
 
+## Chat theo chuẩn VS Code
+
+Sau sáu lát trên, giao diện chat được làm lại theo [quyết định 11–17](decisions.md) qua bốn change, apply theo thứ tự:
+`fix-agent-chat-permissions`, `add-agent-response-parts`, `add-agent-composer-context`,
+`add-agent-questions-and-checkpoints`. Phạm vi, ánh xạ yêu cầu và trạng thái nằm ở
+[Giao diện chat theo VS Code](chat-ui-vscode.md#openspec). Cả bốn đã đặc tả (2026-10-22); `fix-agent-chat-permissions` đã triển khai cùng ngày, ba change còn lại chưa.
+
 ## Nguồn kỹ thuật
 
 - [OpenSpec foundation](../../../openspec/changes/archive/2026-10-12-app-agent-foundation/proposal.md): thiết kế các khối
