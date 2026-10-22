@@ -6,10 +6,13 @@ const MAX_WIDTH = 720
 /** Tay nắm kéo thả ở cạnh trái side panel để đổi bề rộng; dùng chung cho mọi tab của panel. */
 export function PanelResizeHandle({
   width,
-  onWidthChange
+  onWidthChange,
+  onDraggingChange
 }: {
   width: number
   onWidthChange(width: number): void
+  /** Đang kéo: khung chứa phải tắt hiệu ứng đổi bề rộng để bám theo con trỏ ngay. */
+  onDraggingChange?(dragging: boolean): void
 }): JSX.Element {
   return (
     <span
@@ -24,6 +27,7 @@ export function PanelResizeHandle({
         target.setPointerCapture(pointerId)
         const startX = event.clientX
         const startWidth = width
+        onDraggingChange?.(true)
 
         const onMove = (moveEvent: PointerEvent): void => {
           const next = startWidth + (startX - moveEvent.clientX)
@@ -33,6 +37,7 @@ export function PanelResizeHandle({
           target.releasePointerCapture(pointerId)
           window.removeEventListener('pointermove', onMove)
           window.removeEventListener('pointerup', onUp)
+          onDraggingChange?.(false)
         }
         window.addEventListener('pointermove', onMove)
         window.addEventListener('pointerup', onUp)

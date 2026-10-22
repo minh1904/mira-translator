@@ -169,6 +169,7 @@ export function ChapterWorkspace({
   const sentence = useRef<SentenceModeHandle>(null)
   const [aiOpen, setAiOpen] = useState(false)
   const [aiWidth, setAiWidth] = useState(420)
+  const [resizingDock, setResizingDock] = useState(false)
   const sourceCollapsed = usePaneLayoutStore((state) => state.sourceCollapsed)
   const sourceRatio = usePaneLayoutStore((state) => state.sourceRatio)
   const syncScroll = usePaneLayoutStore((state) => state.syncScroll)
@@ -886,12 +887,21 @@ export function ChapterWorkspace({
             inert={!dockOpen || undefined}
             aria-hidden={!dockOpen || undefined}
             className={cn(
-              'relative min-h-0 shrink-0 overflow-hidden transition-[width] duration-(--mira-duration-base) ease-standard',
+              'relative min-h-0 shrink-0 overflow-hidden',
+              // Chỉ trượt khi mở hoặc đóng; lúc kéo, khung phải đổi cùng lúc với nội dung để không lộ
+              // khoảng trống.
+              !resizingDock && 'transition-[width] duration-(--mira-duration-base) ease-standard',
               dockOpen ? 'visible' : 'w-0 invisible'
             )}
             style={{ width: dockOpen ? aiWidth : 0 }}
           >
-            {dockOpen && <PanelResizeHandle width={aiWidth} onWidthChange={setAiWidth} />}
+            {dockOpen && (
+              <PanelResizeHandle
+                width={aiWidth}
+                onWidthChange={setAiWidth}
+                onDraggingChange={setResizingDock}
+              />
+            )}
             <div className="flex h-full min-h-0 flex-col" style={{ width: aiWidth }}>
               {tabActive && !narrow && sidePanel}
             </div>
