@@ -131,9 +131,9 @@ export const compactButtonVariants = variants({
         'border border-(--mira-button-neutral-border) bg-surface text-(--mira-button-neutral-fg) shadow-xs hover:bg-(--mira-button-neutral-bg-hover)'
     },
     size: {
-      lg: 'size-7 rounded-xs',
-      md: 'size-6 rounded-xs',
-      sm: 'size-5 rounded-xs'
+      lg: 'size-7 rounded-sm',
+      md: 'size-6 rounded-sm',
+      sm: 'size-5 rounded-sm'
     },
     round: { true: 'rounded-full', false: '' },
     /** Nút dạng ghost có ý nghĩa hành động cụ thể: chấp nhận (success) hoặc xóa (danger). */

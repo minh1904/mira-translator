@@ -251,7 +251,7 @@ export function AgentComposer({
       <div
         onKeyDown={onFrameKeyDown}
         className={cn(
-          'flex flex-col rounded-sm border border-default bg-surface p-1.5 shadow-xs transition-shadow duration-150',
+          'flex flex-col rounded-md border border-default bg-surface p-1.5 shadow-xs transition-shadow duration-150',
           focusWithinRing
         )}
       >

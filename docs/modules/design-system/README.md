@@ -13,6 +13,30 @@ này giữ lịch sử quyết định, nghiên cứu, bằng chứng và giới
 
 ## Quyết định
 
+**2026-10-22 (chiều): Shell theo Modern UI của VS Code, panel shell bo 8 px.** Chủ sản phẩm yêu cầu khung
+và bo góc "như VS Code" và chỉ vào bản clone `D:\personal\vscode`. Đã đọc
+`src/vs/workbench/browser/media/floatingPanels.css` (Modern UI, `workbench.experimental.modernUI`) và
+`src/vs/platform/theme/common/sizes`:
+
+- Nền vỏ cửa sổ cùng màu thanh tiêu đề; activity bar, sidebar, editor, panel đều là khung viền 1 px, bo
+  `cornerRadius.large` 8 px, cách nhau và cách mép `spacing.size40` 4 px. Thanh trạng thái nằm ngoài cụm
+  khung, không viền trên.
+- Activity bar và primary sidebar liền thành một khối: cạnh chạm nhau vuông, sidebar nhường viền nên chỉ
+  còn một đường ngăn; đóng sidebar thì rail bo đủ góc.
+- Thang bo góc của VS Code: `xSmall` 2, `small` 4, `medium` 6, `large` 8, `xLarge` 12 px.
+
+Bo góc theo từng component lấy từ Modern UI (`contrib/modernUI/browser/media/roundedCorners.css`), vì Mira
+dùng kiểu khung nổi của nó: lớp nổi 8 (quick input hạ từ 12, hover nâng từ 5, dialog hạ từ 12, menu,
+thông báo); phần tử bên trong 6 (mục menu, nút icon toolbar, code block); control 4 (button, input, select,
+hàng list, kbd, tab, badge dài); switch và badge chấm tròn hẳn. Bản không Modern UI dùng 12 cho dialog và
+palette, 5 cho hover và để hàng list, tab vuông.
+
+Quyết định (đã áp dụng, chuẩn ở [`DESIGN.md`](../../../DESIGN.md#shapes)): ba tầng 8 · 6 · 4 như Modern UI.
+Panel shell, menu, tooltip, toast, composer, dialog và Cài đặt lên/xuống 8 px; nút icon toolbar và mục menu
+lên 6 px; card, alert, code block giữ 6 px; control giữ 4 px. Checkbox giữ 4 px (VS Code 3 px, Mira không có
+token 3). Mira giữ ô activity bar 40 px, chưa thêm khoảng đệm 8 px quanh cột icon như VS Code. Thay quyết
+định "dialog 12" bên dưới.
+
 **2026-10-22: Thang bo góc theo tầng và màu viền khung chứa.** Chủ sản phẩm thấy card bo tròn và viền
 đậm hơn button, hỏi có nên đồng bộ. Đã kiểm code: ba panel khung bo 4 px nhưng card bên trong bo 12 px
 (composer Agent, TaskList, card màn chương), nên con tròn hơn cha. Ngoài dialog, code dùng lẫn `rounded-sm`,
@@ -215,7 +239,8 @@ phẳng chia bằng viền mảnh.
   - Biểu tượng là `--mira-text-subtle`, đổi theo theme, nên liền với các icon của thanh. Bản chép màu
     ở [`titleBar.ts`](../../../src/main/electron/titleBar.ts) có test đối chiếu với token.
 - **Điều hướng hiện tại** (quyết định 2026-10-09):
-  - các màn cấp app có sidebar rộng 224 px, thu được thành rail icon 48 px;
+  - các màn cấp app có sidebar rộng 224 px, thu được thành activity bar 40 px (trước 2026-10-22 là rail
+    48 px);
   - sidebar chứa Tìm, Trang chủ, Thư viện, Tác vụ, Cập nhật, nhóm Tài nguyên, Cài đặt và theme;
   - màn Chương tạm không hiện app sidebar để giữ chiều rộng cho editor; Ctrl+B ở đây vẫn điều khiển
     cột danh sách chương.

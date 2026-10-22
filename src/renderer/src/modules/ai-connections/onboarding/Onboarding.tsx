@@ -432,7 +432,7 @@ export function Onboarding(): JSX.Element | null {
         role="dialog"
         aria-modal="true"
         aria-label="Kết nối nhà cung cấp AI"
-        className="relative flex max-h-full w-full max-w-[45rem] flex-col gap-4 overflow-y-auto rounded-lg border border-strong bg-surface p-6 text-default shadow-lg"
+        className="relative flex max-h-full w-full max-w-[45rem] flex-col gap-4 overflow-y-auto rounded-md border border-strong bg-surface p-6 text-default shadow-lg"
       >
         {(manual || state.step !== 'idle') && (
           <CompactButton

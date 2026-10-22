@@ -282,7 +282,7 @@ export function SettingsModal({ pages }: { pages: SettingsPages }): JSX.Element 
             }
           }}
           className={cn(
-            'fixed inset-x-[clamp(1rem,4vw,3rem)] z-(--mira-z-modal) mx-auto flex max-w-[75rem] flex-col rounded-lg border border-strong bg-surface text-default shadow-lg outline-none',
+            'fixed inset-x-[clamp(1rem,4vw,3rem)] z-(--mira-z-modal) mx-auto flex max-w-[75rem] flex-col rounded-md border border-strong bg-surface text-default shadow-lg outline-none',
             SETTINGS_MODAL_INSET
           )}
         >

@@ -246,9 +246,15 @@ vai trò trong một control. Màn feature chỉ dùng tên semantic như `bg-su
 
 - Dùng scale khoảng cách 2/4/8/12/16/20/24/32/40/48 px. Khoảng cách ngoài một nhóm phải lớn hơn hoặc
   bằng khoảng cách trong nhóm.
-- Thanh tiêu đề duy nhất cao 35 px theo chuẩn VS Code. Sidebar chuẩn rộng 260 px; app sidebar hiện tại rộng 224 px và thu về rail
-  48 px theo quyết định navigation riêng. Màn dịch chương có activity bar 40 px dính liền sidebar thành
-  một khối; mỗi mục là ô 40 px với icon 18 px (`ActivityBarItem`), ngoại lệ duy nhất của thang control.
+- Thanh tiêu đề duy nhất cao 35 px theo chuẩn VS Code, mép trái là icon app căn giữa trên cột activity bar.
+  Thân cửa sổ theo Modern UI của VS Code (`floatingPanels.css`): nền vỏ cùng màu thanh tiêu đề, không viền
+  dưới thanh tiêu đề và không viền trên thanh trạng thái; activity bar, sidebar, vùng làm việc và các khung
+  editor là panel khung cách nhau và cách mép cửa sổ 4 px. Activity bar màn chương liền với sidebar thành một
+  khối: cạnh chạm nhau vuông, sidebar bỏ viền trái để viền phải của rail là đường ngăn duy nhất; đóng
+  sidebar thì rail bo đủ bốn góc. Sidebar chuẩn rộng 260 px; app sidebar hiện tại rộng 224 px và thu về
+  activity bar 40 px. Mọi activity bar dùng ô 40 px với icon 18 px và vạch trái cho mục đang mở
+  (`ActivityBarItem`), ngoại lệ duy nhất của thang control. Hàng đầu và hàng cuối của thanh bên mở rộng
+  cùng cao 28 px.
 - Ưu tiên một mặt phẳng lớn chia bằng hairline border. Card chỉ dùng khi nhóm có biên nhận thức và hành
   động riêng; không bọc mọi section trong card.
 - Màn feature dùng control `md` 28 px. `sm` 24 px dành cho toolbar, table/row hoặc composition nội bộ;
@@ -269,12 +275,17 @@ vai trò trong một control. Màn feature chỉ dùng tên semantic như `bg-su
 ## Shapes
 
 - Radius theo thang 0/4/6/8/12/16 px; pill chỉ cho tag, switch track hoặc affordance thật sự tròn.
-- Radius tăng theo kích thước phần tử, chênh nhau tối đa một bậc giữa các tầng kề nhau:
-  - Control 24/28/32 px (button, input, kbd, badge, hàng list): 4 px (`rounded-xs`, chuẩn desktop VS Code).
-  - Card, list có khung, composer, alert, code block, menu, popover, toast: 6 px (`rounded-sm`).
-  - Panel khung của shell (thanh điều hướng, sidebar, editor, panel Agent): 6 px (`rounded-sm`).
-  - Dialog và lớp phủ cấp dialog (Cài đặt, Onboarding): 12 px (`rounded-lg`).
-  - `rounded-md`/`rounded-lg` ngoài dialog chỉ dành cho ô icon/avatar lớn (≥ 32 px), không cho khung chứa.
+- Radius theo ba tầng của Modern UI VS Code (`contrib/modernUI/browser/media/roundedCorners.css`,
+  `floatingPanels.css`): lớp nổi 8, phần tử bên trong 6, control 4.
+  - Control (button, input, textarea, select trigger, kbd, badge, tag, checkbox, hàng list, tab): 4 px
+    (`rounded-xs`).
+  - Nút icon trên toolbar (`CompactButton`), mục trong menu/select, card, list có khung, alert, code block:
+    6 px (`rounded-sm`).
+  - Lớp nổi và panel shell: 8 px (`rounded-md`). Gồm activity bar, thanh điều hướng, sidebar, vùng làm việc,
+    editor, panel Agent, composer, menu/select/context menu, tooltip, toast, thanh thao tác nổi, dialog,
+    command palette, Cài đặt, Onboarding. Cạnh hai panel liền khối (rail + sidebar) không bo.
+  - Switch, radio, chấm trạng thái, thanh tiến độ, nút tròn nổi: `rounded-full`.
+  - `rounded-lg`/`rounded-xl` chỉ dành cho ô icon/avatar lớn (≥ 32 px), không cho khung chứa.
 - Phần tử nằm trong phần tử khác không bao giờ bo tròn hơn khung cha; dùng radius bằng hoặc nhỏ hơn theo
   khoảng cách inset, tránh nhiều đường cong cạnh nhau không đồng tâm.
 - Viền luôn 1 px. Khung chứa (panel, card, composer lúc nghỉ) dùng `border-default`; `border-input` chỉ

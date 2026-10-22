@@ -29,7 +29,7 @@ export function Tip({ label, side = 'bottom', children }: TipProps): JSX.Element
         <BaseTooltip.Positioner className="z-(--mira-z-tooltip)" side={side} sideOffset={6}>
           <BaseTooltip.Popup
             data-slot="tooltip"
-            className="max-w-80 rounded-xs bg-(--mira-tooltip-bg) px-xs py-2xs text-label-xs text-(--mira-tooltip-fg) shadow-sm transition-[opacity,scale] duration-(--mira-duration-fast) ease-enter data-starting-style:scale-95 data-starting-style:opacity-0 data-ending-style:scale-95 data-ending-style:opacity-0"
+            className="max-w-80 rounded-md bg-(--mira-tooltip-bg) px-xs py-2xs text-label-xs text-(--mira-tooltip-fg) shadow-sm transition-[opacity,scale] duration-(--mira-duration-fast) ease-enter data-starting-style:scale-95 data-starting-style:opacity-0 data-ending-style:scale-95 data-ending-style:opacity-0"
           >
             {label}
           </BaseTooltip.Popup>

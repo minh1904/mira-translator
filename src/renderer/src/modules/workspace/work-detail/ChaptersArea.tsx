@@ -661,7 +661,7 @@ function SelectionBar({
     <div
       role="toolbar"
       aria-label="Thao tác với chương đã chọn"
-      className="sticky bottom-3 z-(--mira-z-sticky) flex flex-wrap items-center gap-2 rounded-sm border border-default bg-surface px-3 py-2 shadow-sm"
+      className="sticky bottom-3 z-(--mira-z-sticky) flex flex-wrap items-center gap-2 rounded-md border border-default bg-surface px-3 py-2 shadow-sm"
     >
       <span className="text-body-sm font-semibold tabular-nums">Đã chọn {count} chương</span>
       <Button variant="ghost" onClick={onClear} disabled={busy}>

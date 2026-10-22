@@ -43,7 +43,7 @@ export function Dialog({
         <BaseDialog.Popup
           finalFocus={finalFocus}
           className={cn(
-            'fixed top-1/2 left-1/2 z-(--mira-z-modal) flex max-h-[calc(100vh-48px)] -translate-x-1/2 -translate-y-1/2 flex-col rounded-lg border border-default bg-surface text-default shadow-lg outline-none',
+            'fixed top-1/2 left-1/2 z-(--mira-z-modal) flex max-h-[calc(100vh-48px)] -translate-x-1/2 -translate-y-1/2 flex-col rounded-md border border-default bg-surface text-default shadow-lg outline-none',
             'transition-[opacity,scale] duration-(--mira-duration-base) ease-enter data-starting-style:scale-95 data-starting-style:opacity-0 data-ending-style:scale-95 data-ending-style:opacity-0 data-ending-style:duration-(--mira-duration-fast) data-ending-style:ease-exit',
             SIZES[size]
           )}
