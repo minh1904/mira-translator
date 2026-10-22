@@ -49,6 +49,38 @@ export function listChapters(db: Db): ChapterItem[] {
     .map(toItem)
 }
 
+export interface TranslationProgress {
+  chapterCount: number
+  /** Chapters with at least one translated segment. */
+  translatedChapters: number
+  /** Number (1-based) of the first chapter without a translated segment; null when all have one. */
+  firstUntranslatedNumber: number | null
+}
+
+/** Translation progress of the whole work in one query; no chapter text is read. */
+export function readTranslationProgress(db: Db): TranslationProgress {
+  const row = db
+    .prepare(
+      `SELECT count(*) AS total,
+         coalesce(sum(translated), 0) AS translated,
+         min(CASE WHEN translated = 0 THEN position END) AS first_untranslated
+       FROM (
+         SELECT c.position AS position,
+           EXISTS (SELECT 1 FROM segment s WHERE s.chapter_id = c.id AND s.side = 'target') AS translated
+         FROM chapter c
+       )`
+    )
+    .get<{ total: number; translated: number; first_untranslated: number | null }>()
+  return {
+    chapterCount: row?.total ?? 0,
+    translatedChapters: row?.translated ?? 0,
+    firstUntranslatedNumber:
+      row?.first_untranslated === null || row?.first_untranslated === undefined
+        ? null
+        : row.first_untranslated + 1
+  }
+}
+
 function findChapter(db: Db, chapterId: string): ChapterRow {
   const row = db.prepare(CHAPTER_SELECT + ' WHERE c.id = ?').get<ChapterRow>(chapterId)
   if (!row) throw new StorageError('not_found', 'Không tìm thấy chương.')

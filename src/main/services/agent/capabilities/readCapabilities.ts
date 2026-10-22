@@ -7,6 +7,8 @@ import {
   askQuestionsArgsSchema,
   type AgentQuestion
 } from '../../../../shared/contracts/agent'
+import type { AgentTaskDetailView, AgentTaskSummary } from '../../../../shared/contracts/agentTask'
+import type { ResolvedTarget } from '../../../../shared/contracts/agent'
 import type { CapabilityDefinition } from '../types'
 
 /** Characters of one side `read_chapter` returns per call; longer chapters are read by `offset`. */
@@ -18,6 +20,16 @@ export const TARGET_PARAM = {
     'Handle của đích do resolve_target hoặc ngữ cảnh cấp (ví dụ "ctx", "t1"). Không dùng ID.'
 }
 
+const TARGET_NEEDED =
+  'Cần target là handle tác phẩm hoặc chương: dùng handle "ctx" nếu có, hoặc gọi resolve_target với tên tác phẩm.'
+
+/** Says which target a capability needs and how to get it, so the model fixes the call next round. */
+const needsChapter = (name: string, target: ResolvedTarget | undefined): string =>
+  `${name} cần target là handle chương` +
+  (target?.kind === 'work'
+    ? ` nhưng nhận handle tác phẩm "${target.workLabel}". Gọi resolve_target với mô tả chương (ví dụ "chương 5") để lấy handle chương.`
+    : '. Dùng handle "ctx" nếu nó là chương, hoặc gọi resolve_target với mô tả chương (ví dụ "chương 5").')
+
 const targetOnly = {
   type: 'object' as const,
   properties: { target: TARGET_PARAM },
@@ -27,7 +39,9 @@ const targetOnly = {
 // Results carry labels and numbers, never IDs: a target reaches a capability only as a turn handle.
 export const listWorksCapability: CapabilityDefinition<Record<string, never>> = {
   name: 'list_works',
-  description: 'Liệt kê danh sách các tác phẩm có trong thư viện.',
+  description:
+    'Liệt kê các tác phẩm trong thư viện. Không cần gọi khi handle "ctx" đã là tác phẩm cần làm; chỉ gọi ' +
+    'khi người dùng hỏi về thư viện hoặc nêu một tác phẩm khác.',
   kind: 'read',
   schema: v.object({}),
   parameters: { type: 'object', properties: {}, required: [] },
@@ -58,7 +72,7 @@ export const listChaptersCapability: CapabilityDefinition<Record<string, never>>
     if (!target) {
       return {
         ok: false,
-        error: { code: 'validation', message: 'Cần target tác phẩm.' }
+        error: { code: 'validation', message: TARGET_NEEDED }
       }
     }
     try {
@@ -82,6 +96,79 @@ export const listChaptersCapability: CapabilityDefinition<Record<string, never>>
     }
   },
   describe: ({ target }) => `Đọc danh mục chương (${target?.workLabel ?? 'tác phẩm'})`
+}
+
+/** Translation tasks listed in one overview; the newest ones, so a long history stays short. */
+const OVERVIEW_TASK_LIMIT = 10
+
+/**
+ * One call that tells the model where a work stands: size, translation progress, glossary and
+ * addressing counts, and its translation tasks. It replaces a chain of single reads at the start of
+ * a command like "dịch toàn bộ truyện". No chapter text and no glossary entries are returned.
+ */
+export function getWorkOverviewCapability(tasks?: {
+  list(filter: { workId?: string }): AgentTaskSummary[]
+  get(taskId: string): AgentTaskDetailView
+}): CapabilityDefinition<Record<string, never>> {
+  return {
+    name: 'get_work_overview',
+    description:
+      'Tổng quan một tác phẩm trong một lần gọi: tên, ngôn ngữ, số chương, số chương đã dịch và chương đầu ' +
+      'tiên chưa dịch, số mục glossary theo trạng thái, số cặp xưng hô và các tác vụ dịch. Gọi một lần ' +
+      'thay cho nhiều lệnh đọc lẻ; target là handle tác phẩm hoặc chương.',
+    kind: 'read',
+    schema: v.object({}),
+    parameters: targetOnly,
+    targetPolicy: 'requires_target',
+    handler: async ({ library, target }) => {
+      if (!target) return { ok: false, error: { code: 'validation', message: TARGET_NEEDED } }
+      try {
+        const work = library.get(target.workId)
+        const progress = library.translationProgress(target.workId)
+        const counts = library.contextCounts(target.workId)
+        const numbers = new Map(
+          library.listChapters(target.workId).map((chapter) => [chapter.id, chapter.number])
+        )
+        const taskRows = (tasks?.list({ workId: target.workId }) ?? [])
+          .slice(0, OVERVIEW_TASK_LIMIT)
+          .map((summary) => {
+            const chapterNumbers = (tasks?.get(summary.id).items ?? [])
+              .map((item) => numbers.get(item.chapterId))
+              .filter((n): n is number => n !== undefined)
+            return {
+              state: summary.state,
+              reason: summary.reason,
+              fromChapter: chapterNumbers.length > 0 ? Math.min(...chapterNumbers) : null,
+              toChapter: chapterNumbers.length > 0 ? Math.max(...chapterNumbers) : null,
+              chapters: summary.counts
+            }
+          })
+        return {
+          ok: true,
+          value: {
+            title: work.title,
+            sourceLang: work.sourceLang,
+            chapterCount: progress.chapterCount,
+            translatedChapters: progress.translatedChapters,
+            untranslatedChapters: progress.chapterCount - progress.translatedChapters,
+            firstUntranslatedChapter: progress.firstUntranslatedNumber,
+            glossary: counts.glossary,
+            addressingPairs: counts.addressingPairs,
+            tasks: taskRows
+          }
+        }
+      } catch (error) {
+        return {
+          ok: false,
+          error: {
+            code: 'not_found',
+            message: error instanceof Error ? error.message : String(error)
+          }
+        }
+      }
+    },
+    describe: ({ target }) => `Đọc tổng quan "${target?.workLabel ?? 'tác phẩm'}"`
+  }
 }
 
 interface ChapterPage {
@@ -118,7 +205,7 @@ export const readChapterCapability: CapabilityDefinition<{
     if (!target || target.kind !== 'chapter') {
       return {
         ok: false,
-        error: { code: 'validation', message: 'read_chapter yêu cầu target loại chapter.' }
+        error: { code: 'validation', message: needsChapter('read_chapter', target) }
       }
     }
     const side = args.side ?? 'both'
@@ -161,7 +248,7 @@ export const readSegmentsCapability: CapabilityDefinition<{ side: 'source' | 'ta
     if (target?.kind !== 'chapter') {
       return {
         ok: false,
-        error: { code: 'validation', message: 'read_segments yêu cầu target loại chapter.' }
+        error: { code: 'validation', message: needsChapter('read_segments', target) }
       }
     }
     return library.withWork(target.workId, (workDb) => {
@@ -207,7 +294,7 @@ export const searchWorkCapability: CapabilityDefinition<{
     if (!target) {
       return {
         ok: false,
-        error: { code: 'validation', message: 'search_work yêu cầu target tác phẩm.' }
+        error: { code: 'validation', message: TARGET_NEEDED }
       }
     }
     const side = args.side ?? 'source'
@@ -237,46 +324,86 @@ export const searchWorkCapability: CapabilityDefinition<{
     `Tìm kiếm "${args.query}" trong "${target?.workLabel ?? 'tác phẩm'}"`
 }
 
+/** Chapter number of a range end, or null when the entry is not limited on that side. */
+const chapterNumberOf = (
+  numbers: ReadonlyMap<string, number>,
+  chapterId: string | null
+): number | null => (chapterId === null ? null : (numbers.get(chapterId) ?? null))
+
 export const listGlossaryCapability: CapabilityDefinition<Record<string, never>> = {
   name: 'list_glossary',
-  description: 'Đọc bảng thuật ngữ hiệu lực cho chương.',
+  description:
+    'Đọc bảng thuật ngữ đã duyệt. Với handle chương: các mục hiệu lực cho chương đó. Với handle tác phẩm: ' +
+    'mọi mục đã duyệt của tác phẩm, kèm dải chương (fromChapter, toChapter) nếu mục chỉ áp dụng một đoạn truyện.',
   kind: 'read',
   schema: v.object({}),
   parameters: targetOnly,
   targetPolicy: 'requires_target',
   handler: async ({ library, target }) => {
-    if (target?.kind !== 'chapter') {
+    if (!target) {
+      return { ok: false, error: { code: 'validation', message: TARGET_NEEDED } }
+    }
+    if (target.kind === 'work') {
+      const numbers = new Map(library.listChapters(target.workId).map((c) => [c.id, c.number]))
       return {
-        ok: false,
-        error: { code: 'validation', message: 'list_glossary yêu cầu target chapter.' }
+        ok: true,
+        value: library.listApprovedGlossary(target.workId).map((entry) => ({
+          source: entry.source,
+          target: entry.target,
+          aliases: entry.aliases,
+          forbidden: entry.forbidden,
+          notes: entry.notes,
+          fromChapter: chapterNumberOf(numbers, entry.fromChapterId),
+          toChapter: chapterNumberOf(numbers, entry.toChapterId)
+        }))
       }
     }
     const entries = library.getEffectiveGlossary(target.workId, target.chapterId)
     return { ok: true, value: entries }
   },
   describe: ({ target }) =>
-    `Đọc thuật ngữ chương "${target?.kind === 'chapter' ? target.chapterLabel : ''}"`
+    target?.kind === 'chapter'
+      ? `Đọc thuật ngữ chương "${target.chapterLabel}"`
+      : `Đọc thuật ngữ "${target?.workLabel ?? 'tác phẩm'}"`
 }
 
 export const listAddressingCapability: CapabilityDefinition<Record<string, never>> = {
   name: 'list_addressing',
-  description: 'Đọc các cặp xưng hô hiệu lực cho chương.',
+  description:
+    'Đọc các cặp xưng hô đã duyệt. Với handle chương: các cặp hiệu lực cho chương đó. Với handle tác phẩm: ' +
+    'mọi cặp đã duyệt của tác phẩm, kèm dải chương (fromChapter, toChapter) mà cặp có hiệu lực.',
   kind: 'read',
   schema: v.object({}),
   parameters: targetOnly,
   targetPolicy: 'requires_target',
   handler: async ({ library, target }) => {
-    if (target?.kind !== 'chapter') {
+    if (!target) {
+      return { ok: false, error: { code: 'validation', message: TARGET_NEEDED } }
+    }
+    if (target.kind === 'work') {
+      const numbers = new Map(library.listChapters(target.workId).map((c) => [c.id, c.number]))
       return {
-        ok: false,
-        error: { code: 'validation', message: 'list_addressing yêu cầu target chapter.' }
+        ok: true,
+        value: library.listApprovedAddressing(target.workId).map((dyad) => ({
+          speaker: dyad.sourceCharacter.target,
+          recipient: dyad.targetCharacter.target,
+          speakerPronoun: dyad.speakerPronoun,
+          recipientPronoun: dyad.recipientPronoun,
+          secondPerson: dyad.secondPerson ?? null,
+          formality: dyad.formality,
+          notes: dyad.notes,
+          fromChapter: chapterNumberOf(numbers, dyad.fromChapterId),
+          toChapter: chapterNumberOf(numbers, dyad.toChapterId)
+        }))
       }
     }
     const dyads = library.getEffectiveAddressing(target.workId, target.chapterId)
     return { ok: true, value: dyads }
   },
   describe: ({ target }) =>
-    `Đọc xưng hô chương "${target?.kind === 'chapter' ? target.chapterLabel : ''}"`
+    target?.kind === 'chapter'
+      ? `Đọc xưng hô chương "${target.chapterLabel}"`
+      : `Đọc xưng hô "${target?.workLabel ?? 'tác phẩm'}"`
 }
 
 export const askQuestionsCapability: CapabilityDefinition<{

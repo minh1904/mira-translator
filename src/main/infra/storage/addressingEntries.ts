@@ -587,8 +587,8 @@ export function deleteDyad(db: Db, dyadId: string, now: number = Date.now()): vo
   touchWork(db, now)
 }
 
-export function getEffectiveDyadsForChapter(db: Db, chapterId: string): AddressingDyadResolved[] {
-  const dyads = listDyads(db, { chapterId, status: 'approved' })
+/** Pairs whose two characters are both approved; a pair with a missing character is dropped. */
+function resolveDyads(db: Db, dyads: AddressingDyadItem[]): AddressingDyadResolved[] {
   if (dyads.length === 0) return []
 
   const characters = listCharacters(db, { status: 'approved' })
@@ -608,6 +608,26 @@ export function getEffectiveDyadsForChapter(db: Db, chapterId: string): Addressi
   }
 
   return resolved
+}
+
+export function getEffectiveDyadsForChapter(db: Db, chapterId: string): AddressingDyadResolved[] {
+  return resolveDyads(db, listDyads(db, { chapterId, status: 'approved' }))
+}
+
+/** Every approved pair of the work, whatever chapters it applies to. */
+export function getApprovedDyadsForWork(db: Db): AddressingDyadResolved[] {
+  return resolveDyads(db, listDyads(db, { status: 'approved' }))
+}
+
+/** Approved pairs of the work, counted without resolving their characters. */
+export function countApprovedDyads(db: Db): number {
+  return (
+    db
+      .prepare(
+        "SELECT count(*) AS n FROM context_entry WHERE kind = 'dyad' AND status = 'approved'"
+      )
+      .get<{ n: number }>()?.n ?? 0
+  )
 }
 
 /**

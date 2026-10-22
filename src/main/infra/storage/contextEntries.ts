@@ -237,6 +237,19 @@ export function listContextEntries(db: Db, options: ListContextOptions = {}): Co
   return rows.map((r) => toItem(r, aliasMap.get(r.id) ?? []))
 }
 
+/** Entries of one kind by status, counted in one query. */
+export function countContextEntriesByStatus(
+  db: Db,
+  kind: ContextKind
+): Record<ContextStatus, number> {
+  const counts: Record<ContextStatus, number> = { approved: 0, pending: 0, rejected: 0 }
+  const rows = db
+    .prepare('SELECT status, count(*) AS n FROM context_entry WHERE kind = ? GROUP BY status')
+    .all<{ status: ContextStatus; n: number }>(kind)
+  for (const row of rows) counts[row.status] = row.n
+  return counts
+}
+
 export function getEffectiveGlossary(
   db: Db,
   chapterId: string,

@@ -17,9 +17,18 @@ import {
   openChapter,
   renameChapter
 } from '../../infra/storage/chapterFile'
-import { getEffectiveGlossary } from '../../infra/storage/contextEntries'
-import { getEffectiveDyadsForChapter } from '../../infra/storage/addressingEntries'
-import type { ContextEntryItem } from '../../../shared/contracts/glossary'
+import {
+  countContextEntriesByStatus,
+  getEffectiveGlossary,
+  listContextEntries
+} from '../../infra/storage/contextEntries'
+import {
+  countApprovedDyads,
+  getApprovedDyadsForWork,
+  getEffectiveDyadsForChapter
+} from '../../infra/storage/addressingEntries'
+import { readTranslationProgress, type TranslationProgress } from '../../infra/storage/chapterFile'
+import type { ContextEntryItem, ContextStatus } from '../../../shared/contracts/glossary'
 import type { AddressingDyadResolved } from '../../../shared/contracts/addressing'
 import type { SegmentInput, TextRecord, TextSide } from '../../../shared/contracts/text'
 import type { RowSaved } from '../../../shared/contracts/rows'
@@ -540,6 +549,34 @@ export class LibraryStore {
 
   getEffectiveAddressing(workId: string, chapterId: string): AddressingDyadResolved[] {
     return this.files.withWork(workId, (db) => getEffectiveDyadsForChapter(db, chapterId))
+  }
+
+  /** Approved glossary terms of the whole work, with the chapter ranges they apply to. */
+  listApprovedGlossary(workId: string): ContextEntryItem[] {
+    return this.files.withWork(workId, (db) =>
+      listContextEntries(db, { kind: 'term', status: 'approved' })
+    )
+  }
+
+  /** Approved addressing pairs of the whole work, with the chapter ranges they apply to. */
+  listApprovedAddressing(workId: string): AddressingDyadResolved[] {
+    return this.files.withWork(workId, (db) => getApprovedDyadsForWork(db))
+  }
+
+  /** How far the work is translated, from one query over the segments. */
+  translationProgress(workId: string): TranslationProgress {
+    return this.files.withWork(workId, (db) => readTranslationProgress(db))
+  }
+
+  /** Glossary entries by status and the approved addressing pairs, counted without loading them. */
+  contextCounts(workId: string): {
+    glossary: Record<ContextStatus, number>
+    addressingPairs: number
+  } {
+    return this.files.withWork(workId, (db) => ({
+      glossary: countContextEntriesByStatus(db, 'term'),
+      addressingPairs: countApprovedDyads(db)
+    }))
   }
 
   close(): void {
