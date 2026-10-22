@@ -22,6 +22,11 @@ import type { Theme } from './useTheme'
 export interface AppShellProps {
   /** Thanh bên ứng dụng (AppNav) nằm dưới tiêu đề cửa sổ; null ở màn hình chương. */
   nav: ReactNode | null
+  /**
+   * Activity bar dính liền bên trái sidebar thành một khối như VS Code (màn dịch chương). Rail luôn hiện;
+   * ẩn sidebar chỉ thu phần danh sách.
+   */
+  rail?: ReactNode
   /** Cột danh sách cạnh vùng làm việc (như danh sách chương); null nếu màn hình không có. */
   sidebar: ReactNode | null
   sidebarOpen: boolean
@@ -58,6 +63,7 @@ const BAR_ICON = ICON.sm
  */
 export function AppShell({
   nav,
+  rail,
   sidebar,
   sidebarOpen,
   onToggleSidebar,
@@ -157,21 +163,43 @@ export function AppShell({
         className="flex min-h-0 min-w-0 flex-1 gap-1.5 bg-default p-1.5"
       >
         {nav}
-        {sidebar !== null && (
-          <aside
-            id="app-sidebar"
-            inert={!sidebarOpen || undefined}
-            aria-hidden={!sidebarOpen || undefined}
-            className={cn(
-              'flex min-h-0 shrink-0 flex-col overflow-hidden transition-[width] duration-(--mira-duration-base) ease-standard',
-              sidebarOpen ? 'w-(--mira-sidebar-width)' : 'w-0'
+        {rail ? (
+          <div className="flex min-h-0 shrink-0 overflow-hidden rounded-sm border border-default bg-surface shadow-xs">
+            <div className="flex min-h-0 shrink-0 flex-col bg-subtle">{rail}</div>
+            {sidebar !== null && (
+              <aside
+                id="app-sidebar"
+                inert={!sidebarOpen || undefined}
+                aria-hidden={!sidebarOpen || undefined}
+                className={cn(
+                  'flex min-h-0 shrink-0 flex-col overflow-hidden transition-[width] duration-(--mira-duration-base) ease-standard',
+                  sidebarOpen ? 'w-(--mira-sidebar-width) border-l border-default' : 'w-0'
+                )}
+                aria-label="Danh sách"
+              >
+                <div className="flex min-h-0 w-(--mira-sidebar-width) min-w-(--mira-sidebar-width) flex-1 flex-col overflow-hidden">
+                  {sidebar}
+                </div>
+              </aside>
             )}
-            aria-label="Danh sách"
-          >
-            <div className="flex min-h-0 w-(--mira-sidebar-width) min-w-(--mira-sidebar-width) flex-1 flex-col overflow-hidden rounded-sm border border-default bg-surface shadow-xs">
-              {sidebar}
-            </div>
-          </aside>
+          </div>
+        ) : (
+          sidebar !== null && (
+            <aside
+              id="app-sidebar"
+              inert={!sidebarOpen || undefined}
+              aria-hidden={!sidebarOpen || undefined}
+              className={cn(
+                'flex min-h-0 shrink-0 flex-col overflow-hidden transition-[width] duration-(--mira-duration-base) ease-standard',
+                sidebarOpen ? 'w-(--mira-sidebar-width)' : 'w-0'
+              )}
+              aria-label="Danh sách"
+            >
+              <div className="flex min-h-0 w-(--mira-sidebar-width) min-w-(--mira-sidebar-width) flex-1 flex-col overflow-hidden rounded-sm border border-default bg-surface shadow-xs">
+                {sidebar}
+              </div>
+            </aside>
+          )
         )}
 
         <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">

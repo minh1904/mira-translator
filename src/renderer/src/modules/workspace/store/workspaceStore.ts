@@ -33,6 +33,9 @@ export type AppPage =
   | 'style'
   | 'assistant'
 
+/** Các panel của sidebar màn dịch chương, theo thứ tự trên activity bar. */
+export type ChapterPanelId = 'chapters' | 'search' | 'context' | 'checks' | 'jobs'
+
 export type View =
   | { name: AppPage }
   | { name: 'create' }
@@ -53,6 +56,8 @@ export interface WorkspaceStateStore {
   workspaceNotice: string | null
 
   sidebarOpen: boolean
+  /** Nội dung sidebar màn dịch chương, do activity bar chọn. */
+  chapterPanel: ChapterPanelId
   /** Thanh điều hướng chính thu gọn thành thanh biểu tượng hẹp. */
   navCollapsed: boolean
   /** Hộp thoại tìm kiếm và bảng lệnh nhanh (Ctrl+K). */
@@ -75,6 +80,10 @@ export interface WorkspaceStateStore {
 
   toggleSidebar(): void
   setSidebarOpen(open: boolean): void
+  /**
+   * Bấm một mục trên activity bar: mở panel đó; bấm lại panel đang mở thì ẩn sidebar, như VS Code.
+   */
+  showChapterPanel(panel: ChapterPanelId): void
   toggleNav(): void
   setPaletteOpen(open: boolean): void
 
@@ -89,6 +98,7 @@ const initialValues = {
   workspaceNotice: null as string | null,
 
   sidebarOpen: true,
+  chapterPanel: 'chapters' as ChapterPanelId,
   navCollapsed: false,
   paletteOpen: false,
 
@@ -225,6 +235,12 @@ export const useWorkspaceStore = create<WorkspaceStateStore>((set, get) => ({
 
   toggleSidebar: () => set((state) => ({ sidebarOpen: !state.sidebarOpen })),
   setSidebarOpen: (sidebarOpen) => set({ sidebarOpen }),
+  showChapterPanel: (panel) =>
+    set((state) =>
+      state.sidebarOpen && state.chapterPanel === panel
+        ? { sidebarOpen: false }
+        : { sidebarOpen: true, chapterPanel: panel }
+    ),
   toggleNav: () => {
     const navCollapsed = !get().navCollapsed
     writeNavCollapsed(navCollapsed)

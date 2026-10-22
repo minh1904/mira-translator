@@ -15,7 +15,12 @@ import { SourcesScreen } from '../modules/sources/public'
 import { StyleProfilesMock } from '../modules/context/public'
 import { UpdatesScreen } from '../modules/sources/public'
 import { useLibrary } from '../modules/library/public'
-import { ChapterNavSidebar } from '../modules/workspace/public'
+import {
+  ChapterActivityBar,
+  ChapterNavSidebar,
+  ChapterSidePanel
+} from '../modules/workspace/public'
+import { openGlossaryReview } from '../modules/workspace/public'
 import { ChapterScreen } from '../modules/workspace/public'
 import { type LeaveGuardRegistry, LeaveGuardScopeContext } from '../modules/workspace/public'
 import { SettingsModal } from '../modules/ai-connections/public'
@@ -45,6 +50,7 @@ export function AppContent({ registry }: { registry: LeaveGuardRegistry }): JSX.
   const workspaceReady = useWorkspaceStore((state) => state.workspaceReady)
   const workspaceNotice = useWorkspaceStore((state) => state.workspaceNotice)
   const sidebarOpen = useWorkspaceStore((state) => state.sidebarOpen)
+  const chapterPanel = useWorkspaceStore((state) => state.chapterPanel)
   const theme = useThemeStore((state) => state.theme)
   const toggleTheme = useThemeStore((state) => state.toggleTheme)
   const toggleSidebar = useWorkspaceStore((state) => state.toggleSidebar)
@@ -93,7 +99,8 @@ export function AppContent({ registry }: { registry: LeaveGuardRegistry }): JSX.
   }
 
   let content: JSX.Element = <div />
-  // Chỉ riêng màn hình chương có cột thứ hai (danh sách chương).
+  // Chỉ riêng màn hình chương có activity bar và sidebar (danh sách chương, tìm, ngữ cảnh…).
+  let rail: JSX.Element | undefined
   let sidebar: JSX.Element | null = null
 
   switch (view.name) {
@@ -212,15 +219,28 @@ export function AppContent({ registry }: { registry: LeaveGuardRegistry }): JSX.
           onToggleFocus={toggleSidebar}
         />
       )
+      rail = (
+        <ChapterActivityBar
+          active={chapterPanel}
+          open={sidebarOpen}
+          onSelect={(panel) => useWorkspaceStore.getState().showChapterPanel(panel)}
+        />
+      )
       sidebar = (
-        <ChapterNavSidebar
+        <ChapterSidePanel
           key={view.workId}
-          workId={view.workId}
-          workTitle={work?.title ?? 'Tác phẩm'}
-          activeChapterId={view.chapterId}
-          onOpenChapter={(chapterId) => openChapterView(view.workId, chapterId)}
-          onBackToWork={backToWork}
-          onWorkChanged={library.applyWork}
+          panel={chapterPanel}
+          onOpenContextReview={() => void openGlossaryReview(view.workId)}
+          chapters={
+            <ChapterNavSidebar
+              workId={view.workId}
+              workTitle={work?.title ?? 'Tác phẩm'}
+              activeChapterId={view.chapterId}
+              onOpenChapter={(chapterId) => openChapterView(view.workId, chapterId)}
+              onBackToWork={backToWork}
+              onWorkChanged={library.applyWork}
+            />
+          }
         />
       )
       break
@@ -299,6 +319,7 @@ export function AppContent({ registry }: { registry: LeaveGuardRegistry }): JSX.
     <>
       <AppShell
         nav={nav}
+        rail={rail}
         sidebar={sidebar}
         sidebarOpen={sidebarOpen}
         onToggleSidebar={

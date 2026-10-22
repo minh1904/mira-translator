@@ -218,4 +218,15 @@ describe('uiStore', () => {
     useThemeStore.getState().toggleTheme()
     expect(useThemeStore.getState().theme).toBe('light')
   })
+
+  it('switches the chapter side panel and hides it when its own icon is pressed again', () => {
+    const store = useWorkspaceStore.getState
+    expect(store()).toMatchObject({ sidebarOpen: true, chapterPanel: 'chapters' })
+    store().showChapterPanel('search')
+    expect(store()).toMatchObject({ sidebarOpen: true, chapterPanel: 'search' })
+    store().showChapterPanel('search')
+    expect(store()).toMatchObject({ sidebarOpen: false, chapterPanel: 'search' })
+    store().showChapterPanel('context')
+    expect(store()).toMatchObject({ sidebarOpen: true, chapterPanel: 'context' })
+  })
 })
