@@ -2,11 +2,11 @@ import type { JSX, ReactNode } from 'react'
 import { Badge } from './Badge'
 import { SOON_LABEL } from '../../lib/mockFeatures'
 import { cn } from '../../lib/cn'
-import { TopBarActions, TopBarTitle } from './TopBarActions'
+import { TopBarTitle } from './TopBarActions'
 
 /**
- * Khung trang ứng dụng từ thanh bên: hiển thị tiêu đề và các nút trên thanh trên cùng, cùng
- * cột nội dung căn giữa. Thuộc tính `soon` đánh dấu trang chỉ là giao diện minh họa sắp có.
+ * Khung trang ứng dụng từ thanh bên: hiển thị tiêu đề trên thanh trên cùng, các nút ở đầu cột nội
+ * dung căn giữa. Thuộc tính `soon` đánh dấu trang chỉ là giao diện minh họa sắp có.
  */
 export function PageFrame({
   title,
@@ -40,7 +40,6 @@ export function PageFrame({
       >
         {title}
       </TopBarTitle>
-      {actions && <TopBarActions>{actions}</TopBarActions>}
       <div
         className={cn(
           'mx-auto flex flex-col gap-lg px-xl py-xl',
@@ -48,6 +47,11 @@ export function PageFrame({
           className
         )}
       >
+        {actions && (
+          <div data-slot="page-actions" className="flex flex-wrap items-center justify-end gap-xs">
+            {actions}
+          </div>
+        )}
         {children}
       </div>
     </div>
