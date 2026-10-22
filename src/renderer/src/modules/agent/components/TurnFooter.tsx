@@ -1,6 +1,7 @@
 import { useState, type JSX } from 'react'
 import { CheckIcon, CopyIcon, RestartIcon } from '@renderer/components/ui/reicon'
 import type { AgentTurnView } from '../../../../../shared/contracts/agent'
+import { Button } from '../../../components/ui/Button'
 import { CompactButton } from '../../../components/ui/CompactButton'
 import { ICON } from '../../../components/ui/icon'
 import { UsageDisplay } from './UsageDisplay'
@@ -27,13 +28,16 @@ export function TurnFooter({
   turn,
   error,
   isLast,
-  onRetry
+  onRetry,
+  onContinue
 }: {
   turn: AgentTurnView
   /** What went wrong, for a failed turn. */
   error: string | null
   isLast: boolean
   onRetry(): void
+  /** Offered when the turn ended without a reply; sends "Tiếp tục" in the same session. */
+  onContinue?: () => void
 }): JSX.Element {
   const [copied, setCopied] = useState(false)
   const copy = async (): Promise<void> => {
@@ -55,6 +59,13 @@ export function TurnFooter({
           className="rounded-sm border border-(--mira-border-subtle) bg-error-subtle px-2 py-1.5 text-body-xs text-error"
         >
           {error ?? 'Lượt trả lời bị lỗi.'}
+        </div>
+      )}
+      {onContinue && (
+        <div>
+          <Button variant="outline" onClick={onContinue}>
+            Tiếp tục
+          </Button>
         </div>
       )}
       <div className="flex flex-wrap items-center gap-1 text-label-xs text-muted">

@@ -459,4 +459,41 @@ describe('agentStore', () => {
       })
     )
   })
+
+  it('continues with the mode and context of the turn, not the ones the composer shows', async () => {
+    const api = bridge(async () => ({ ok: true, value: detail() }))
+    await useAgentStore.getState().selectSession('s1')
+    useAgentStore.getState().setMode('ask')
+    useAgentStore.getState().adapter.setActiveContextGetter(() => ({ workId: 'moved-on' }))
+    await useAgentStore
+      .getState()
+      .continueAfter(
+        turn({ instruction: 'dịch toàn bộ', context: { workId: 'w1' }, mode: 'agent' }),
+        model
+      )
+    expect(api.turn.send).toHaveBeenCalledWith(
+      expect.objectContaining({
+        sessionId: 's1',
+        instruction: 'Tiếp tục',
+        context: { workId: 'w1' },
+        mode: 'agent',
+        modelSelection: model
+      })
+    )
+    useAgentStore.getState().adapter.setActiveContextGetter(() => null)
+  })
+
+  it('keeps what the user is typing when a turn is continued or retried', async () => {
+    bridge(async () => ({ ok: true, value: detail() }))
+    await useAgentStore.getState().selectSession('s1')
+    const attachment = { kind: 'work' as const, workId: 'w2', label: 'B' }
+    useAgentStore.getState().setDraft('đang gõ dở')
+    useAgentStore.getState().addAttachment(attachment)
+    const empty = turn({ instruction: 'dịch toàn bộ', context: { workId: 'w1' }, mode: 'agent' })
+    expect(await useAgentStore.getState().continueAfter(empty, model)).toBe(true)
+    useAgentStore.setState({ isStreaming: false })
+    expect(await useAgentStore.getState().retry(empty, model)).toBe(true)
+    expect(useAgentStore.getState().drafts.s1).toBe('đang gõ dở')
+    expect(useAgentStore.getState().composer.s1?.attachments).toEqual([attachment])
+  })
 })

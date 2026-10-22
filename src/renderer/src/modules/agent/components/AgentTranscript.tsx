@@ -6,6 +6,7 @@ import type {
   AgentTurnView,
   ResolvedTarget
 } from '../../../../../shared/contracts/agent'
+import { isEmptyTurn } from '../../../../../shared/contracts/agentEmptyTurn'
 import { EmptyState } from '../../../components/ui/EmptyState'
 import { useAgentStore } from '../store/agentStore'
 import { useAgentModel } from './AgentComposer'
@@ -83,6 +84,7 @@ export function AgentTranscript({ onOpenTarget, className }: AgentTranscriptProp
   const lastError = useAgentStore((s) => s.lastError)
   const reply = useAgentStore((s) => s.reply)
   const retry = useAgentStore((s) => s.retry)
+  const continueAfter = useAgentStore((s) => s.continueAfter)
   const cancel = useAgentStore((s) => s.cancel)
   const undo = useAgentStore((s) => s.undo)
   const loadDetail = useAgentStore((s) => s.loadToolCallDetail)
@@ -219,6 +221,14 @@ export function AgentTranscript({ onOpenTarget, className }: AgentTranscriptProp
             !streaming && !waiting && turn.status !== 'queued' && turn.status !== 'running'
           const isLast = turnIndex === turns.length - 1
           const hasText = items.some((item) => item.kind === 'text')
+          // Only the newest turn can be carried on, and only when it gave the user nothing.
+          const canContinue =
+            isLast &&
+            turn.status === 'completed' &&
+            isEmptyTurn({
+              parts: parts.filter((part) => part.turnId === turn.id),
+              toolCalls: Object.values(toolCalls).filter((call) => call.turnId === turn.id)
+            })
           return (
             <article
               key={turn.id}
@@ -249,6 +259,7 @@ export function AgentTranscript({ onOpenTarget, className }: AgentTranscriptProp
                   }
                   isLast={isLast}
                   onRetry={() => void retry(turn, model)}
+                  onContinue={canContinue ? () => void continueAfter(turn, model) : undefined}
                 />
               )}
             </article>

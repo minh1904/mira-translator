@@ -3,8 +3,11 @@ import * as v from 'valibot'
 import type { AgentStreamEvent } from '../../../shared/contracts/agent'
 import { validateAgentEventSequence } from '../../../shared/contracts/agent'
 import { ProviderError } from '../../infra/providers/types'
+import { AGENT_WRITE_TOOLS } from '../../../shared/contracts/agentEmptyTurn'
 import { callTools, say, setupAgent } from './agentTestKit'
 import { AgentService, MAX_MODEL_ROUNDS, questionsOf } from './agentService'
+import { CapabilityRegistry } from './registry'
+import type { AgentTaskService } from './taskService'
 
 const recorder = () => {
   const events: AgentStreamEvent[] = []
@@ -60,6 +63,121 @@ describe('AgentService model–tool loop', () => {
     const [operation] = agent.listOperations(res.turnId)
     expect(operation).toMatchObject({ state: 'completed', capability: 'translate_chapter' })
     expect(library.readText(work1.id, ch1_2.id, 'target').content).toContain('Dịch: Đoạn một')
+  })
+
+  describe('turn that gives the user nothing', () => {
+    const noticesOf = (kit: ReturnType<typeof setupAgent>, turnId: string) =>
+      kit.repository.listParts(turnId).filter((part) => part.kind === 'progress')
+
+    it('knows every capability that is not a read as a write', () => {
+      // A write missing from AGENT_WRITE_TOOLS would mark a turn that did work as empty.
+      const kit = setupAgent()
+      const registry = new CapabilityRegistry()
+      new AgentService({
+        library: kit.library,
+        connections: kit.services.connections,
+        repository: kit.repository,
+        registry,
+        tasks: {} as AgentTaskService
+      })
+      const writes = registry
+        .list()
+        .filter((cap) => cap.kind !== 'read')
+        .map((cap) => cap.name)
+      expect(writes.length).toBeGreaterThan(0)
+      expect([...AGENT_WRITE_TOOLS].sort()).toEqual([...writes].sort())
+    })
+
+    it('stores a notice at the end when the turn only read and the last round was empty', async () => {
+      const kit = setupAgent()
+      kit.model.script(callTools({ name: 'list_works', args: {} }), say(''))
+      const res = await kit.agent.send({
+        instruction: 'dịch toàn bộ truyện',
+        modelSelection: kit.modelSelection
+      })
+
+      expect(res).toMatchObject({ status: 'completed', answer: '' })
+      const parts = kit.repository.listParts(res.turnId)
+      expect(parts.at(-1)).toMatchObject({
+        kind: 'progress',
+        text: 'Lượt kết thúc mà không có phản hồi'
+      })
+      // The answer kept as history is still what the model said.
+      expect(kit.repository.getTurn(res.turnId)?.answer).toBe('')
+    })
+
+    it('adds no notice when the model answered', async () => {
+      const kit = setupAgent()
+      kit.model.script(callTools({ name: 'list_works', args: {} }), say('Có hai tác phẩm.'))
+      const res = await kit.agent.send({
+        instruction: 'có mấy truyện?',
+        modelSelection: kit.modelSelection
+      })
+      expect(noticesOf(kit, res.turnId)).toEqual([])
+    })
+
+    it('adds no notice when a write completed even though the last round was empty', async () => {
+      const kit = setupAgent()
+      kit.model.script(callTools({ name: 'translate_chapter', args: { target: 'ctx' } }), say(''))
+      const res = await kit.agent.send({
+        instruction: 'dịch chương này',
+        context: { workId: kit.work1.id, chapterId: kit.ch1_2.id },
+        modelSelection: kit.modelSelection
+      })
+      expect(res.status).toBe('completed')
+      expect(noticesOf(kit, res.turnId)).toEqual([])
+    })
+  })
+
+  it('tells the model to use ctx, read the overview once and batch independent reads', async () => {
+    const { agent, model, modelSelection } = setupAgent()
+    model.script(say('Ừ.'))
+    await agent.send({ instruction: 'xin chào', modelSelection })
+
+    const system = model.requests[0]!.messages.find((m) => m.role === 'system')!.content as string
+    expect(system).toContain('"ctx" là tác phẩm hoặc chương người dùng đang mở')
+    expect(system).toContain('get_work_overview một lần')
+    expect(system).toContain('cùng lúc trong một vòng')
+
+    const tools = model.requests[0]!.tools as Array<{
+      function: { name: string; description: string }
+    }>
+    const describe = (name: string) =>
+      tools.find((t) => t.function.name === name)!.function.description
+    expect(describe('list_works')).toContain('Không cần gọi khi handle "ctx"')
+    expect(describe('resolve_target')).toContain('Không cần gọi khi handle "ctx"')
+  })
+
+  it('issues ctx for the open work when the context has no chapter, and writes a named chapter of it', async () => {
+    const { agent, model, modelSelection, library, work1, ch1_1, ch1_2 } = setupAgent()
+    model.script(
+      (request) => {
+        const user = request.messages.filter((m) => m.role === 'user').at(-1)!.content as string
+        expect(user).toContain('Ngữ cảnh (handle "ctx"): Đại Đạo Triều Thiên.')
+        return callTools(
+          { name: 'list_chapters', args: { target: 'ctx' } },
+          { name: 'resolve_target', args: { description: 'chương 2' } }
+        )
+      },
+      (request) => {
+        const tools = request.messages.filter((m) => m.role === 'tool')
+        expect(JSON.parse(tools[0]!.content).ok).toBe(true)
+        const resolved = JSON.parse(tools[1]!.content).value
+        return callTools({ name: 'translate_chapter', args: { target: resolved.handle } })
+      },
+      say('Xong.')
+    )
+    const res = await agent.send({
+      instruction: 'dịch chương 2',
+      context: { workId: work1.id },
+      modelSelection
+    })
+    expect(res.status).toBe('completed')
+    // The open work is the user's own context: naming a chapter of it needs no approval.
+    const ops = agent.listOperations(res.turnId)
+    expect(ops).toHaveLength(1)
+    expect(ops[0]).toMatchObject({ state: 'completed', target: { chapterId: ch1_2.id } })
+    expect(library.readText(work1.id, ch1_1.id, 'target').content).toBe('')
   })
 
   it('resolves a named chapter to a handle and writes only that chapter', async () => {

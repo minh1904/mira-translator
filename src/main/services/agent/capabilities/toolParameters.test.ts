@@ -1,8 +1,9 @@
 import * as v from 'valibot'
 import { describe, expect, it } from 'vitest'
+import { AGENT_WRITE_TOOLS } from '../../../../shared/contracts/agentEmptyTurn'
 import type { ConnectionService } from '../../ai/connectionService'
 import type { CapabilityDefinition } from '../types'
-import { defaultReadCapabilities } from './readCapabilities'
+import { defaultReadCapabilities, getWorkOverviewCapability } from './readCapabilities'
 import { createWriteCapabilities } from './writeCapabilities'
 import {
   createTranslationTaskCapability,
@@ -18,7 +19,8 @@ const chatCapabilities: CapabilityDefinition[] = [
   write.undoOperationCapability,
   createTranslationTaskCapability,
   steerTranslationTaskCapability,
-  readTranslationTasksCapability({ list: () => [], get: () => ({}) as never })
+  readTranslationTasksCapability({ list: () => [], get: () => ({}) as never }),
+  getWorkOverviewCapability()
 ]
 
 /** A valid and an invalid model payload per capability, both without `target`. */
@@ -56,12 +58,18 @@ const samples: Record<string, { valid: unknown; invalid: unknown }> = {
     valid: { taskId: 't', fromChapter: 8, instruction: 'Giữ câu ngắn.' },
     invalid: { taskId: 't', fromChapter: 8, instruction: '' }
   },
-  read_translation_tasks: { valid: {}, invalid: null }
+  read_translation_tasks: { valid: {}, invalid: null },
+  get_work_overview: { valid: {}, invalid: null }
 }
 
 type Entries = Record<string, { type: string }>
 
 describe('chat tool parameters', () => {
+  it('lists every capability that is not a read as a write tool for the empty-turn rule', () => {
+    const writes = chatCapabilities.filter((cap) => cap.kind !== 'read').map((cap) => cap.name)
+    expect([...AGENT_WRITE_TOOLS].sort()).toEqual(writes.sort())
+  })
+
   it('declares hand-written parameters for every chat capability', () => {
     expect(chatCapabilities.filter((cap) => !cap.parameters).map((cap) => cap.name)).toEqual([])
     expect(Object.keys(samples).sort()).toEqual(chatCapabilities.map((cap) => cap.name).sort())

@@ -39,6 +39,7 @@ import {
 } from '../../../shared/contracts/agent'
 import type { ModelRef } from '../../../shared/contracts/aiPreferences'
 import type { ContextStrategy } from '../../../shared/contracts/agentTask'
+import { EMPTY_TURN_NOTICE, isEmptyTurn } from '../../../shared/contracts/agentEmptyTurn'
 import type { TextSide } from '../../../shared/contracts/text'
 import type { TokenUsage } from '../../../shared/contracts/usage'
 import { StorageError } from '../../infra/storage/errors'
@@ -1790,6 +1791,25 @@ export class AgentService {
             costUsd: costOf(usage)
           }
         }
+      }
+
+      // A turn that gave the user nothing says so; the stored answer stays as the model wrote it.
+      if (
+        isEmptyTurn({
+          parts: this.repository.listParts(turnId),
+          toolCalls: this.repository.listToolCalls(turnId)
+        })
+      ) {
+        saveParts([
+          {
+            round: 0,
+            kind: 'progress',
+            text: EMPTY_TURN_NOTICE,
+            toolCallId: null,
+            durationMs: null,
+            createdAt: this.now()
+          }
+        ])
       }
 
       const usage = totalUsage()

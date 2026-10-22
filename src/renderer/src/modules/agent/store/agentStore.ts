@@ -46,6 +46,9 @@ type EditedChapterRef = { workId: string; chapterId: string }
 export const editKey = (chapter: EditedChapterRef): string =>
   chapter.workId + ':' + chapter.chapterId
 
+/** The command of the turn the Tiếp tục button sends. */
+export const CONTINUE_INSTRUCTION = 'Tiếp tục'
+
 /** Draft key of a chat that has no session yet. */
 export const NEW_CHAT = 'new'
 
@@ -178,6 +181,11 @@ export interface AgentState {
   ) => Promise<boolean>
   /** Sends a turn's instruction and context again as a new turn. */
   retry: (turn: AgentTurnView, modelSelection?: SendModel) => Promise<boolean>
+  /**
+   * Asks the agent to carry on after a turn that ended without a reply: a new turn in the same session
+   * with the mode and context that turn was sent with, not what the composer shows now.
+   */
+  continueAfter: (turn: AgentTurnView, modelSelection?: SendModel) => Promise<boolean>
   loadToolCallDetail: (toolCallId: string) => Promise<void>
   cancel: (turnId?: string) => Promise<void>
   undo: (operationId: string) => Promise<void>
@@ -712,6 +720,15 @@ export const useAgentStore = create<AgentState>((set, get) => {
       get().send(turn.instruction, {
         context: turn.context,
         mode: turn.mode,
+        keepDraft: true,
+        ...(modelSelection ? { modelSelection } : {})
+      }),
+
+    continueAfter: (turn, modelSelection) =>
+      get().send(CONTINUE_INSTRUCTION, {
+        context: turn.context,
+        mode: turn.mode,
+        keepDraft: true,
         ...(modelSelection ? { modelSelection } : {})
       }),
 

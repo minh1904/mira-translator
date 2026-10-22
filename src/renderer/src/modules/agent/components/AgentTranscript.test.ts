@@ -157,4 +157,52 @@ describe('AgentTranscript', () => {
     expect(html).toContain('role="alert"')
     expect(html).toContain('Provider từ chối yêu cầu.')
   })
+
+  it('offers Tiếp tục under the newest turn that gave nothing, with the notice in place', () => {
+    const html = render({
+      turns: [turn({ id: 't0', answer: '' }), turn({ answer: '' })],
+      parts: [
+        part(1, { turnId: 't0', kind: 'progress', text: 'Lượt kết thúc mà không có phản hồi' }),
+        part(1, { id: 'p9', kind: 'tool_call', toolCallId: 'c1' }),
+        part(2, {
+          id: 'p10',
+          round: 0,
+          kind: 'progress',
+          text: 'Lượt kết thúc mà không có phản hồi'
+        })
+      ],
+      toolCalls: { c1: call() }
+    })
+    expect(html).toContain('Lượt kết thúc mà không có phản hồi')
+    // Only the newest turn can be carried on.
+    expect(html.match(/>Tiếp tục</g)).toHaveLength(1)
+  })
+
+  it('hides Tiếp tục when the turn answered or wrote', () => {
+    const answered = render({
+      turns: [turn()],
+      parts: [part(1, { text: 'Có 2 tác phẩm.' })],
+      toolCalls: {}
+    })
+    expect(answered).not.toContain('>Tiếp tục<')
+
+    const wrote = render({
+      turns: [turn({ answer: '' })],
+      parts: [part(1, { kind: 'tool_call', toolCallId: 'c1' })],
+      toolCalls: { c1: call({ name: 'translate_chapter' }) }
+    })
+    expect(wrote).not.toContain('>Tiếp tục<')
+  })
+
+  it('hides Tiếp tục while the turn is still running', () => {
+    const html = render({
+      turns: [turn({ status: 'running', answer: '' })],
+      parts: [],
+      toolCalls: {},
+      isStreaming: true,
+      streamingTurnId: 't1',
+      live: {}
+    })
+    expect(html).not.toContain('>Tiếp tục<')
+  })
 })
