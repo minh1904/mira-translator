@@ -626,7 +626,7 @@ export function ChapterPanes({
         </section>
       )}
 
-      <div ref={panes} className="flex min-h-0 flex-1 gap-1.5">
+      <div ref={panes} className="flex min-h-0 flex-1 gap-1">
         {sourceHidden && (
           <FoldedPane
             label="Bản gốc"
@@ -635,7 +635,7 @@ export function ChapterPanes({
             onOpen={toggleSource}
           />
         )}
-        <div ref={editors} className="flex min-h-0 min-w-0 flex-1 gap-1.5">
+        <div ref={editors} className="flex min-h-0 min-w-0 flex-1 gap-1">
           <div
             className={sourceHidden ? 'hidden' : 'flex min-h-0 min-w-0'}
             style={{ flex: `${targetHidden ? 1 : sourceRatio} 1 0` }}
@@ -916,7 +916,7 @@ function FoldedPane({
   return (
     <div
       ref={strip}
-      className="flex w-8 shrink-0 flex-col items-center gap-2 rounded-sm border border-default bg-surface py-3 shadow-xs transition-opacity duration-(--mira-duration-fast)"
+      className="flex w-8 shrink-0 flex-col items-center gap-2 rounded-md border border-default bg-surface py-3 shadow-xs transition-opacity duration-(--mira-duration-fast)"
     >
       <CompactButton
         aria-label={action}

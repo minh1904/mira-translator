@@ -15,6 +15,7 @@ import {
   SunIcon
 } from '@renderer/components/ui/reicon'
 
+import { ActivityBarItem } from '../components/ui/ActivityBarItem'
 import { CompactButton } from '../components/ui/CompactButton'
 import { ICON } from '../components/ui/icon'
 import { Kbd } from '../components/ui/Input'
@@ -24,26 +25,26 @@ import { cn } from '../lib/cn'
 import type { Theme } from '../components/ui/themeStore'
 import type { AppPage } from '../modules/workspace/public'
 
+type IconComponent = typeof Home2Icon
+
 interface NavEntry {
   page: AppPage
   label: string
-  icon: ReactNode
+  icon: IconComponent
 }
-
-const icon = (Icon: typeof Home2Icon): ReactNode => <Icon size={ICON.sm} aria-hidden="true" />
 
 /** Danh mục điều hướng cho công việc hàng ngày, tiếp theo là tài nguyên dùng chung. */
 const MAIN: NavEntry[] = [
-  { page: 'home', label: 'Trang chủ', icon: icon(Home2Icon) },
-  { page: 'library', label: 'Thư viện', icon: icon(LibraryIcon) },
-  { page: 'jobs', label: 'Tác vụ', icon: icon(ChecklistMinimalisticIcon) },
-  { page: 'updates', label: 'Cập nhật', icon: icon(FeedIcon) },
-  { page: 'sources', label: 'Nguồn', icon: icon(CompassIcon) }
+  { page: 'home', label: 'Trang chủ', icon: Home2Icon },
+  { page: 'library', label: 'Thư viện', icon: LibraryIcon },
+  { page: 'jobs', label: 'Tác vụ', icon: ChecklistMinimalisticIcon },
+  { page: 'updates', label: 'Cập nhật', icon: FeedIcon },
+  { page: 'sources', label: 'Nguồn', icon: CompassIcon }
 ]
 const RESOURCES: NavEntry[] = [
-  { page: 'shared', label: 'Kho dùng chung', icon: icon(Book2Icon) },
-  { page: 'style', label: 'Prompt & văn phong', icon: icon(Pen2Icon) },
-  { page: 'assistant', label: 'Trợ lý AI', icon: icon(ChatRoundLineIcon) }
+  { page: 'shared', label: 'Kho dùng chung', icon: Book2Icon },
+  { page: 'style', label: 'Prompt & văn phong', icon: Pen2Icon },
+  { page: 'assistant', label: 'Trợ lý AI', icon: ChatRoundLineIcon }
 ]
 
 export interface AppNavProps {
@@ -64,7 +65,8 @@ export interface AppNavProps {
 }
 
 /**
- * Thanh điều hướng ứng dụng phía dưới tiêu đề cửa sổ: chiều rộng 224px có nhãn hoặc thu gọn còn 48px chỉ hiển thị biểu tượng.
+ * Thanh điều hướng ứng dụng phía dưới tiêu đề cửa sổ: chiều rộng 224px có nhãn hoặc thu gọn
+ * thành activity bar 40px như màn chương (`ActivityBarItem`, icon 18px) để hai màn cân nhau.
  * Nút Cài đặt và chuyển đổi giao diện nằm ở dưới cùng.
  */
 export function AppNav({
@@ -95,7 +97,7 @@ export function AppNav({
         label={entry.label}
         active={page === entry.page}
         onClick={() => onNavigate(entry.page)}
-        leading={entry.icon}
+        icon={entry.icon}
         trailing={trailing}
       />
     )
@@ -105,37 +107,46 @@ export function AppNav({
     <aside
       aria-label="Điều hướng"
       className={cn(
-        'flex min-h-0 shrink-0 flex-col overflow-hidden rounded-sm border border-default bg-surface shadow-xs transition-[width] duration-(--mira-duration-base) ease-standard',
-        collapsed ? 'w-9' : 'w-[224px]'
+        'flex min-h-0 shrink-0 flex-col overflow-hidden rounded-md border border-default bg-surface shadow-xs transition-[width] duration-(--mira-duration-base) ease-standard',
+        // 40px của ActivityBarItem cộng 2px viền, bằng khung activity bar của màn chương.
+        collapsed ? 'w-[42px]' : 'w-[224px]'
       )}
     >
-      <div
-        className={cn(
-          'flex h-7 shrink-0 items-center border-b border-default bg-subtle/30',
-          collapsed ? 'justify-center' : 'justify-end pr-xs'
-        )}
-      >
-        <Tip label={toggleLabel} side={collapsed ? 'right' : 'bottom'}>
-          <CompactButton
-            aria-label={toggleLabel}
-            aria-expanded={!collapsed}
-            onClick={onToggleCollapsed}
-            icon={<SidebarMinimalisticIcon size={ICON.sm} />}
-          />
-        </Tip>
-      </div>
+      {collapsed ? (
+        <div className="flex shrink-0 border-b border-default bg-subtle/30">
+          <Tip label={toggleLabel} side="right">
+            <ActivityBarItem
+              aria-label={toggleLabel}
+              aria-expanded={false}
+              onClick={onToggleCollapsed}
+              icon={<SidebarMinimalisticIcon size={ICON.md} />}
+            />
+          </Tip>
+        </div>
+      ) : (
+        <div className="flex h-7 shrink-0 items-center justify-end border-b border-default bg-subtle/30 pr-xs">
+          <Tip label={toggleLabel} side="bottom">
+            <CompactButton
+              aria-label={toggleLabel}
+              aria-expanded
+              onClick={onToggleCollapsed}
+              icon={<SidebarMinimalisticIcon size={ICON.md} />}
+            />
+          </Tip>
+        </div>
+      )}
 
       <nav
         className={cn(
-          'flex min-h-0 flex-1 flex-col gap-2xs overflow-y-auto',
-          collapsed ? 'p-2xs' : 'p-xs'
+          'flex min-h-0 flex-1 flex-col overflow-y-auto',
+          collapsed ? undefined : 'gap-2xs p-xs'
         )}
       >
         <Item
           collapsed={collapsed}
           label="Tìm"
           onClick={onOpenPalette}
-          leading={<MinimalisticMagnifierIcon size={ICON.sm} aria-hidden="true" />}
+          icon={MinimalisticMagnifierIcon}
           trailing={collapsed ? null : <Kbd>Ctrl K</Kbd>}
           className={collapsed ? undefined : 'mb-xs border border-input bg-surface'}
         >
@@ -153,8 +164,8 @@ export function AppNav({
       <div
         className={cn(
           'flex shrink-0 border-t border-default',
-          collapsed ? 'p-2xs' : 'p-xs',
-          collapsed ? 'flex-col items-stretch gap-2xs' : 'items-center gap-2xs'
+          // Mở rộng: cao 28px như hàng đầu thanh bên.
+          collapsed ? 'flex-col' : 'h-7 items-center gap-2xs px-xs'
         )}
       >
         <Item
@@ -163,42 +174,54 @@ export function AppNav({
           ariaLabel={connectionNotice ? `Cài đặt — ${connectionNotice}` : undefined}
           active={settingsOpen}
           onClick={onOpenSettings}
-          leading={<SettingsIcon size={ICON.sm} aria-hidden="true" />}
+          icon={SettingsIcon}
           trailing={
             connectionNotice ? (
               <span
                 title={connectionNotice}
                 className={cn(
                   'size-2 shrink-0 rounded-full bg-warning',
-                  collapsed && 'absolute top-1 right-1'
+                  collapsed && 'absolute top-2 right-2'
                 )}
                 aria-hidden="true"
               />
             ) : null
           }
-          className={collapsed ? 'relative' : 'flex-1'}
+          className={collapsed ? undefined : 'h-6 flex-1'}
         />
-        <Tip label={themeLabel} side={collapsed ? 'right' : 'top'}>
-          <CompactButton
-            aria-label={themeLabel}
-            onClick={onToggleTheme}
-            className={collapsed ? 'mx-auto' : undefined}
-            icon={theme === 'dark' ? <SunIcon size={ICON.sm} /> : <MoonIcon size={ICON.sm} />}
-          />
-        </Tip>
+        {collapsed ? (
+          <Tip label={themeLabel} side="right">
+            <ActivityBarItem
+              aria-label={themeLabel}
+              onClick={onToggleTheme}
+              icon={theme === 'dark' ? <SunIcon size={ICON.md} /> : <MoonIcon size={ICON.md} />}
+            />
+          </Tip>
+        ) : (
+          <Tip label={themeLabel} side="top">
+            <CompactButton
+              aria-label={themeLabel}
+              onClick={onToggleTheme}
+              icon={theme === 'dark' ? <SunIcon size={ICON.sm} /> : <MoonIcon size={ICON.sm} />}
+            />
+          </Tip>
+        )}
       </div>
     </aside>
   )
 }
 
-/** Một mục điều hướng: hiển thị biểu tượng cùng nhãn chữ, hoặc chỉ biểu tượng kèm tooltip khi thanh bên thu gọn. */
+/**
+ * Một mục điều hướng: biểu tượng cùng nhãn chữ, hoặc khi thu gọn là ô activity bar 40px (icon 18px, vạch
+ * trái cho mục đang mở) kèm tooltip.
+ */
 function Item({
   collapsed,
   label,
   ariaLabel,
   active = false,
   onClick,
-  leading,
+  icon: Icon,
   trailing,
   className,
   children
@@ -208,29 +231,39 @@ function Item({
   ariaLabel?: string
   active?: boolean
   onClick(): void
-  leading: ReactNode
+  icon: IconComponent
   trailing?: ReactNode
   className?: string
   children?: ReactNode
 }): JSX.Element {
-  const item = (
+  if (collapsed) {
+    return (
+      <Tip label={label} side="right">
+        <ActivityBarItem
+          aria-label={ariaLabel ?? label}
+          active={active}
+          onClick={onClick}
+          className={className}
+          icon={
+            <>
+              <Icon size={ICON.md} aria-hidden="true" />
+              {trailing}
+            </>
+          }
+        />
+      </Tip>
+    )
+  }
+  return (
     <NavItem
       active={active}
       onClick={onClick}
-      aria-label={ariaLabel ?? (collapsed ? label : undefined)}
-      leading={leading}
+      aria-label={ariaLabel}
+      leading={<Icon size={ICON.sm} aria-hidden="true" />}
       trailing={trailing}
-      // Thu gọn chỉ còn 26px cho nút: bỏ lề ngang để icon 16px nằm giữa.
-      className={cn(collapsed && 'justify-center px-0', className)}
+      className={className}
     >
-      {collapsed ? null : (children ?? label)}
+      {children ?? label}
     </NavItem>
-  )
-  return collapsed ? (
-    <Tip label={label} side="right">
-      {item}
-    </Tip>
-  ) : (
-    item
   )
 }

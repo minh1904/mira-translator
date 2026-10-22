@@ -99,17 +99,18 @@ export function AppShell({
   const themeLabel = theme === 'dark' ? 'Chuyển sang nền sáng' : 'Chuyển sang nền tối'
 
   return (
-    <div className="flex h-screen flex-col overflow-hidden bg-default">
-      {/* 1. Thanh tiêu đề duy nhất chuẩn VS Code: cao 35px, logo + breadcrumb + command center + actions */}
+    <div className="flex h-screen flex-col overflow-hidden bg-subtle">
+      {/* 1. Thanh tiêu đề duy nhất chuẩn VS Code: cao 35px, logo + breadcrumb + command center + actions.
+          Không viền dưới: nền vỏ liền với thanh tiêu đề, các khung bên dưới tự có viền. */}
       <header
         data-slot="app-titlebar"
-        className="window-drag flex h-(--mira-header-height) shrink-0 min-w-0 items-center justify-between border-b border-default bg-subtle pl-1.5 pr-sm text-body-sm"
+        className="window-drag flex h-(--mira-header-height) shrink-0 min-w-0 items-center justify-between bg-subtle pl-1 pr-sm text-body-sm"
         style={{ paddingRight: BAR_END_PADDING }}
       >
         {/* Mép trái: Logo Mira + Breadcrumb / Tiêu đề màn hình */}
         <div className="flex min-w-0 items-center gap-2">
-          {/* Rộng bằng thanh điều hướng thu gọn (w-9, cùng lề p-1.5) để icon thẳng tâm với cột icon. */}
-          <span className="flex w-9 shrink-0 justify-center">
+          {/* Rộng bằng khung activity bar (ô 40px + 2px viền, cùng lề 4px) để icon thẳng tâm cột icon. */}
+          <span className="flex w-[42px] shrink-0 justify-center">
             <img
               src={logoUrl}
               alt="Mira"
@@ -117,7 +118,6 @@ export function AppShell({
               className="size-4.5 select-none rounded-xs"
             />
           </span>
-          <span className="h-3.5 w-px bg-line" aria-hidden="true" />
           <div ref={setTitleSlot} className="flex min-w-0 items-center gap-xs" />
         </div>
 
@@ -164,15 +164,21 @@ export function AppShell({
         </div>
       </header>
 
-      {/* 2. Thân chính ứng dụng: Activity Bar + Primary Sidebar + Vùng làm việc */}
-      <div
-        data-slot="app-workspace"
-        className="flex min-h-0 min-w-0 flex-1 gap-1.5 bg-default p-1.5"
-      >
+      {/* 2. Thân chính theo Modern UI của VS Code (floatingPanels.css): nền vỏ cùng màu thanh tiêu đề,
+          mỗi phần là một khung cách nhau và cách mép 4px. Activity bar màn chương liền với sidebar
+          thành một khối: cạnh chạm nhau vuông, chung một đường viền; đóng sidebar thì rail bo đủ góc. */}
+      <div data-slot="app-workspace" className="flex min-h-0 min-w-0 flex-1 gap-1 px-1 pb-1">
         {nav}
         {rail ? (
-          <div className="flex min-h-0 shrink-0 overflow-hidden rounded-sm border border-default bg-surface shadow-xs">
-            <div className="flex min-h-0 shrink-0 flex-col bg-subtle">{rail}</div>
+          <div className="flex min-h-0 shrink-0">
+            <div
+              className={cn(
+                'flex min-h-0 shrink-0 flex-col overflow-hidden border border-default bg-surface shadow-xs',
+                sidebar !== null && sidebarOpen ? 'rounded-l-md' : 'rounded-md'
+              )}
+            >
+              {rail}
+            </div>
             {sidebar !== null && (
               <aside
                 id="app-sidebar"
@@ -180,11 +186,12 @@ export function AppShell({
                 aria-hidden={!sidebarOpen || undefined}
                 className={cn(
                   'flex min-h-0 shrink-0 flex-col overflow-hidden transition-[width] duration-(--mira-duration-base) ease-standard',
-                  sidebarOpen ? 'w-(--mira-sidebar-width) border-l border-default' : 'w-0'
+                  sidebarOpen ? 'w-(--mira-sidebar-width)' : 'w-0'
                 )}
                 aria-label="Danh sách"
               >
-                <div className="flex min-h-0 w-(--mira-sidebar-width) min-w-(--mira-sidebar-width) flex-1 flex-col overflow-hidden">
+                {/* Không có viền trái: viền phải của rail là đường ngăn duy nhất. */}
+                <div className="flex min-h-0 w-(--mira-sidebar-width) min-w-(--mira-sidebar-width) flex-1 flex-col overflow-hidden rounded-r-md border border-l-0 border-default bg-surface shadow-xs">
                   {sidebar}
                 </div>
               </aside>
@@ -198,11 +205,12 @@ export function AppShell({
               aria-hidden={!sidebarOpen || undefined}
               className={cn(
                 'flex min-h-0 shrink-0 flex-col overflow-hidden transition-[width] duration-(--mira-duration-base) ease-standard',
-                sidebarOpen ? 'w-(--mira-sidebar-width)' : 'w-0'
+                // Đóng thì bù khe 4px của gap để vùng làm việc không lệch.
+                sidebarOpen ? 'w-(--mira-sidebar-width)' : '-mr-1 w-0'
               )}
               aria-label="Danh sách"
             >
-              <div className="flex min-h-0 w-(--mira-sidebar-width) min-w-(--mira-sidebar-width) flex-1 flex-col overflow-hidden rounded-sm border border-default bg-surface shadow-xs">
+              <div className="flex min-h-0 w-(--mira-sidebar-width) min-w-(--mira-sidebar-width) flex-1 flex-col overflow-hidden rounded-md border border-default bg-surface shadow-xs">
                 {sidebar}
               </div>
             </aside>
@@ -217,7 +225,7 @@ export function AppShell({
                   className={cn(
                     'min-h-0 flex-1 overflow-y-auto',
                     nav !== null &&
-                      'overflow-hidden rounded-sm border border-default bg-surface shadow-xs'
+                      'overflow-hidden rounded-md border border-default bg-surface shadow-xs'
                   )}
                 >
                   {children}
@@ -228,10 +236,10 @@ export function AppShell({
         </div>
       </div>
 
-      {/* 3. Thanh trạng thái đáy (Status Bar) 22px, trải hết chiều ngang cửa sổ */}
+      {/* 3. Thanh trạng thái 22px nằm ngoài cụm khung, cùng nền vỏ, không viền trên (như VS Code). */}
       <footer
         aria-label="Thanh trạng thái"
-        className="flex h-[22px] shrink-0 items-center gap-3 border-t border-default bg-subtle px-2.5 text-body-xs text-subtle tabular-nums select-none"
+        className="flex h-[22px] shrink-0 items-center gap-3 bg-subtle px-2.5 text-body-xs text-subtle tabular-nums select-none"
       >
         {footer}
         <div
