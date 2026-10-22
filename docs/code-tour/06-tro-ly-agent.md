@@ -611,7 +611,7 @@ chối"; `queued/waiting_user/failed → skipped`. Mọi lệnh control qua comp
    proposal cũ được đọc/duyệt trực tiếp qua `ai:proposals` + `AiPanel`, không qua `legacyRef` như
    [sessions-and-jobs.md](../modules/proposals/sessions-and-jobs.md) mô tả.
 2. **Tài liệu lệch code.** [README module](../modules/proposals/README.md) nói Chat cũ là "tab thứ ba" của side
-   panel; [AssistantSidePanel.tsx](../../src/renderer/src/modules/workspace/chapter-navigation/AssistantSidePanel.tsx)
+   panel; [AssistantSidePanel.tsx](../../src/renderer/src/modules/workspace/chapter-screen/AssistantSidePanel.tsx)
    chỉ còn `TabsPanel value="legacy"` không có `TabsTab`, mở từ thanh trạng thái. Bảng đầu README vẫn ghi
    "lát 4–6 chưa" trong khi đoạn trên nói đã xong cả sáu; sessions-and-jobs.md vẫn ghi task "chưa triển khai".
 3. **Hai bộ tool đọc song song.** `readCapabilities.ts` và `chatTools.ts` cùng có `list_chapters`,
@@ -649,4 +649,4 @@ chối"; `queued/waiting_user/failed → skipped`. Mọi lệnh control qua comp
   [03 Kết nối AI](03-ket-noi-ai.md) (`provider.chat`, fallback, `describeProviderError`) ·
   [04 Dịch chương](04-dich-chuong.md) (`executeTranslateBatch`, prompt từ snapshot) ·
   [05 Ngữ cảnh dịch](05-ngu-canh-dich.md) (`takeContextSnapshot`, trích thuật ngữ, duyệt pending) ·
-  [08 Giao diện renderer](08-giao-dien-renderer.md) (ChapterWorkspace, side panel, editor lock).
+  [08 Giao diện renderer](08-giao-dien-renderer.md) (ChapterPanes, side panel, editor lock).

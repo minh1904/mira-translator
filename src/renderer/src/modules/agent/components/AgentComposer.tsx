@@ -8,8 +8,8 @@ import { ArrowUpIcon, StopCircleIcon } from '@renderer/components/ui/reicon'
 import { Button } from '../../../components/ui/Button'
 import { CompactButton } from '../../../components/ui/CompactButton'
 import { focusWithinRing } from '../../../components/ui/focus'
-import { cn } from '../../../lib/cn'
 import { Textarea } from '../../../components/ui/Textarea'
+import { cn } from '../../../lib/cn'
 import {
   ModelSelectionMenu,
   openModelList,
@@ -280,7 +280,7 @@ export function AgentComposer({
           }}
           onKeyDown={onKeyDown}
           rows={2}
-          className="min-h-[38px] max-h-[160px] resize-none border-0 bg-transparent px-1.5 py-1 text-body-sm leading-normal text-default hover:bg-transparent focus-visible:outline-none placeholder:text-muted"
+          className="min-h-[38px] max-h-[160px] resize-none border-0 bg-transparent px-1.5 py-1 text-body-sm leading-normal text-default hover:bg-transparent focus:outline-none focus-visible:outline-none placeholder:text-muted"
           placeholder={placeholder ?? COMPOSER_PLACEHOLDERS[mode]}
         />
         {(model.loadError ?? model.modelNotice) && (
@@ -353,7 +353,7 @@ export function AgentComposer({
               aria-label="Dừng lượt đang chạy"
               icon={<StopCircleIcon size={12} />}
               onClick={() => void cancel()}
-              className="!size-[22px] !min-h-[22px] !min-w-[22px] shrink-0 p-0"
+              className="size-[22px] !min-h-[22px] !min-w-[22px] shrink-0 p-0"
             />
           ) : (
             <CompactButton
@@ -364,7 +364,7 @@ export function AgentComposer({
               disabled={!ready}
               icon={<ArrowUpIcon size={12} />}
               onClick={() => void submit()}
-              className="!size-[22px] !min-h-[22px] !min-w-[22px] shrink-0 p-0"
+              className="size-[22px] !min-h-[22px] !min-w-[22px] shrink-0 p-0"
             />
           )}
         </div>

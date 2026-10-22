@@ -1,8 +1,40 @@
+import { extendTailwindMerge } from 'tailwind-merge'
+
 export type ClassValue = string | false | null | undefined
 
-/** Nối các tên lớp CSS (class name), bỏ qua các giá trị rỗng hoặc falsy. */
+/**
+ * Thang token của `styles/theme.css`. Thiếu khai báo thì tailwind-merge hiểu sai nhóm: `text-body-sm`
+ * bị coi là màu chữ và xóa mất `text-muted`, còn `px-xs` không được nhận ra nên không thay được `px-2.5`.
+ */
+const twMerge = extendTailwindMerge({
+  extend: {
+    theme: {
+      text: [
+        'body-xs',
+        'body-sm',
+        'body-md',
+        'body-lg',
+        'label-xs',
+        'label-sm',
+        'label-md',
+        'heading',
+        'title',
+        'editor'
+      ],
+      spacing: ['none', '3xs', '2xs', 'xs', 'sm', 'md', 'lg', 'xl', '2xl', '3xl', '4xl'],
+      leading: ['text'],
+      tracking: ['heading'],
+      ease: ['enter', 'exit', 'standard']
+    }
+  }
+})
+
+/**
+ * Nối các tên lớp CSS (class name), bỏ qua giá trị falsy. Khi hai lớp cùng đặt một thuộc tính, lớp đứng sau
+ * thắng, nên `className` truyền vào component luôn ghi đè lớp gốc của component.
+ */
 export function cn(...classes: ClassValue[]): string {
-  return classes.filter(Boolean).join(' ')
+  return twMerge(...classes)
 }
 
 type VariantMap = Record<string, Record<string, string>>

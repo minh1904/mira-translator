@@ -77,7 +77,7 @@ export function TurnRequest({
           disabled={busy}
           leftIcon={<HistoryIcon size={ICON.xs} aria-hidden="true" />}
           onClick={askRevert}
-          className="!h-5 !px-1.5 text-label-xs text-subtle"
+          className="h-5 px-1.5 text-label-xs text-subtle"
         >
           {label}
         </Button>

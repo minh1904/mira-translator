@@ -69,7 +69,7 @@ export function PendingActionCard({ action, onReply }: PendingActionCardProps): 
               variant="ghost"
               loading={sending}
               onClick={() => void reply(candidate.handle, candidate.label)}
-              className="!h-6 !px-2.5 text-label-xs"
+              className="h-6 px-2.5 text-label-xs"
             >
               {candidate.label}
             </Button>
@@ -82,7 +82,7 @@ export function PendingActionCard({ action, onReply }: PendingActionCardProps): 
                 loading={sending}
                 title="Cho phép trong phiên này (Ctrl+Enter)"
                 onClick={() => void reply('approve_session', APPROVE_SESSION)}
-                className="!h-6 rounded-r-none !px-2.5"
+                className="h-6 rounded-r-none px-2.5"
               >
                 {APPROVE_SESSION}
               </Button>
@@ -93,7 +93,7 @@ export function PendingActionCard({ action, onReply }: PendingActionCardProps): 
                       variant="solid"
                       disabled={sending}
                       aria-label="Lựa chọn cho phép khác"
-                      className="!h-6 rounded-l-none border-l border-l-(--mira-border-strong) !px-1"
+                      className="h-6 rounded-l-none border-l border-l-(--mira-border-strong) px-1"
                     >
                       <AltArrowDownIcon size={ICON['2xs']} aria-hidden="true" />
                     </Button>
@@ -110,7 +110,7 @@ export function PendingActionCard({ action, onReply }: PendingActionCardProps): 
               loading={sending}
               title="Bỏ qua (Ctrl+Alt+Enter)"
               onClick={() => void reply('reject', SKIP)}
-              className="!h-6 !px-2.5"
+              className="h-6 px-2.5"
             >
               {SKIP}
             </Button>

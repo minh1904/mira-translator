@@ -49,8 +49,8 @@ chọn A ngày 2026-10-08.** B và C chưa làm; B cần logic khớp đoạn v�
 **Giới hạn:** khớp theo số đoạn nên lệch khi bản dịch tách hoặc gộp đoạn so với bản gốc; lúc đó tắt
 cuộn cùng. Chưa có cách khớp tốt hơn vì Mira cố ý không nối hàng giữa hai bên.
 
-Nguồn triển khai: [`ChapterWorkspace`](../../../src/renderer/src/modules/workspace/chapter-navigation/ChapterWorkspace.tsx),
-[`PaneDivider`](../../../src/renderer/src/modules/workspace/chapter-navigation/PaneDivider.tsx),
+Nguồn triển khai: [`ChapterPanes`](../../../src/renderer/src/modules/workspace/chapter-screen/ChapterPanes.tsx),
+[`PaneDivider`](../../../src/renderer/src/modules/workspace/chapter-screen/PaneDivider.tsx),
 [`paragraphLink`](../../../src/renderer/src/modules/workspace/chapter-editor/paragraphLink.ts),
 [`paneLayoutStore`](../../../src/renderer/src/modules/workspace/store/paneLayoutStore.ts).
 

@@ -18,11 +18,11 @@ Hiện tại màn Chương (`ChapterScreen`) có cấu trúc hiển thị 3–4 
 
 1. **Titlebar cửa sổ (40 px)**: Chữ "Mira" và vùng kéo cửa sổ OS.
 2. **Topbar của AppShell (`page-topbar`, 40 px)**:
-   - Nửa bên trái hoàn toàn trống (`setTitleSlot` không được truyền nội dung từ `ChapterWorkspace`).
+   - Nửa bên trái hoàn toàn trống (`setTitleSlot` không được truyền nội dung từ `ChapterPanes`).
    - Nửa bên phải: `[Hỏi AI]` `[Tập trung]` `[⋯]` `|` `[Theme]` `[Cài đặt]`.
 3. **Thanh đầu của Sidebar (`ChapterNavSidebar`, 40 px)**:
    - Nằm ngay dưới `page-topbar`, hiển thị: `[< Tên tác phẩm]` (click để về `WorkDetailScreen`).
-4. **Sub-header của vùng soạn thảo (`ChapterWorkspace`, 36 px)**:
+4. **Sub-header của vùng soạn thảo (`ChapterPanes`, 36 px)**:
    - Hiển thị: `Chương X: Tiêu đề · N đoạn gốc · M đoạn dịch`.
 5. **Thanh tiêu đề Pane Editor**:
    - `Bản gốc · Ngôn ngữ` và `Bản dịch · Tiếng Việt`.

@@ -17,7 +17,7 @@ Phiên agent mới SHALL thuộc phạm vi ứng dụng, không thuộc một t�
 
 ### Requirement: Panel agent dùng được ngoài workspace
 
-Panel agent SHALL được sở hữu và mount ở phạm vi ứng dụng thay vì phụ thuộc `ChapterWorkspace`. Người dùng SHALL mở và gửi lượt từ màn không có tác phẩm; màn có domain context SHALL chỉ cung cấp snapshot context, không sở hữu session.
+Panel agent SHALL được sở hữu và mount ở phạm vi ứng dụng thay vì phụ thuộc `ChapterPanes`. Người dùng SHALL mở và gửi lượt từ màn không có tác phẩm; màn có domain context SHALL chỉ cung cấp snapshot context, không sở hữu session.
 
 #### Scenario: Gửi từ Home
 - **WHEN** người dùng mở panel tại Home và hỏi một câu không cần resource

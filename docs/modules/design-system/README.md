@@ -242,8 +242,16 @@ phẳng chia bằng viền mảnh.
 Ở [`components/ui/`](../../../src/renderer/src/components/ui/), dựng trên `@base-ui/react`. Bảng variant
 nằm riêng ở [`variants.ts`](../../../src/renderer/src/components/ui/variants.ts) để file component chỉ
 export component (yêu cầu của React fast refresh). `variants()` và `cn()` ở
-[`lib/cn.ts`](../../../src/renderer/src/lib/cn.ts) thay cho `class-variance-authority`, vì repo không
-thêm được dependency bằng pnpm toàn cục.
+[`lib/cn.ts`](../../../src/renderer/src/lib/cn.ts) thay cho `class-variance-authority`.
+
+**`cn()` gộp class bằng `tailwind-merge` 3.7.0 (từ 2026-10-22):** khi hai class cùng đặt một thuộc tính,
+class đứng sau thắng, nên `className` truyền vào component luôn đè được class gốc mà không cần `!`. Trước
+đó `cn()` chỉ nối chuỗi; bên thắng phụ thuộc thứ tự CSS mà Tailwind sinh ra, nên `resize-none`, `w-24`,
+`rounded-full`, `px-1.5`… truyền vào component bị class gốc đè ở 18 chỗ (rà bằng cách render từng chỗ và so
+thứ tự trong CSS đã build). Thang token riêng (`text-body-*`, `text-label-*`, `p-xs`, `gap-2xs`,
+`leading-text`, `ease-standard`…) được khai báo trong `extendTailwindMerge`; thêm token mới vào
+`styles/theme.css` thì phải thêm vào đó, nếu không `tailwind-merge` sẽ hiểu sai nhóm, ví dụ coi cỡ chữ là
+màu chữ và xóa mất một class.
 
 **Ownership component (quyết định 2026-10-10, chưa hoàn tất refactor):** `components/ui` chỉ chứa
 primitive hoặc pattern trung lập domain. Component biết thuật ngữ và hành vi của library, workspace,
@@ -287,7 +295,7 @@ thành UI primitive. Xem [kiến trúc frontend](../frontend-architecture/README
   còn để component chung dùng bên trong.
 - Ngoại lệ:
   - `<input type="file">` ẩn; control nhìn thấy để mở picker vẫn phải dùng component chung;
-  - textarea là mặt viết của một trình soạn có khung riêng: `AiComposer` và `SentenceMode`.
+  - textarea là mặt viết của một trình soạn có khung riêng: `AiComposer`.
 
 Phép kiểm hiện miễn `input[type="file"]` theo loại input, chưa tự xác nhận nó thật sự ẩn; đây vẫn là
 yêu cầu review. Proxy file picker viết tay ở `GlossaryDialogs.tsx` là nợ cần chuyển thành component chung.

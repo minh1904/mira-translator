@@ -25,13 +25,7 @@ import type { SegmentInput, TextRecord, TextSide } from '../../../shared/contrac
 import type { RowSaved } from '../../../shared/contracts/rows'
 import { createLink, getProvenance, listLinks, setProvenance } from '../../infra/storage/linkFile'
 import type { LinkInput, LinkRecord, ProvenanceRecord } from '../../infra/storage/linkFile'
-import {
-  autoPair,
-  reviewRow,
-  saveRow,
-  type RowAuthor,
-  type RowRef
-} from '../../infra/storage/sentenceRows'
+import { saveRow, type RowAuthor, type RowRef } from '../../infra/storage/sentenceRows'
 import { readSideContents, readText, saveText } from '../../infra/storage/textFile'
 import type {
   AgentOperationBatch,
@@ -417,16 +411,6 @@ export class LibraryStore {
     return this.changeChapters(workId, (db, now) => ({
       saved: saveRow(db, args, now, this.newContentId)
     })).saved
-  }
-
-  reviewRow(workId: string, args: RowRef): LinkRecord[] {
-    return this.changeChapters(workId, (db, now) => ({ links: reviewRow(db, args, now) })).links
-  }
-
-  autoPairRows(workId: string, chapterId: string): { links: LinkRecord[]; paired: number } {
-    return this.changeChapters(workId, (db, now) => ({
-      result: autoPair(db, chapterId, now, this.newContentId)
-    })).result
   }
 
   setProvenance(workId: string, record: ProvenanceRecord): void {

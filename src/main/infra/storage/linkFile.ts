@@ -137,14 +137,6 @@ export function deleteLink(db: Db, linkId: string): void {
   db.prepare('DELETE FROM link WHERE id = ?').run(linkId)
 }
 
-/** Confirms a link: it is fine now, and this is when someone said so. */
-export function markReviewed(db: Db, linkId: string, now: number): void {
-  const result = db
-    .prepare("UPDATE link SET status = 'ok', reviewed_at = ? WHERE id = ?")
-    .run(now, linkId)
-  if (result.changes !== 1) throw new StorageError('not_found', 'Không tìm thấy liên kết.')
-}
-
 /** Records where a segment's text came from; a later call replaces the earlier record. */
 export function setProvenance(db: Db, record: ProvenanceRecord): void {
   const exists = db

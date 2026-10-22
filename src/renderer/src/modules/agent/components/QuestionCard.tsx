@@ -88,7 +88,7 @@ export function QuestionCard({ action, onAnswer, onSkip }: QuestionCardProps): J
             variant="ghost"
             loading={sending}
             onClick={() => void run(onSkip)}
-            className="!h-6 !px-2 text-label-xs"
+            className="h-6 px-2 text-label-xs"
           >
             Bỏ qua tất cả
           </Button>
@@ -98,7 +98,7 @@ export function QuestionCard({ action, onAnswer, onSkip }: QuestionCardProps): J
           aria-label={collapsed ? 'Mở rộng câu hỏi' : 'Thu gọn câu hỏi'}
           aria-expanded={!collapsed}
           onClick={() => setCollapsed(!collapsed)}
-          className="!h-6 !px-1"
+          className="h-6 px-1"
         >
           {collapsed ? (
             <AltArrowDownIcon size={ICON.xs} aria-hidden="true" />
@@ -147,7 +147,7 @@ export function QuestionCard({ action, onAnswer, onSkip }: QuestionCardProps): J
               {blocked ? 'Câu này cần trả lời' : ''}
             </span>
             {step > 0 && (
-              <Button variant="ghost" onClick={() => setStep(step - 1)} className="!h-6 !px-2.5">
+              <Button variant="ghost" onClick={() => setStep(step - 1)} className="h-6 px-2.5">
                 Trước
               </Button>
             )}
@@ -158,7 +158,7 @@ export function QuestionCard({ action, onAnswer, onSkip }: QuestionCardProps): J
                 disabled={!complete}
                 title="Gửi (Ctrl+Enter)"
                 onClick={submit}
-                className="!h-6 !px-2.5"
+                className="h-6 px-2.5"
               >
                 Gửi
               </Button>
@@ -167,7 +167,7 @@ export function QuestionCard({ action, onAnswer, onSkip }: QuestionCardProps): J
                 variant="solid"
                 disabled={blocked}
                 onClick={() => setStep(step + 1)}
-                className="!h-6 !px-2.5"
+                className="h-6 px-2.5"
               >
                 Tiếp
               </Button>

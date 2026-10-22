@@ -47,11 +47,10 @@ vào qua `public.ts`.
 | [hooks/useWorkspaceLifecycle.ts](../../src/renderer/src/modules/workspace/hooks/useWorkspaceLifecycle.ts) | Gắn registry vào store, `beforeunload`, listener chat, reload chương khi agent ghi; khôi phục tab | `useWorkspaceLifecycle`, `useWorkspaceRestore` |
 | [work-detail/](../../src/renderer/src/modules/workspace/work-detail/) | Màn tác phẩm: header, các khu Chương/Ngữ cảnh/Bản raw/Tác vụ | `WorkDetailScreen`, `workAreas`, `useChapters`, `useWorkDetail` |
 | [work-detail/SourcesAreaMock.tsx](../../src/renderer/src/modules/workspace/work-detail/SourcesAreaMock.tsx) | **`chưa dùng`**: không file nào import | `SourcesAreaMock` |
-| [chapter-navigation/ChapterScreen.tsx](../../src/renderer/src/modules/workspace/chapter-navigation/ChapterScreen.tsx) | Tải chương; chưa có bản gốc thì màn nhập, có rồi thì `ChapterWorkspace` | `ChapterScreen`, `makeStore` |
-| [chapter-navigation/useChapterScreen.ts](../../src/renderer/src/modules/workspace/chapter-navigation/useChapterScreen.ts) | Đọc work + chapters + 2 bên text song song; `epoch` để ép editor dựng lại | `fetchAll`, `applyTarget`, `targetEpoch` |
-| [chapter-navigation/ChapterWorkspace.tsx](../../src/renderer/src/modules/workspace/chapter-navigation/ChapterWorkspace.tsx) | Màn hai pane (1101 dòng): phím tắt, cuộn cùng, menu chương, trợ lý, dịch, xuất | `saveAll`, `useRegisterLeaveGuard`, `handleNavigateChapter` |
-| [chapter-navigation/ChapterNavSidebar.tsx](../../src/renderer/src/modules/workspace/chapter-navigation/ChapterNavSidebar.tsx) | Cột danh sách chương khi đang mở chương | `ChapterNavSidebar`, `parseQuery` |
-| [chapter-navigation/SentenceMode.tsx](../../src/renderer/src/modules/workspace/chapter-navigation/SentenceMode.tsx) | Chế độ "Từng câu". **Đang tắt** bằng `SENTENCE_MODE_ENABLED = false` | `SentenceMode`, `useSentenceRows` |
+| [chapter-screen/ChapterScreen.tsx](../../src/renderer/src/modules/workspace/chapter-screen/ChapterScreen.tsx) | Tải chương; chưa có bản gốc thì màn nhập, có rồi thì `ChapterPanes` | `ChapterScreen`, `makeStore` |
+| [chapter-screen/useChapterScreen.ts](../../src/renderer/src/modules/workspace/chapter-screen/useChapterScreen.ts) | Đọc work + chapters + 2 bên text song song; `epoch` để ép editor dựng lại | `fetchAll`, `applyTarget`, `targetEpoch` |
+| [chapter-screen/ChapterPanes.tsx](../../src/renderer/src/modules/workspace/chapter-screen/ChapterPanes.tsx) | Màn hai pane (khoảng 940 dòng): phím tắt, cuộn cùng, menu chương, trợ lý, dịch, xuất | `saveAll`, `useRegisterLeaveGuard`, `handleNavigateChapter` |
+| [chapter-screen/ChapterNavSidebar.tsx](../../src/renderer/src/modules/workspace/chapter-screen/ChapterNavSidebar.tsx) | Cột danh sách chương khi đang mở chương | `ChapterNavSidebar`, `parseQuery` |
 | [chapter-editor/TextEditor.tsx](../../src/renderer/src/modules/workspace/chapter-editor/TextEditor.tsx) | Bọc CodeMirror 6 cho một bên; handle `save/discard/reviewProposal` | `TextEditor`, `TextEditorHandle` |
 | [chapter-editor/editorSession.ts](../../src/renderer/src/modules/workspace/chapter-editor/editorSession.ts) | Máy trạng thái lưu: revision, IME, xung đột, hàng đợi | `EditorSession`, `SaveState`, `adopt` |
 | [chapter-editor/leaveGuard.tsx](../../src/renderer/src/modules/workspace/chapter-editor/leaveGuard.tsx) | Registry guard theo `workId` và hộp thoại Lưu/Bỏ/Ở lại | `createLeaveGuardRegistry`, `confirmLeave` |
@@ -92,7 +91,7 @@ flowchart TD
   V -->|work hoặc chapter| T["tabPanes<br/>một div cho mỗi tab"]
   T --> W["WorkDetailScreen<br/>location work"]
   T --> CH["ChapterScreen<br/>location chapter"]
-  CH --> CW["ChapterWorkspace<br/>2 TextEditor + AiTranslateDialog"]
+  CH --> CW["ChapterPanes<br/>2 TextEditor + AiTranslateDialog"]
 ```
 
 Đọc sơ đồ:
@@ -171,7 +170,7 @@ flowchart TD
 - `saveWorkspace` nối promise vào `pendingSave` nên các lần ghi phiên tab đi tuần tự, không đè nhau.
 - `closeTab` và `activateTab` có trong store nhưng hiện **không UI nào gọi** (mục 7). Cách duy nhất để
   "chuyển tab" là mở lại truyện từ Thư viện/Trang chủ, khi đó `navigate` tìm thấy tab cũ.
-- `openParagraph` = `navigate` chương + đặt `reveal`. `ChapterWorkspace` thấy `reveal` thì cuộn hai editor
+- `openParagraph` = `navigate` chương + đặt `reveal`. `ChapterPanes` thấy `reveal` thì cuộn hai editor
   tới đoạn đó rồi `clearReveal`. Màn Tác vụ dùng nó cho nút "Mở đoạn".
 - Alt+↓ (`handleNavigateChapter`) đọc lại danh sách chương. Nếu số chương nhảy cóc và nguồn raw có chương
   thiếu, nó hỏi tải chương đó trước (`gapPrompt`, gọi `sources.catalog.download`).
@@ -186,7 +185,7 @@ sequenceDiagram
   participant CS as ChapterScreen
   participant UC as useChapterScreen
   participant MI as window.mira
-  participant CW as ChapterWorkspace
+  participant CW as ChapterPanes
   participant TE as TextEditor
   AC->>CS: tabPanes render, key = workId
   CS->>UC: workId, chapterId
@@ -219,7 +218,7 @@ sequenceDiagram
 ### 3.5 Sửa và lưu một bên văn bản
 
 Kích hoạt khi bấm Ctrl+S, "Lưu rồi tiếp tục" hoặc agent cần `flush` → `EditorSession.save()`.
-Editor **không tự lưu**. Riêng "Xuất chương" trong `ChapterWorkspace` chỉ thử lưu editor bản dịch
+Editor **không tự lưu**. Riêng "Xuất chương" trong `ChapterPanes` chỉ thử lưu editor bản dịch
 rồi mở hộp Xuất trong `finally`, không kiểm kết quả lưu; các điểm xuất khác không nhất thiết gọi
 editor. `ExportService` đọc bản `target` đã lưu trong DB, không đọc trực tiếp bản sửa trong editor.
 
@@ -285,13 +284,13 @@ flowchart TD
 
 ### 3.7 Bấm "Dịch bằng AI" cho một chương
 
-Kích hoạt khi chọn menu ⋯ → "Dịch bằng AI" trong `ChapterWorkspace` → đề xuất vào hàng chờ, hoặc áp thẳng
+Kích hoạt khi chọn menu ⋯ → "Dịch bằng AI" trong `ChapterPanes` → đề xuất vào hàng chờ, hoặc áp thẳng
 vào bản dịch rồi editor bản dịch dựng lại. Pipeline Main thuộc [04-dich-chuong.md](04-dich-chuong.md).
 
 ```mermaid
 sequenceDiagram
   participant U as Người dùng
-  participant CW as ChapterWorkspace
+  participant CW as ChapterPanes
   participant PT as useParagraphTranslate
   participant MI as window.mira.ai.translate
   participant CS as useChapterScreen
@@ -382,9 +381,9 @@ flowchart TD
 
 | Store | Giữ gì | Bền ở đâu | Ai ghi | Ai đọc |
 | --- | --- | --- | --- | --- |
-| `useWorkspaceStore` (workspace) | `view`, `tabs`, `activeWorkId`, `workspaceReady/Notice`, `sidebarOpen`, `navCollapsed`, `paletteOpen`, `reveal`, `leaveGuardRegistry` | tab: `workspace:save` → `library.db`; `navCollapsed`: localStorage `mira.navCollapsed` | `AppContent`, `useWorkspaceRestore`, `useAppShortcuts`, `ChapterWorkspace`, `AssistantSidePanel`, `AiPanel`, `openGlossaryReview`, màn Tác vụ | `AppContent`, `ChapterWorkspace` (`reveal`) |
-| `useChapterStore` (workspace) | Danh sách chương của **một** truyện đang hiển thị; snapshot truyện khác trong `otherWorkChapters` | memory | `useChapters` (`initWork` khi tab hoạt động), CRUD chương, `useWorkspaceLifecycle` (agent ghi → `reload`), `ChapterWorkspace` (sau tải chương thiếu) | `ChaptersArea`, `ChapterNavSidebar`, `SourcesArea` |
-| `usePaneLayoutStore` (workspace) | Thu gọn pane, `sourceRatio`, `syncScroll` | localStorage `mira.paneLayout` | `ChapterWorkspace` (thu gọn, kéo chia, cuộn cùng) | `ChapterWorkspace` |
+| `useWorkspaceStore` (workspace) | `view`, `tabs`, `activeWorkId`, `workspaceReady/Notice`, `sidebarOpen`, `navCollapsed`, `paletteOpen`, `reveal`, `leaveGuardRegistry` | tab: `workspace:save` → `library.db`; `navCollapsed`: localStorage `mira.navCollapsed` | `AppContent`, `useWorkspaceRestore`, `useAppShortcuts`, `ChapterPanes`, `AssistantSidePanel`, `AiPanel`, `openGlossaryReview`, màn Tác vụ | `AppContent`, `ChapterPanes` (`reveal`) |
+| `useChapterStore` (workspace) | Danh sách chương của **một** truyện đang hiển thị; snapshot truyện khác trong `otherWorkChapters` | memory | `useChapters` (`initWork` khi tab hoạt động), CRUD chương, `useWorkspaceLifecycle` (agent ghi → `reload`), `ChapterPanes` (sau tải chương thiếu) | `ChaptersArea`, `ChapterNavSidebar`, `SourcesArea` |
+| `usePaneLayoutStore` (workspace) | Thu gọn pane, `sourceRatio`, `syncScroll` | localStorage `mira.paneLayout` | `ChapterPanes` (thu gọn, kéo chia, cuộn cùng) | `ChapterPanes` |
 | `useAiChatStore` (workspace) | Phiên chat cũ theo truyện, chunk đến sớm | memory | `startListening` (một lần ở lifecycle), `useAiChat` | `AiPanel` qua `useAiChat` |
 | `useThemeStore` (components/ui) | `theme`, `themePreference` | localStorage `mira.theme` | `AppContent` (`toggleTheme` truyền xuống nút ở AppNav/AppShell), `AppearancePanel`, `useSystemThemeSync` | `AppContent`, `main.tsx` |
 | `useNotificationStore` (components/ui) | Danh sách toast | memory | `notify`, `notifyError` ở mọi nơi | `Toaster` |
@@ -442,7 +441,7 @@ stateDiagram-v2
 - **Chỉ giữ mounted tab chương đang dirty.** Tháo mọi tab ẩn thì mất undo và chữ chưa lưu. Giữ hết thì tốn
   CodeMirror/DOM khi mở nhiều truyện. **[docs]** design work-tabs mục 3; **[code]** điều kiện
   `!registry.isDirty(tab.workId)` trong `tabPanes`.
-- **Tab ẩn dùng `hidden` + `inert` + `WorkTabActiveContext`.** Mọi phím tắt trong `ChapterWorkspace` kiểm
+- **Tab ẩn dùng `hidden` + `inert` + `WorkTabActiveContext`.** Mọi phím tắt trong `ChapterPanes` kiểm
   `tabActive`, `TopBarActions` không portal khi tab ẩn, `useChapters` chỉ `initWork` khi tab hoạt động.
   Thiếu một chỗ là tab ẩn nhận Ctrl+S hoặc vẽ nút lên topbar. **[code]** `topBarSlot.ts`.
 - **Quy ước `event.defaultPrevented` cho phím tắt.** Handler cấp app nhường cho handler gần hơn đã xử lý.
@@ -500,7 +499,7 @@ stateDiagram-v2
    nên `navigate({work A})` không hỏi, đổi `location` tab A thành `work`, và `ChapterScreen` bị tháo cùng
    CodeMirror. Nút "Tiếp tục" ở Trang chủ trỏ chương khác cũng đi đường này.
 3. **Ctrl+K có hai chủ** **[suy luận]**. `useAppShortcuts` (mở palette mock) đăng ký listener `window` khi
-   app mount. Handler Ctrl+K "Hỏi AI" của `ChapterWorkspace` đăng ký sau, mà handler app gọi `preventDefault`
+   app mount. Handler Ctrl+K "Hỏi AI" của `ChapterPanes` đăng ký sau, mà handler app gọi `preventDefault`
    trước. Vậy trong màn chương, Ctrl+K nhiều khả năng mở palette chứ không mở trợ lý.
 4. **Nhánh `content` chết cho `work`/`chapter`** trong `AppContent`. `switch` dựng `WorkDetailScreen`/`ChapterScreen`
    vào `content`, nhưng `content` chỉ render khi `visibleWorkId === null`, tức là không bao giờ với hai view
@@ -508,15 +507,14 @@ stateDiagram-v2
 5. **Code không dùng:** [app/autosave.ts](../../src/renderer/src/app/autosave.ts) (chỉ test import;
    `useAutosave` thêm ở `8b2a9ab`), [SourcesAreaMock.tsx](../../src/renderer/src/modules/workspace/work-detail/SourcesAreaMock.tsx),
    hook `useTheme` (chỉ type `Theme` được import), `useAiChatStore` export trong `public.ts` mà ngoài module
-   không ai dùng. Chế độ "Từng câu" (~700 dòng gồm `SentenceMode`, `useSentenceRows`, mocks) nằm sau
-   `SENTENCE_MODE_ENABLED = false`.
+   không ai dùng. (Chế độ "Từng câu" từng nằm sau `SENTENCE_MODE_ENABLED = false`; đã gỡ cùng IPC `rows:*`.)
 6. **Tên "Mock" sai nghĩa:** `ContextAreaMock` render `GlossaryScreen`/`AddressingScreen` thật (kèm vài tab
    mẫu), và id khu vực lấy từ `MOCK_FEATURES.contextArea.id`/`sourcesArea.id` dù hai khu đã thật.
 7. **Kiến trúc trên giấy lệch cây thật.** [ARCHITECTURE.md](../../ARCHITECTURE.md) mô tả `app/navigation/`,
    `app/shell/` và root `hooks/`, nhưng code để `AppNav.tsx`, `AppShell.tsx` thẳng trong `app/` và không có
-   `hooks/`. Chat cũ (`modules/workspace/assistant`) và agent (`modules/agent`) cùng tồn tại; `ChapterWorkspace`
+   `hooks/`. Chat cũ (`modules/workspace/assistant`) và agent (`modules/agent`) cùng tồn tại; `ChapterPanes`
    dựng cả hai trong `AssistantSidePanel` (tab `legacy`).
-8. **`ChapterWorkspace.tsx` 1101 dòng** gom phím tắt, cuộn cùng, nhảy chương có tải raw thiếu (gọi thẳng
+8. **`ChapterPanes.tsx` khoảng 940 dòng** gom phím tắt, cuộn cùng, nhảy chương có tải raw thiếu (gọi thẳng
    `window.mira.sources.*`), agent adapter, trợ lý, dịch và xuất. Biến module `foldedByHand` là state toàn cục
    ngoài React. `handleNavigateChapter` gọi `chapters.list` mỗi lần Alt+↓ thay vì đọc `chapterStore`.
 

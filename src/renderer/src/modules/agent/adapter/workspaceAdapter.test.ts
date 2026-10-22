@@ -138,7 +138,7 @@ describe('WorkspaceAgentAdapter (Task 6.1 & 6.2)', () => {
         isDirty: () => false,
         flush: async () => ({ ok: true }),
         setReadOnly: vi.fn(),
-        // Like ChapterWorkspace: the new revision re-runs the effect that registers the editor.
+        // Like ChapterPanes: the new revision re-runs the effect that registers the editor.
         reload: async () => {
           calls++
           if (calls > 5) throw new Error('reload loop')

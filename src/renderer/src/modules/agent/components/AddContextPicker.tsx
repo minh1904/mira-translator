@@ -116,7 +116,7 @@ export function AddContextPicker({
             aria-label="Thêm ngữ cảnh"
             variant="ghost"
             icon={<AddIcon size={ICON.xs} />}
-            className="!size-[20px] !min-h-[20px] !min-w-[20px] shrink-0 p-0"
+            className="size-[20px] !min-h-[20px] !min-w-[20px] shrink-0 p-0"
           />
         }
       />

@@ -26,7 +26,8 @@ describe('preload contract & surface safety', () => {
     expect(api).toHaveProperty('workspace')
     expect(api).toHaveProperty('chapters')
     expect(api).toHaveProperty('text')
-    expect(api).toHaveProperty('rows')
+    // Sentence mode was removed with its row API.
+    expect(api).not.toHaveProperty('rows')
     expect(api).toHaveProperty('images')
     expect(api).toHaveProperty('backup')
     expect(api).toHaveProperty('ai')

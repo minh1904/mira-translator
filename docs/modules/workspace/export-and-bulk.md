@@ -52,7 +52,7 @@ Nguồn triển khai: [`ExportDialog`](../../../src/renderer/src/modules/export/
 [`exportScope`](../../../src/renderer/src/modules/export/exportScope.ts),
 [`ExportService`](../../../src/main/services/export/exportService.ts),
 [`ChaptersArea`](../../../src/renderer/src/modules/workspace/work-detail/ChaptersArea.tsx),
-[`ChapterWorkspace`](../../../src/renderer/src/modules/workspace/chapter-navigation/ChapterWorkspace.tsx).
+[`ChapterPanes`](../../../src/renderer/src/modules/workspace/chapter-screen/ChapterPanes.tsx).
 
 ---
 

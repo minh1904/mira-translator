@@ -1,10 +1,9 @@
-import * as v from 'valibot'
-import { idSchema } from './library'
 import type { LinkRecord } from './links'
-import { TEXT_MAX_UNITS, type SegmentRecord, type TextRecord } from './text'
+import type { SegmentRecord, TextRecord } from './text'
 
 /**
- * Các hàng trong chế độ dịch theo câu: mỗi hàng ứng với một đoạn nguồn và các đoạn dịch được liên kết.
+ * Các hàng đối chiếu của một chương: mỗi hàng ứng với một đoạn nguồn và các đoạn dịch được liên kết.
+ * Luồng dịch ghi bản dịch theo hàng và kiểm tra chất lượng đọc các hàng này.
  */
 
 export type RowState = 'untranslated' | 'ai' | 'reviewed' | 'check'
@@ -101,30 +100,6 @@ export function buildRows(source: TextRecord, target: TextRecord, links: LinkRec
 export function normalizeRowText(text: string): string {
   return text.replace(/\s*[\r\n]+\s*/g, ' ').trim()
 }
-
-export const rowRefSchema = v.strictObject({
-  workId: idSchema,
-  chapterId: v.pipe(v.string('ID chương phải là chữ.'), v.uuid('ID chương không hợp lệ.')),
-  sourceId: v.pipe(v.string('ID segment phải là chữ.'), v.uuid('ID segment không hợp lệ.'))
-})
-
-export const saveRowSchema = v.strictObject({
-  ...rowRefSchema.entries,
-  text: v.pipe(
-    v.string('Bản dịch phải là chữ.'),
-    v.maxLength(TEXT_MAX_UNITS, 'Bản dịch của một hàng quá dài.')
-  ),
-  expectedRev: v.pipe(
-    v.number('Revision phải là số.'),
-    v.integer('Revision phải là số nguyên.'),
-    v.minValue(0)
-  )
-})
-
-export const chapterLinksSchema = v.strictObject({
-  workId: idSchema,
-  chapterId: v.pipe(v.string('ID chương phải là chữ.'), v.uuid('ID chương không hợp lệ.'))
-})
 
 export interface RowSaved {
   target: TextRecord

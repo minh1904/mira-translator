@@ -103,7 +103,7 @@ export function OperationCard({
       <div className="flex items-center justify-between gap-1.5 border-t border-subtle pt-1.5">
         <div className="flex items-center gap-1">
           {target && onOpenTarget && (
-            <Button variant="ghost" onClick={() => onOpenTarget(target)} className="!h-6 !px-2">
+            <Button variant="ghost" onClick={() => onOpenTarget(target)} className="h-6 px-2">
               Mở đích
             </Button>
           )}
@@ -112,13 +112,13 @@ export function OperationCard({
               variant="ghost"
               color="danger"
               onClick={() => onCancel(operation.id)}
-              className="!h-6 !px-2"
+              className="h-6 px-2"
             >
               Dừng
             </Button>
           )}
           {canUndo && onUndo && (
-            <Button variant="ghost" onClick={() => onUndo(operation.id)} className="!h-6 !px-2">
+            <Button variant="ghost" onClick={() => onUndo(operation.id)} className="h-6 px-2">
               Hoàn tác
             </Button>
           )}
@@ -127,7 +127,7 @@ export function OperationCard({
           variant="ghost"
           aria-expanded={showDetail}
           onClick={() => setShowDetail(!showDetail)}
-          className="!h-6 !px-2 text-muted hover:text-default"
+          className="h-6 px-2 text-muted hover:text-default"
         >
           {showDetail ? 'Ẩn' : 'Chi tiết'}
         </Button>

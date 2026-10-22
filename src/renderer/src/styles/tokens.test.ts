@@ -115,10 +115,7 @@ function openingTag(text: string, start: number): string {
 }
 
 /** Các màn hình soạn thảo sử dụng thẻ textarea bên trong khung giao diện riêng. */
-const EDITOR_SURFACES = new Set([
-  'modules/workspace/chapter-navigation/SentenceMode.tsx',
-  'modules/workspace/assistant/AiComposer.tsx'
-])
+const EDITOR_SURFACES = new Set(['modules/workspace/assistant/AiComposer.tsx'])
 
 const CONTROLS =
   /<(Button|LinkButton|CompactButton|ButtonGroup|Input|SearchInput|TextField|TextareaField|Select)(?=[\s/>])/g

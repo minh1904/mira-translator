@@ -13,7 +13,7 @@ import { Button } from '../../../components/ui/Button'
 import { cn } from '../../../lib/cn'
 import type { TextStore } from '../chapter-editor/editorSession'
 import { headingTitle } from '../work-detail/chapterList'
-import { ChapterWorkspace } from './ChapterWorkspace'
+import { ChapterPanes } from './ChapterPanes'
 import { ImportDialog } from './ImportDialog'
 import { useChapterScreen } from './useChapterScreen'
 
@@ -144,7 +144,7 @@ export function ChapterScreen({
   if (hasSource) {
     return (
       <>
-        <ChapterWorkspace
+        <ChapterPanes
           work={work}
           chapter={chapter}
           source={source}

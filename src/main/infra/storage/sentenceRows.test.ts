@@ -56,9 +56,6 @@ function setup(): Rig {
   return rig
 }
 
-const targetIds = (rig: Rig): string[] =>
-  rig.library.readText(rig.workId, rig.chapterId, 'target').segments.map((s) => s.id)
-
 function errorOf(fn: () => unknown): StorageError {
   try {
     fn()
@@ -262,88 +259,5 @@ describe('writing a row', () => {
     expect(after.rows.map((r) => [r.targetText, r.state])).toEqual(
       before.rows.map((r) => [r.targetText, r.state])
     )
-  })
-})
-
-describe('confirming a row', () => {
-  it('turns a row that needs a look into a reviewed one without touching the text', () => {
-    const rig = setup()
-    const text = 'Một. Hai.'
-    rig.library.saveText(rig.workId, rig.chapterId, 'target', text, 0, segment(text, 'vi'))
-    rig.library.autoPairRows(rig.workId, rig.chapterId)
-    expect(rig.rows().rows[0].state).toBe('check')
-    rig.library.reviewRow(rig.workId, {
-      chapterId: rig.chapterId,
-      sourceId: rig.rows().rows[0].sourceId
-    })
-    expect(rig.rows().rows[0].state).toBe('reviewed')
-    expect(rig.rows().rows[1].state).toBe('check')
-    expect(rig.text()).toBe(text)
-  })
-
-  it('refuses a row that has no translation', () => {
-    const rig = setup()
-    const error = errorOf(() =>
-      rig.library.reviewRow(rig.workId, {
-        chapterId: rig.chapterId,
-        sourceId: rig.rows().rows[0].sourceId
-      })
-    )
-    expect(error.code).toBe('validation')
-  })
-})
-
-describe('pairing in order', () => {
-  it('matches unlinked translated segments with untranslated rows and says how many', () => {
-    const rig = setup()
-    const text = 'Một. Hai. Ba.\nBốn.'
-    rig.library.saveText(rig.workId, rig.chapterId, 'target', text, 0, segment(text, 'vi'))
-    const result = rig.library.autoPairRows(rig.workId, rig.chapterId)
-    expect(result.paired).toBe(4)
-    const rows = rig.rows().rows
-    expect(rows.map((row) => row.targetText)).toEqual(['Một.', 'Hai.', 'Ba.', 'Bốn.', ''])
-    expect(rows.map((row) => row.state)).toEqual([
-      'check',
-      'check',
-      'check',
-      'check',
-      'untranslated'
-    ])
-    expect(rig.text()).toBe(text)
-  })
-
-  it('does not touch what is linked already, and pairs nothing the second time', () => {
-    const rig = setup()
-    rig.write(0, 'Một.')
-    const text = rig.text() + ' Hai. Ba.'
-    rig.library.saveText(
-      rig.workId,
-      rig.chapterId,
-      'target',
-      text,
-      rig.rev(),
-      rig.library
-        .readText(rig.workId, rig.chapterId, 'target')
-        .segments.map((s) => ({ id: s.id, start: s.start, end: s.end }))
-        .concat(
-          segment(text, 'vi')
-            .slice(1)
-            .map((range) => ({ id: undefined as unknown as string, ...range }))
-        )
-        .map((s) => (s.id === undefined ? { start: s.start, end: s.end } : s))
-    )
-    const first = rig.library.autoPairRows(rig.workId, rig.chapterId)
-    expect(first.paired).toBe(2)
-    expect(rig.rows().rows[0].state).toBe('reviewed')
-    expect(rig.library.autoPairRows(rig.workId, rig.chapterId).paired).toBe(0)
-  })
-
-  it('leaves the extra rows alone when there are fewer translated segments', () => {
-    const rig = setup()
-    const text = 'Một. Hai.'
-    rig.library.saveText(rig.workId, rig.chapterId, 'target', text, 0, segment(text, 'vi'))
-    expect(rig.library.autoPairRows(rig.workId, rig.chapterId).paired).toBe(2)
-    expect(rig.rows().counts).toMatchObject({ check: 2, untranslated: 3 })
-    expect(targetIds(rig)).toHaveLength(2)
   })
 })

@@ -57,7 +57,7 @@ export function EditedChaptersBar({
               <AltArrowRightIcon size={ICON.xs} aria-hidden="true" />
             )
           }
-          className="!h-6 !px-1.5 text-label-xs font-medium"
+          className="h-6 px-1.5 text-label-xs font-medium"
         >
           {editedLabel(rows.length)}
         </Button>
@@ -66,7 +66,7 @@ export function EditedChaptersBar({
           variant="ghost"
           disabled={working || busy}
           onClick={() => act(() => keepEdits())}
-          className="!h-6 !px-2 text-label-xs"
+          className="h-6 px-2 text-label-xs"
         >
           Giữ tất cả
         </Button>
@@ -74,7 +74,7 @@ export function EditedChaptersBar({
           variant="ghost"
           disabled={working || busy}
           onClick={() => act(() => undoEdits())}
-          className="!h-6 !px-2 text-label-xs"
+          className="h-6 px-2 text-label-xs"
         >
           Hoàn tác tất cả
         </Button>
@@ -96,7 +96,7 @@ export function EditedChaptersBar({
                       variant="ghost"
                       aria-label={`Xem ${row.chapterLabel}`}
                       onClick={() => openRow(row)}
-                      className="!h-6 !px-2 text-label-xs"
+                      className="h-6 px-2 text-label-xs"
                     >
                       Xem
                     </Button>
@@ -106,7 +106,7 @@ export function EditedChaptersBar({
                     aria-label={`Giữ ${row.chapterLabel}`}
                     disabled={working || busy}
                     onClick={() => act(() => keepEdits(row))}
-                    className="!h-6 !px-2 text-label-xs"
+                    className="h-6 px-2 text-label-xs"
                   >
                     Giữ
                   </Button>
@@ -115,7 +115,7 @@ export function EditedChaptersBar({
                     aria-label={`Hoàn tác ${row.chapterLabel}`}
                     disabled={working || busy}
                     onClick={() => act(() => undoEdits(row))}
-                    className="!h-6 !px-2 text-label-xs"
+                    className="h-6 px-2 text-label-xs"
                   >
                     Hoàn tác
                   </Button>

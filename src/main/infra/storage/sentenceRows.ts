@@ -10,14 +10,7 @@ import {
 } from '../../../shared/segmentation/segmentMap'
 import type { TextRecord } from '../../../shared/contracts/text'
 import { StorageError } from './errors'
-import {
-  createLink,
-  deleteLink,
-  listLinks,
-  markReviewed,
-  setProvenance,
-  type ProvenanceOrigin
-} from './linkFile'
+import { createLink, deleteLink, listLinks, setProvenance, type ProvenanceOrigin } from './linkFile'
 import type { Db } from './sqlite'
 import { readText, saveText } from './textFile'
 
@@ -234,53 +227,4 @@ export function saveRow(
     target: saved,
     links: touchedOthers ? listLinks(db, chapterId) : created ? [...remaining, created] : remaining
   }
-}
-
-/** Confirms the row: its links are fine now and have been looked at. */
-export function reviewRow(db: Db, args: RowRef, now: number): LinkRecord[] {
-  const { chapterId, sourceId } = args
-  const source = readText(db, chapterId, 'source')
-  const target = readText(db, chapterId, 'target')
-  rowOf(source, sourceId)
-  const links = listLinks(db, chapterId)
-  const view = buildRows(source, target, links)
-  const row = view.rows[rowOf(source, sourceId)]
-  if (row.targetIds.length === 0) {
-    throw new StorageError('validation', 'Hàng này chưa có bản dịch nên chưa thể xác nhận.')
-  }
-  for (const linkId of row.linkIds) markReviewed(db, linkId, now)
-  return listLinks(db, chapterId)
-}
-
-/**
- * Matches translated segments that no link uses with rows that have no translation, in order, one
- * pair per link, until one side runs out. Only a guess by order, so every link is marked as needing
- * another look; the text, the segments and the links that exist are not touched.
- */
-export function autoPair(
-  db: Db,
-  chapterId: string,
-  now: number,
-  newId: () => string
-): { links: LinkRecord[]; paired: number } {
-  const source = readText(db, chapterId, 'source')
-  const target = readText(db, chapterId, 'target')
-  const view = buildRows(source, target, listLinks(db, chapterId))
-  const empty = view.rows.filter((row) => row.state === 'untranslated')
-  const count = Math.min(empty.length, view.unlinkedTargets.length)
-  for (let i = 0; i < count; i++) {
-    createLink(
-      db,
-      chapterId,
-      {
-        kind: 'ai',
-        status: 'needs_review',
-        confidence: 0,
-        members: [empty[i].sourceId, view.unlinkedTargets[i].id]
-      },
-      now,
-      newId()
-    )
-  }
-  return { links: listLinks(db, chapterId), paired: count }
 }

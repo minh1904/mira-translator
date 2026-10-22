@@ -14,11 +14,6 @@ export const MOCK_FEATURES = {
   contextArea: { id: 'context-area', label: 'Ngữ cảnh' },
   sourcesArea: { id: 'sources-area', label: 'Nguồn' },
   // Bảng "Hỏi AI" đã được triển khai chính thức và không còn thuộc danh sách giao diện minh họa.
-  sentenceModeToolbar: { id: 'sentence-mode-toolbar', label: 'Tìm & lọc hàng' },
-  sentenceModeSidePanels: {
-    id: 'sentence-mode-side-panels',
-    label: 'Gợi ý · Thuật ngữ · Lịch sử · QA'
-  },
   // Các trang điều hướng trên thanh bên: Trang chủ và Thư viện đã hoàn thiện; các thẻ phụ và các trang bên dưới là giao diện mẫu.
   homeOverview: { id: 'home-overview', label: 'Số liệu, tác vụ và hoạt động ở Trang chủ' },
   updatesPage: { id: 'updates-page', label: 'Cập nhật' },

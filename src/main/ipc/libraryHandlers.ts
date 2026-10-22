@@ -18,7 +18,6 @@ import { chatHandlers } from './handlers/chat'
 import type { HandlerDeps } from './handlers/deps'
 import { glossaryHandlers } from './handlers/glossary'
 import { imagesHandlers } from './handlers/images'
-import { rowsHandlers } from './handlers/rows'
 import { proposalHandlers } from './handlers/proposals'
 import { sessionHandlers } from './handlers/sessions'
 import { textHandlers } from './handlers/text'
@@ -73,7 +72,6 @@ export function createLibraryHandlers(
     ...workspaceHandlers(deps),
     ...chaptersHandlers(deps),
     ...textHandlers(deps),
-    ...rowsHandlers(deps),
     ...imagesHandlers(deps),
     ...backupHandlers(deps),
     ...aiHandlers(deps),

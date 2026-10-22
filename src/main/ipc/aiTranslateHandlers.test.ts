@@ -204,11 +204,7 @@ function runBatchRaw(
 }
 
 async function links(harness: Harness): Promise<LinkRecord[]> {
-  const result = (await harness.handlers[CHANNELS.linksList]({
-    workId: harness.workId,
-    chapterId: harness.chapterId
-  })) as Result<{ links: LinkRecord[] }>
-  return unwrap(result).links
+  return harness.library.listLinks(harness.workId, harness.chapterId)
 }
 
 describe('translating with a model entry', () => {

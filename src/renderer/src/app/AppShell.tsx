@@ -116,7 +116,7 @@ export function AppShell({
               variant="outline"
               onClick={onOpenPalette}
               title="Tìm kiếm tác phẩm, chương… (Ctrl+K / Ctrl+P)"
-              className="window-no-drag !h-6 w-full min-w-0 justify-between pr-1 pl-2 text-muted hover:border-strong hover:bg-surface hover:text-default shadow-2xs"
+              className="window-no-drag h-6 w-full min-w-0 justify-between pr-1 pl-2 text-muted hover:border-strong hover:bg-surface hover:text-default shadow-2xs"
             >
               <span className="flex min-w-0 items-center gap-1.5">
                 <MinimalisticMagnifierIcon size={12} className="shrink-0 text-muted" />

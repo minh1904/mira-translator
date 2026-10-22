@@ -60,8 +60,6 @@ import type { AiPreferences, MainModel, ModelRef } from './aiPreferences'
 import type { BackupExported } from './backup'
 import type { ChapterChange, ChapterItem, ChaptersChange } from './chapters'
 import type { ExportChapterInput, ExportProgress, ExportResult, ExportWorkInput } from './export'
-import type { LinkRecord } from './links'
-import type { RowSaved } from './rows'
 import type { CreateWorkInput, WorkList, WorkPatch, WorkSummary } from './library'
 import type { Result } from './result'
 import type { QaDismissInput, TaskQualityView } from './taskQuality'
@@ -164,33 +162,6 @@ export interface TextApi {
     expectedRev: number,
     segments: SegmentInput[]
   ): Promise<Result<TextRecord>>
-}
-
-export interface RowsApi {
-  /** Danh sách liên kết của chương, chỉ định đoạn văn bản dịch tương ứng với đoạn nguồn nào. */
-  links(workId: string, chapterId: string): Promise<Result<{ links: LinkRecord[] }>>
-  /**
-   * Lưu bản dịch của một hàng vào chương cùng với các segment và liên kết tương ứng.
-   * `expectedRev` là revision của bản dịch đã đọc trước đó. Văn bản rỗng sẽ xóa hàng.
-   */
-  save(
-    workId: string,
-    chapterId: string,
-    sourceId: string,
-    text: string,
-    expectedRev: number
-  ): Promise<Result<RowSaved>>
-  /** Xác nhận một hàng: liên kết đã được xem xét và chấp thuận. */
-  review(
-    workId: string,
-    chapterId: string,
-    sourceId: string
-  ): Promise<Result<{ links: LinkRecord[] }>>
-  /** Tự động ghép nối các đoạn văn bản dịch chưa liên kết với các hàng chưa có bản dịch theo thứ tự. */
-  autoPair(
-    workId: string,
-    chapterId: string
-  ): Promise<Result<{ links: LinkRecord[]; paired: number }>>
 }
 
 export interface ImagesApi {
@@ -557,7 +528,6 @@ export interface DesktopApi {
   }
   chapters: ChaptersApi
   text: TextApi
-  rows: RowsApi
   images: ImagesApi
   backup: BackupApi
   ai: AiApi

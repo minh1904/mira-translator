@@ -4,8 +4,8 @@ export {
   LeaveGuardScopeContext,
   useLeaveGuardRegistry
 } from './chapter-editor/leaveGuard'
-export { ChapterNavSidebar } from './chapter-navigation/ChapterNavSidebar'
-export { ChapterScreen } from './chapter-navigation/ChapterScreen'
+export { ChapterNavSidebar } from './chapter-screen/ChapterNavSidebar'
+export { ChapterScreen } from './chapter-screen/ChapterScreen'
 export {
   useWorkspaceLifecycle,
   useWorkspaceRestore

@@ -77,7 +77,7 @@ Vị trí trong bức tranh lớn: renderer (hộp thoại Dịch, file [08](08-
 | [contracts/taskQuality.ts](../../src/shared/contracts/taskQuality.ts) | Mã luật QA và phiên bản | `QA_RULE_VERSIONS`, `QaFinding` |
 | [contracts/chapters.ts](../../src/shared/contracts/chapters.ts), [aiHistory.ts](../../src/shared/contracts/aiHistory.ts) | Danh sách chương; lịch sử chat (thuộc [06](06-tro-ly-agent.md)) | — |
 | [ipc/handlers/ai.ts](../../src/main/ipc/handlers/ai.ts) | Kênh `ai:translate:paragraph-plan/-batch/-finalize` (và `ai:translate:plan/batch` `legacy`) | `aiHandlers` |
-| [ipc/handlers/text.ts](../../src/main/ipc/handlers/text.ts), [rows.ts](../../src/main/ipc/handlers/rows.ts), [chapters.ts](../../src/main/ipc/handlers/chapters.ts) | Đọc/ghi text, hàng câu, chương | `textHandlers`, `rowsHandlers` |
+| [ipc/handlers/text.ts](../../src/main/ipc/handlers/text.ts), [chapters.ts](../../src/main/ipc/handlers/chapters.ts) | Đọc/ghi text và chương | `textHandlers`, `chaptersHandlers` |
 
 ## 3. Luồng chính
 

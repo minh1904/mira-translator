@@ -61,10 +61,8 @@ import { CHANNELS, EVENT_CHANNELS } from '../shared/contracts/channels'
 import type { ChapterChange, ChapterItem, ChaptersChange } from '../shared/contracts/chapters'
 import type { AppInfo, ChromeTheme, DesktopApi } from '../shared/contracts/desktopApi'
 import type { CreateWorkInput, WorkList, WorkPatch, WorkSummary } from '../shared/contracts/library'
-import type { LinkRecord } from '../shared/contracts/links'
 import type { Result } from '../shared/contracts/result'
 import type { WorkspaceLoad, WorkspaceState } from '../shared/contracts/workspace'
-import type { RowSaved } from '../shared/contracts/rows'
 import type { SegmentInput, TextRecord, TextSide } from '../shared/contracts/text'
 import type { TaskQualityView } from '../shared/contracts/taskQuality'
 import type {
@@ -165,34 +163,6 @@ const desktopApi: DesktopApi = {
         expectedRev,
         segments
       }) as Promise<Result<TextRecord>>
-  },
-  rows: {
-    links: (workId: string, chapterId: string) =>
-      ipcRenderer.invoke(CHANNELS.linksList, { workId, chapterId }) as Promise<
-        Result<{ links: LinkRecord[] }>
-      >,
-    save: (
-      workId: string,
-      chapterId: string,
-      sourceId: string,
-      text: string,
-      expectedRev: number
-    ) =>
-      ipcRenderer.invoke(CHANNELS.rowSave, {
-        workId,
-        chapterId,
-        sourceId,
-        text,
-        expectedRev
-      }) as Promise<Result<RowSaved>>,
-    review: (workId: string, chapterId: string, sourceId: string) =>
-      ipcRenderer.invoke(CHANNELS.rowReview, { workId, chapterId, sourceId }) as Promise<
-        Result<{ links: LinkRecord[] }>
-      >,
-    autoPair: (workId: string, chapterId: string) =>
-      ipcRenderer.invoke(CHANNELS.rowsAutoPair, { workId, chapterId }) as Promise<
-        Result<{ links: LinkRecord[]; paired: number }>
-      >
   },
   images: {
     put: (workId: string, data: string) =>

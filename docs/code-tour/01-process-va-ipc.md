@@ -137,7 +137,7 @@ flowchart TD
 ### 3.2 Một lời gọi invoke: renderer → `window.mira` → handler → service → `Result`
 
 Kích hoạt khi một component gọi bất kỳ hàm `window.mira.*` trả `Promise<Result<T>>`. Ví dụ: editor lưu bản
-dịch bằng `window.mira.text.save(...)` ([ChapterScreen.tsx](../../src/renderer/src/modules/workspace/chapter-navigation/ChapterScreen.tsx)).
+dịch bằng `window.mira.text.save(...)` ([ChapterScreen.tsx](../../src/renderer/src/modules/workspace/chapter-screen/ChapterScreen.tsx)).
 Kết quả: renderer nhận `{ ok: true, value }` hoặc `{ ok: false, error: { code, message, details? } }`,
 không bao giờ một exception trần.
 
@@ -365,7 +365,6 @@ từ `src/main/`.
 | `workspace:*` (2) | `workspace` | `workspace.ts` | `WorkspaceService` ([workspaceService.ts](../../src/main/services/workspace/workspaceService.ts)) | — |
 | `chapters:*` (6) | `chapters` | `chapters.ts` | `LibraryStore` | — |
 | `text:*` (2) | `text` | `text.ts` | `LibraryStore.readText/saveText` | — |
-| `rows:*`, `links:list` (4) | `rows` | `rows.ts` | `LibraryStore` | — |
 | `images:*` (3) | `images` | `images.ts` | `LibraryStore` | — |
 | `backup:*` (2) | `backup` | `backup.ts` | `FilePicker` + `LibraryStore.exportWork/restoreWork` | — |
 | `ai:connections:*`, `ai:models:*`, `ai:preferences:*` (19) | `ai`, `ai.models`, `ai.preferences` | `ai.ts` | `ConnectionService` ([connectionService.ts](../../src/main/services/ai/connectionService.ts)) | — |

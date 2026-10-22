@@ -53,7 +53,7 @@ Riêng hai hộp thoại chọn tệp sao lưu nằm ở tầng Electron và đ�
 | [chapterFile.ts](../../src/main/infra/storage/chapterFile.ts) | Chương, thứ tự `position` liền 0..n-1 | `listChapters`, `insertChapterAt`, `moveChapter`, `deleteChapter` |
 | [textFile.ts](../../src/main/infra/storage/textFile.ts) | Văn bản một bên + segment, kiểm `expectedRev` | `readText`, `saveText`, `readSideContents` |
 | [textRules.ts](../../src/main/infra/storage/textRules.ts) | Kiểm offset segment (không cắt cặp surrogate) | `checkText` |
-| [linkFile.ts](../../src/main/infra/storage/linkFile.ts), [sentenceRows.ts](../../src/main/infra/storage/sentenceRows.ts) | Liên kết n:m giữa segment hai bên, nguồn gốc theo câu | `createLink`, `setProvenance`, `saveRow`, `autoPair` |
+| [linkFile.ts](../../src/main/infra/storage/linkFile.ts), [sentenceRows.ts](../../src/main/infra/storage/sentenceRows.ts) | Liên kết n:m giữa segment hai bên, nguồn gốc theo câu | `createLink`, `setProvenance`, `saveRow` |
 | [contextEntries.ts](../../src/main/infra/storage/contextEntries.ts), [addressingEntries.ts](../../src/main/infra/storage/addressingEntries.ts) | Glossary, nhân vật, cặp xưng hô, bằng chứng trích xuất | `getEffectiveGlossary`, `saveExtraction`, `setDyad`, `getEffectiveDyadsForChapter` |
 | [aiSessions.ts](../../src/main/infra/storage/aiSessions.ts), [aiProposals.ts](../../src/main/infra/storage/aiProposals.ts) | Phiên chat theo tác phẩm, đề xuất, ảnh chụp văn bản trước khi Accept | `startAiTurn`, `interruptAiTurns`, `createProposal`, `insertTextSnapshot` |
 | [translateRunContext.ts](../../src/main/infra/storage/translateRunContext.ts) | Ngữ cảnh đã đóng băng của một lần dịch chương | `createRunContext`, `pruneOrphanRunContexts` |

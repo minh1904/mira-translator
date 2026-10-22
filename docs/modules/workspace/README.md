@@ -53,3 +53,5 @@ chưa triển khai.
   phím tắt chuyển chương, sắp xếp, lọc và dòng chảy làm việc liên tục.
 - [Xuất chương, xuất hàng loạt và chọn nhiều chương](export-and-bulk.md): khóa bản gốc gom vào menu
   pane gốc, phạm vi và tiến độ khi xuất, chọn nhiều chương để xuất hoặc xóa.
+- [Tìm (Ctrl+F) và thay thế](find-replace.md): hiện trạng (chưa có), cách VS Code, Obsidian, app dịch
+  làm, đề xuất ba lát từ tìm trong editor tới thay toàn truyện có xem trước; chưa chốt.
