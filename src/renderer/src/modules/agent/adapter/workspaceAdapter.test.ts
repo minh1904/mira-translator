@@ -129,6 +129,29 @@ describe('WorkspaceAgentAdapter (Task 6.1 & 6.2)', () => {
     expect(reloadMock).toHaveBeenCalledWith(5)
   })
 
+  it('reloads once even when the reload makes the editor register itself again', async () => {
+    const adapter = new WorkspaceAgentAdapter()
+    const target = { workId: 'work-1', chapterId: 'ch-1', side: 'target' as const }
+    let calls = 0
+    const register = (): (() => void) =>
+      adapter.registerEditor(target, {
+        isDirty: () => false,
+        flush: async () => ({ ok: true }),
+        setReadOnly: vi.fn(),
+        // Like ChapterWorkspace: the new revision re-runs the effect that registers the editor.
+        reload: async () => {
+          calls++
+          if (calls > 5) throw new Error('reload loop')
+          unregister()
+          unregister = register()
+        }
+      })
+    let unregister = register()
+
+    await adapter.reloadTarget(target, 5)
+    expect(calls).toBe(1)
+  })
+
   it('tolerates leaving workspace during run without throwing', async () => {
     const adapter = new WorkspaceAgentAdapter()
 

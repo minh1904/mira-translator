@@ -94,7 +94,7 @@ export class WorkspaceAgentAdapter {
    */
   async flushDirty(target: TargetRef): Promise<{ ok: boolean; error?: string; revision?: number }> {
     let revision: number | undefined
-    for (const [key, handler] of this.registeredHandlers) {
+    for (const [key, handler] of [...this.registeredHandlers]) {
       const [wId, cId, side] = key.split(':')
       const ref: TargetRef = {
         workId: wId!,
@@ -144,7 +144,7 @@ export class WorkspaceAgentAdapter {
       this.lockedTargets.delete(key)
     }
 
-    for (const [hKey, handler] of this.registeredHandlers) {
+    for (const [hKey, handler] of [...this.registeredHandlers]) {
       const [wId, cId, side] = hKey.split(':')
       const ref: TargetRef = {
         workId: wId!,
@@ -172,7 +172,9 @@ export class WorkspaceAgentAdapter {
 
   /** Reloads editor state once at terminal revision */
   async reloadTarget(target: TargetRef, rev?: number): Promise<void> {
-    for (const [key, handler] of this.registeredHandlers) {
+    // A reload re-registers the editor under the same key; iterating the live Map would visit that
+    // entry again and reload forever, so walk a snapshot.
+    for (const [key, handler] of [...this.registeredHandlers]) {
       const [wId, cId, side] = key.split(':')
       const ref: TargetRef = {
         workId: wId!,
