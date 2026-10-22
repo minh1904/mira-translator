@@ -422,8 +422,21 @@ export class OpenAiChatTransport implements ChatTransport {
             filter = readFilterReason(frame.finishReason)
           }
           for (const fragment of frame.toolCalls) {
-            const current = pending.get(fragment.index) ?? { id: '', name: '', arguments: '' }
-            pending.set(fragment.index, {
+            // Gemini bỏ `index` khi gọi nhiều công cụ song song, nên mọi lệnh rơi vào index 0. Một `id`
+            // hay tên hàm khác trên cùng slot nghĩa là lệnh mới; nối vào lệnh cũ sẽ ra JSON hỏng.
+            let slot = fragment.index
+            const existing = pending.get(slot)
+            if (
+              existing !== undefined &&
+              ((fragment.id !== undefined && existing.id !== '' && fragment.id !== existing.id) ||
+                (fragment.name !== undefined &&
+                  existing.name !== '' &&
+                  fragment.name !== existing.name))
+            ) {
+              slot = Math.max(...pending.keys()) + 1
+            }
+            const current = pending.get(slot) ?? { id: '', name: '', arguments: '' }
+            pending.set(slot, {
               id: fragment.id ?? current.id,
               name: fragment.name ?? current.name,
               arguments: current.arguments + (fragment.arguments ?? ''),

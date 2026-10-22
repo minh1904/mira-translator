@@ -626,6 +626,40 @@ describe('stream', () => {
     ])
   })
 
+  it('keeps parallel calls apart when the endpoint leaves out their index', async () => {
+    const t = transport(
+      fetchFake(() =>
+        sse([
+          frame({
+            choices: [
+              {
+                delta: {
+                  tool_calls: [
+                    { id: 'c1', function: { name: 'read_task', arguments: '{"task":"a"}' } },
+                    { id: 'c2', function: { name: 'resolve_target', arguments: '{"name":"New"}' } }
+                  ]
+                }
+              }
+            ]
+          }),
+          finish('tool_calls'),
+          DONE
+        ])
+      )
+    )
+    expect(await collect(t.stream(ask, { apiKey: null }))).toEqual([
+      {
+        kind: 'tool-calls',
+        calls: [
+          { id: 'c1', name: 'read_task', arguments: '{"task":"a"}' },
+          { id: 'c2', name: 'resolve_target', arguments: '{"name":"New"}' }
+        ],
+        usage: null,
+        finishReason: 'tool_calls'
+      }
+    ])
+  })
+
   it("keeps Gemini's thought signature on a tool call", async () => {
     const extra = { google: { thought_signature: 'sig' } }
     const t = transport(
