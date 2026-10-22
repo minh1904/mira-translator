@@ -9,7 +9,8 @@ sản phẩm chốt lấy UX/UI chat của VS Code làm chuẩn và cho phép s�
    chương. Lịch sử session tập trung trong `library.db`, không chia thành các hộp chat độc lập theo
    tác phẩm.
 2. **Ngữ cảnh đi theo từng lượt và do người dùng thấy, sửa được trước khi gửi.** Lượt mang các chip ngữ cảnh
-   đang có trong ô nhập (quyết định 13) và vùng chọn đoạn. Session không đổi khi người dùng chuyển màn;
+   đang có trong ô nhập và vùng chọn đoạn, cùng tác phẩm đang mở làm mặc định (quyết định 13). Session không
+   đổi khi người dùng chuyển màn;
    target resolver xác định đích thao tác và yêu cầu làm rõ khi có nhiều khả năng hợp lệ.
 3. **Agent chọn capability, workflow bền chạy việc dài.** Model hiểu ý định và chọn công cụ được đăng
    ký. Việc nhiều chương dùng workflow tất định, có trạng thái lưu bền; không để model tự điều khiển
@@ -29,8 +30,12 @@ sản phẩm chốt lấy UX/UI chat của VS Code làm chuẩn và cho phép s�
    đó panel có hai chế độ Trợ lý và Ngữ cảnh). Trên cửa sổ hẹp, panel trở thành drawer phủ từ bên phải.
 8. **Ngữ cảnh dịch được quản lý ở khu Context cấp tác phẩm**: xem mục đang áp dụng, duyệt, import, lọc
    nâng cao và thao tác hàng loạt (sửa ngày 2026-10-22; trước đó có chế độ Ngữ cảnh nhanh trong side panel).
-9. **Pending không đi vào prompt.** Mục context chờ duyệt phải có trạng thái nhìn thấy rõ và không được
-   gửi cho model cho tới khi được duyệt.
+9. **Pending không đi vào prompt; tên riêng đủ bằng chứng được dùng tạm.** Mục context chờ duyệt phải có
+   trạng thái nhìn thấy rõ và không được gửi cho model cho tới khi được duyệt. Ngoại lệ (chủ sản phẩm chốt
+   2026-10-22, cách A của [Agent toàn diện](autonomous-agent.md) mục 7): tên riêng đủ điều kiện thì thành
+   **dùng tạm**, vào prompt kèm đánh dấu và có truy vết theo chương, để task dịch không phải dừng chờ duyệt.
+   Cặp xưng hô, mục khái niệm và mục xung đột không bao giờ dùng tạm. **Chưa triển khai**: code hiện vẫn
+   chặn mọi mục pending.
 
 ## Dữ liệu cũ
 
@@ -50,12 +55,21 @@ Chi tiết từng yêu cầu, mã `C<n>` và nguồn VS Code nằm ở [Giao di�
     sau khi duyệt hoặc trả lời câu hỏi.
 13. **Ngữ cảnh hiện phía trên ô nhập, thêm bằng nút +.** Chương đang mở là ngữ cảnh gợi ý: ở Ask được thêm
     sẵn; ở Agent hiện mờ (viền nét đứt, chữ nghiêng) và chỉ được gửi khi người dùng bấm vào chip. Vùng
-    chọn đoạn luôn được gửi.
+    chọn đoạn luôn được gửi. **Tác phẩm đang mở luôn là ngữ cảnh mặc định của lượt, không cần bấm chip**
+    (chủ sản phẩm chốt 2026-10-22): agent chỉ sang tác phẩm khác khi người dùng nêu rõ, và hỏi lại khi lệnh
+    mơ hồ. Lý do: log ngày 2026-10-22 cho thấy mọi lượt đều có `context_json` rỗng dù đang mở chương, nên
+    agent tốn 3–4 vòng để tự tìm ra tác phẩm. **Chưa triển khai.**
 14. **Ba mức quyền: Mặc định, Cho phép tất cả, Autopilot.** Mặc định hỏi theo bảng policy. Cho phép tất cả tự
-    duyệt mọi lời gọi cần duyệt. Autopilot là Cho phép tất cả cộng tự trả lời câu hỏi bằng đáp án mặc định,
-    và bỏ qua lời gọi rủi ro cao kèm lý do gửi lại model: tạo task dịch nhiều chương và ghi vào đích người
-    dùng không nêu. Hai mức trên Mặc định phải qua hộp xác nhận và chỉ có hiệu lực trong phiên hiện tại. Mọi
-    mức đều không vượt qua `deny` của policy.
+    duyệt mọi lời gọi cần duyệt. Autopilot là Cho phép tất cả cộng tự trả lời câu hỏi bằng đáp án mặc định.
+    Hai mức trên Mặc định phải qua hộp xác nhận và chỉ có hiệu lực trong phiên hiện tại. Mọi mức đều không
+    vượt qua `deny` của policy.
+
+    *Sửa 2026-10-22 (chủ sản phẩm chốt, chưa triển khai):* Autopilot không còn bỏ qua task dịch nhiều chương
+    và ghi vào đích không nêu. Nó tự duyệt thẻ kế hoạch khi chi phí dưới trần, vượt trần thì hỏi, và chỉ bỏ
+    qua việc luôn hỏi (xóa, ghi đè đoạn người dùng sửa tay, ghi sang tác phẩm khác, export), kèm lý do gửi lại
+    model. "Đích do người dùng nêu" được thay bằng **phạm vi lệnh**: tác phẩm đang mở hoặc tác phẩm được nêu
+    tên; ghi vào chương bất kỳ trong phạm vi là hợp lệ. Code hiện vẫn theo bản cũ (bỏ qua task dịch và ghi vào
+    đích không nêu).
 15. **Duyệt nằm ngay trong luồng trả lời.** Nút chính **Cho phép trong phiên này**, menu kèm **Cho phép một
     lần**; nút phụ **Bỏ qua**.
 16. **Có checkpoint và sửa lệnh cũ.** Bấm vào lệnh cũ để sửa và gửi lại; các lượt sau bị xóa và thao tác ghi
