@@ -21,8 +21,8 @@ export interface BatchPlan {
   totalEstimatedTokens: number
 }
 
-export const DEFAULT_MAX_UNITS = 30
-export const DEFAULT_MAX_TOKENS = 1200
+export const DEFAULT_MAX_UNITS = 100
+export const DEFAULT_MAX_TOKENS = 4500
 
 /**
  * Ước tính số token của chuỗi văn bản dựa trên ngôn ngữ nguồn.

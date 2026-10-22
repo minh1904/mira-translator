@@ -39,7 +39,7 @@ describe('translatePlanner — Lập kế hoạch phân lô Lõi dịch', () => 
 
   // Mảnh tạm không được ráp lại ở đâu cả, nên cắt đoạn là làm mất bản dịch của đoạn đó.
   it('giữ nguyên một đoạn dài hơn trần token, đặt nó trong một lô riêng', () => {
-    const longUnit = { id: 'long-u1', text: 'Câu một. '.repeat(600) }
+    const longUnit = { id: 'long-u1', text: 'Câu một. '.repeat(2500) }
     const plan = planBatches([{ id: 'u0', text: 'Ngắn.' }, longUnit, { id: 'u2', text: 'Ngắn.' }])
 
     expect(plan.batches.map((batch) => batch.units.map((unit) => unit.id))).toEqual([

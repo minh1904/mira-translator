@@ -260,9 +260,9 @@ describe('translating with a model entry', () => {
 
   it('sends a batch the plan cut with a larger limit as one request, not cut again at the default size', async () => {
     const harness = await setup()
-    // About 4,000 estimated tokens: more than one batch at the default size of 1,500.
+    // About 6,000 estimated tokens: more than one batch at the default size (100 units / 4,500 tokens).
     const long = Array.from(
-      { length: 40 },
+      { length: 110 },
       (_, n) => 'Sentence ' + n + ' ' + 'x'.repeat(190) + '.'
     ).join(' ')
     const chapter = harness.library.createChapter(harness.workId, 'Dài').chapter

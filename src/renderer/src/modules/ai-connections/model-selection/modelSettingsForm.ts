@@ -162,8 +162,8 @@ export function taskPatch(field: TaskField, value: number | null): ModelSettings
 export const TASK_HINTS: Record<TaskField, { title: string; hint: string; placeholder: string }> = {
   inputTokenLimit: {
     title: 'Giới hạn token đầu vào mỗi lô',
-    hint: 'Cỡ tối đa của một lô khi dịch; lô nhỏ hơn thì nhiều lượt gọi hơn nhưng mỗi lượt nhẹ hơn. Để trống hoặc 0 để dùng mặc định (1.500).',
-    placeholder: '1.500'
+    hint: 'Cỡ tối đa của một lô khi dịch; lô nhỏ hơn thì nhiều lượt gọi hơn nhưng mỗi lượt nhẹ hơn. Để trống hoặc 0 để dùng mặc định (4.500).',
+    placeholder: '4.500'
   },
   outputTokenLimit: {
     title: 'Giới hạn token đầu ra',

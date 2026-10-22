@@ -171,7 +171,7 @@ flowchart TD
   A["plan()"] --> B["connections.translator()<br/>lấy entry + settingsKey"]
   B --> C{"Chương có đoạn?"}
   C -->|"không"| X["StorageError validation"]
-  C -->|"có"| D["planBatches()<br/>maxTokens = inputTokenLimit hoặc 1200"]
+  C -->|"có"| D["planBatches()<br/>maxTokens = inputTokenLimit hoặc 4500"]
   D --> E["runId mới<br/>budgets.set CallBudget lô, max 8 hoặc 2x lô"]
   E --> F["takeContextSnapshot()<br/>glossary đã duyệt, cặp + nhân vật có trong chương"]
   F --> G["pruneOrphanRunContexts()<br/>xóa bản chụp mồ côi quá 30 ngày"]
@@ -181,7 +181,7 @@ flowchart TD
 
 Đọc sơ đồ:
 - `planBatches` ([translatePlanner.ts](../../src/shared/translation/translatePlanner.ts)) ước token bằng
-  ký tự/1,5 (CJK) hoặc /3,8 (Latin). Không có `inputTokenLimit` thì trần 1200 token và 30 đơn vị; có thì
+  ký tự/1,5 (CJK) hoặc /3,8 (Latin). Không có `inputTokenLimit` thì trần 4500 token và 100 đơn vị; có thì
   bỏ trần số đơn vị. Đơn vị dài hơn trần đi trọn một lô riêng, không bị cắt.
 - `CallBudget` sống trong bộ nhớ theo `runId`. App khởi động lại giữa lượt thì `budgetFor()` dựng lại
   ngân sách từ kế hoạch.
