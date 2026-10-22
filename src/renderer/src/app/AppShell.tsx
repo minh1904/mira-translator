@@ -224,8 +224,10 @@ export function AppShell({
                 <main
                   className={cn(
                     'min-h-0 flex-1 overflow-y-auto',
+                    // Chỉ chặn trục ngang: `overflow-hidden` bị tailwind-merge coi là cùng nhóm và
+                    // xóa `overflow-y-auto`, khiến các màn không cuộn được.
                     nav !== null &&
-                      'overflow-hidden rounded-md border border-default bg-surface shadow-xs'
+                      'overflow-x-hidden rounded-md border border-default bg-surface shadow-xs'
                   )}
                 >
                   {children}
