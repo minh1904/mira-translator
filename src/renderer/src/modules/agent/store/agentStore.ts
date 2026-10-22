@@ -60,9 +60,13 @@ const EMPTY_COMPOSER: ComposerDraft = { implicitAdded: null, attachments: [] }
 
 /** The chips of the active draft and the context they send, from what the workspace has open. */
 export function composeActive(state: AgentState): ComposedContext {
-  const draft = state.composer[state.activeSessionId ?? NEW_CHAT] ?? EMPTY_COMPOSER
+  const key = state.activeSessionId ?? NEW_CHAT
+  const draft = state.composer[key] ?? EMPTY_COMPOSER
+  const active = state.adapter.captureContext()
   return composeContext({
-    active: state.adapter.captureContext(),
+    workDismissed:
+      active.workId !== undefined && (state.dismissedWorks[key] ?? []).includes(active.workId),
+    active,
     labels: state.adapter.contextLabels(),
     mode: state.mode,
     implicitAdded: draft.implicitAdded,
@@ -83,6 +87,8 @@ export interface AgentState {
   drafts: Record<string, string>
   /** Context chips per draft, keyed like `drafts`; renderer only. */
   composer: Record<string, ComposerDraft>
+  /** Works whose chip the user dismissed, per session (`NEW_CHAT` before the first send); renderer only. */
+  dismissedWorks: Record<string, string[]>
   /** Model the user picked in the composer for every session; `null` follows Settings. */
   model: ModelSelection | null
   /** Mode of the next turn; a turn keeps the mode it was sent with. */
@@ -123,6 +129,8 @@ export interface AgentState {
   setDraft: (text: string, draftKey?: string) => void
   /** Adds or dims the suggested chip of the draft. */
   setImplicitAdded: (added: boolean, draftKey?: string) => void
+  /** Dismisses or restores the chip of the open work for the session the draft belongs to. */
+  setWorkDismissed: (workId: string, dismissed: boolean, draftKey?: string) => void
   addAttachment: (attachment: AgentAttachment, draftKey?: string) => AddAttachmentResult
   removeAttachment: (key: string, draftKey?: string) => void
   /** Replaces the draft's chips, as when recalling an earlier instruction. */
@@ -139,6 +147,8 @@ export interface AgentState {
       context?: AgentContext
       modelSelection?: SendModel
       mode?: AgentChatMode
+      /** The turn did not come from the composer, so what the user is typing stays. */
+      keepDraft?: boolean
     }
   ) => Promise<boolean>
   reply: (
@@ -386,6 +396,7 @@ export const useAgentStore = create<AgentState>((set, get) => {
     pending: [],
     drafts: {},
     composer: {},
+    dismissedWorks: {},
     model: null,
     mode: 'agent',
     permissionLevel: 'default',
@@ -514,13 +525,24 @@ export const useAgentStore = create<AgentState>((set, get) => {
       set((s) => {
         const drafts = { ...s.drafts }
         const composer = { ...s.composer }
+        const dismissedWorks = { ...s.dismissedWorks }
         delete drafts[draftKey]
         delete composer[draftKey]
-        return { drafts, composer }
+        delete dismissedWorks[draftKey]
+        return { drafts, composer, dismissedWorks }
       }),
 
     setImplicitAdded: (added, draftKey) =>
       updateComposer((draft) => ({ ...draft, implicitAdded: added }), draftKey),
+    setWorkDismissed: (workId, dismissed, draftKey) => {
+      const key = draftKey ?? get().activeSessionId ?? NEW_CHAT
+      set((s) => {
+        const rest = (s.dismissedWorks[key] ?? []).filter((id) => id !== workId)
+        return {
+          dismissedWorks: { ...s.dismissedWorks, [key]: dismissed ? [...rest, workId] : rest }
+        }
+      })
+    },
     addAttachment: (attachment, draftKey) => {
       const key = draftKey ?? get().activeSessionId ?? NEW_CHAT
       const result = addAttachment(get().composer[key]?.attachments ?? [], attachment)
@@ -604,10 +626,19 @@ export const useAgentStore = create<AgentState>((set, get) => {
       }
       set((s) => {
         const drafts = { ...s.drafts }
-        delete drafts[draftKey]
         const composer = { ...s.composer }
-        delete composer[draftKey]
-        return { drafts, composer, activeSessionId: res.value.sessionId }
+        if (!options?.keepDraft) {
+          delete drafts[draftKey]
+          delete composer[draftKey]
+        }
+        // The first send turns the new chat into a session; what was dismissed carries over.
+        const dismissedWorks = { ...s.dismissedWorks }
+        const dismissed = dismissedWorks[draftKey]
+        if (draftKey === NEW_CHAT) {
+          delete dismissedWorks[NEW_CHAT]
+          if (dismissed) dismissedWorks[res.value.sessionId] = dismissed
+        }
+        return { drafts, composer, dismissedWorks, activeSessionId: res.value.sessionId }
       })
       startStreaming(res.value.turnId)
       if (draftKey === NEW_CHAT) void get().loadSessions()
@@ -823,6 +854,7 @@ export const useAgentStore = create<AgentState>((set, get) => {
         pending: [],
         drafts: {},
         composer: {},
+        dismissedWorks: {},
         model: null,
         mode: 'agent',
         permissionLevel: 'default',

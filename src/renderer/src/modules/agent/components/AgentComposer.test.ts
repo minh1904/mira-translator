@@ -61,6 +61,7 @@ const rowProps = (chips: ComposerChip[]): ContextChipRowProps => ({
   chips,
   onAddSuggested: vi.fn(),
   onRemoveSuggested: vi.fn(),
+  onDismissWork: vi.fn(),
   onPinSelection: vi.fn(),
   onRemove: vi.fn(),
   onOpenTarget: vi.fn()
@@ -131,6 +132,25 @@ describe('AgentComposer', () => {
     expect(props.onOpenTarget).toHaveBeenCalledWith(
       expect.objectContaining({ kind: 'chapter', chapterId: 'c13' })
     )
+  })
+
+  it('draws the work chip first, never dimmed, and dismisses it with its remove button', () => {
+    const props = rowProps([
+      { type: 'work', key: 'work:w', label: 'Đại Đạo' },
+      { type: 'suggested', key: 's', kind: 'chapter', label: 'Chương 12', added: false }
+    ])
+    const tree = expand(ContextChipRow(props))
+    const labels = findAll(tree, (p) => typeof p['aria-label'] === 'string').map(
+      (p) => p['aria-label']
+    )
+    expect(labels.indexOf('Bỏ Đại Đạo khỏi ngữ cảnh')).toBeLessThan(
+      labels.indexOf('Thêm Chương 12 vào ngữ cảnh')
+    )
+    // Only the chapter chip is dimmed.
+    expect(findAll(tree, (p) => p['data-suggested'] === 'true')).toHaveLength(1)
+    const [dismiss] = findAll(tree, (p) => p['aria-label'] === 'Bỏ Đại Đạo khỏi ngữ cảnh')
+    ;(dismiss!.onClick as () => void)()
+    expect(props.onDismissWork).toHaveBeenCalledOnce()
   })
 
   it('offers only what the row does not hold yet, in group order', () => {

@@ -8,11 +8,13 @@ import {
 import type { ContextLabels } from '../adapter/workspaceAdapter'
 
 /**
- * A chip of the composer's context row. The suggested chip is what is open in the workspace; it is
- * sent only once added. The selection chip is always sent. Attachment chips are what the user added.
+ * A chip of the composer's context row. The work chip is the open work: it is sent until the user
+ * dismisses it. The suggested chip is the open chapter; it is sent only once added. The selection
+ * chip is always sent. Attachment chips are what the user added.
  */
 export type ComposerChip =
-  | { type: 'suggested'; key: string; kind: 'work' | 'chapter'; label: string; added: boolean }
+  | { type: 'work'; key: string; label: string }
+  | { type: 'suggested'; key: string; kind: 'chapter'; label: string; added: boolean }
   | { type: 'selection'; key: string; label: string; selection: AgentSelection }
   | { type: 'attachment'; key: string; label: string; attachment: AgentAttachment }
 
@@ -24,10 +26,12 @@ export interface ComposeInput {
   /** The user's choice for the suggested chip; `null` follows the mode (Ask adds it, Agent dims it). */
   implicitAdded: boolean | null
   attachments: AgentAttachment[]
+  /** The user dismissed the work chip of the open work for this session. */
+  workDismissed?: boolean
 }
 
 export interface ComposedContext {
-  /** Suggested chip first, then the selection, then attachments in the order they were added. */
+  /** Work chip first, then the suggested chapter, the selection, and attachments in order added. */
   chips: ComposerChip[]
   /** Exactly what the chips say is sent. */
   context: AgentContext
@@ -64,16 +68,32 @@ export function composeContext(input: ComposeInput): ComposedContext {
   const context: AgentContext = {}
   const taken = new Set(attachments.map(attachmentKey))
 
-  const suggested: AgentAttachment | null = active.workId
-    ? active.chapterId
+  // The open work is the default context in both modes. An attachment of it stands for the chip but
+  // the work is still sent as the open one, so policy and resolver see it as the work of the command.
+  const workAttachment: AgentAttachment | null = active.workId
+    ? { kind: 'work', workId: active.workId, label: labels.work ?? 'Tác phẩm đang mở' }
+    : null
+  const workTaken = workAttachment !== null && taken.has(attachmentKey(workAttachment))
+  if (workAttachment && !input.workDismissed) {
+    if (!workTaken) {
+      chips.push({
+        type: 'work',
+        key: `work:${active.workId}`,
+        label: workAttachment.label
+      })
+    }
+    context.workId = active.workId
+  }
+
+  const suggested: AgentAttachment | null =
+    active.workId && active.chapterId
       ? {
           kind: 'chapter',
           workId: active.workId,
           chapterId: active.chapterId,
           label: labels.chapter ?? 'Chương đang mở'
         }
-      : { kind: 'work', workId: active.workId, label: labels.work ?? 'Tác phẩm đang mở' }
-    : null
+      : null
   // When the user already attached what is open, the attachment chip stands for it.
   const shown = suggested !== null && !taken.has(attachmentKey(suggested))
   const added = isImplicitAdded(input.implicitAdded, input.mode)
@@ -81,21 +101,19 @@ export function composeContext(input: ComposeInput): ComposedContext {
     chips.push({
       type: 'suggested',
       key: `suggested:${attachmentKey(suggested)}`,
-      kind: suggested.kind === 'chapter' ? 'chapter' : 'work',
+      kind: 'chapter',
       label: suggested.label,
       added
     })
   }
 
   // The selection goes with its chapter even while the chapter chip is dimmed.
-  const sendsMain = (shown && added) || (active.chapterId && active.selection)
-  if (sendsMain && active.workId) {
+  const sendsChapter = (shown && added) || (active.chapterId && active.selection)
+  if (sendsChapter && active.workId && active.chapterId) {
     context.workId = active.workId
-    if (active.chapterId) {
-      context.chapterId = active.chapterId
-      if (active.caret) context.caret = active.caret
-      if (active.selection) context.selection = active.selection
-    }
+    context.chapterId = active.chapterId
+    if (active.caret) context.caret = active.caret
+    if (active.selection) context.selection = active.selection
   }
   if (context.selection) {
     chips.push({

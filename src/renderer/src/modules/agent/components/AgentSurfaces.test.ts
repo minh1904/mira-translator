@@ -165,6 +165,7 @@ describe('assistant surfaces', () => {
       () => ({ work: 'Đại Đạo', chapter: 'Chương 1' })
     )
     let composer = render(createElement(AgentComposer))
+    expect(composer).toContain('aria-label="Bỏ Đại Đạo khỏi ngữ cảnh"')
     expect(composer).toContain('aria-label="Thêm Chương 1 vào ngữ cảnh"')
     expect(composer).toContain('data-suggested="true"')
     expect(composer).toContain('placeholder="Mô tả việc cần làm"')

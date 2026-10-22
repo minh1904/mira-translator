@@ -29,6 +29,7 @@ import { ContextChipRow } from './ContextChipRow'
 import { PermissionLevelMenu } from './PermissionLevelMenu'
 
 const NO_ATTACHMENTS: AgentAttachment[] = []
+const NO_WORKS: string[] = []
 
 /** Placeholder của ô nhập theo chế độ (C7). */
 export const COMPOSER_PLACEHOLDERS = {
@@ -86,10 +87,12 @@ export function AgentComposer({
   const draft = useAgentStore((s) => s.drafts[draftKey] ?? '')
   const implicitAdded = useAgentStore((s) => s.composer[draftKey]?.implicitAdded ?? null)
   const attachments = useAgentStore((s) => s.composer[draftKey]?.attachments ?? NO_ATTACHMENTS)
+  const dismissedWorks = useAgentStore((s) => s.dismissedWorks[draftKey] ?? NO_WORKS)
   const turns = useAgentStore((s) => s.turns)
   const store = {
     setDraft: useAgentStore((s) => s.setDraft),
     setImplicitAdded: useAgentStore((s) => s.setImplicitAdded),
+    setWorkDismissed: useAgentStore((s) => s.setWorkDismissed),
     addAttachment: useAgentStore((s) => s.addAttachment),
     removeAttachment: useAgentStore((s) => s.removeAttachment),
     setAttachments: useAgentStore((s) => s.setAttachments),
@@ -129,7 +132,8 @@ export function AgentComposer({
     labels,
     mode,
     implicitAdded: edit ? (implicitAdded ?? true) : implicitAdded,
-    attachments
+    attachments,
+    workDismissed: active.workId !== undefined && dismissedWorks.includes(active.workId)
   })
   const taken = new Set(attachments.map(attachmentKey))
 
@@ -262,6 +266,10 @@ export function AgentComposer({
             focusInput()
           }}
           onRemoveSuggested={() => setImplicitAdded(false)}
+          onDismissWork={() => {
+            if (active.workId) store.setWorkDismissed(active.workId, true, key)
+            focusInput()
+          }}
           onPinSelection={pinSelection}
           onRemove={(key) => {
             removeAttachment(key)

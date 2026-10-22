@@ -176,4 +176,68 @@ describe('target resolver', () => {
       expect(res.target).toBe(existingTarget)
     }
   })
+
+  describe('tác phẩm đang mở trong snapshot', () => {
+    function openWorks(titles: string[]) {
+      const dir = tempDir()
+      const library = LibraryStore.open({ dataDir: dir, now: () => 1000 })
+      stores.push(library)
+      const works = titles.map((title) => library.create({ title, sourceLang: 'zh' }))
+      for (const work of works) library.createChapter(work.id, 'Chương 1')
+      return { library, works }
+    }
+
+    it('resolves lệnh không nêu tác phẩm về tác phẩm đang mở', () => {
+      const { library, works } = openWorks(['New', 'ádasd'])
+
+      const res = resolveTarget(library, { selector: {}, context: { workId: works[0]!.id } })
+
+      expect(res).toEqual({
+        status: 'resolved',
+        target: { kind: 'work', workId: works[0]!.id, workLabel: 'New' }
+      })
+    })
+
+    it('chỉ sang tác phẩm khác khi mô tả nêu rõ nó', () => {
+      const { library, works } = openWorks(['New', 'ádasd'])
+
+      const res = resolveTarget(library, {
+        selector: { workTitle: 'ádasd', chapterNumber: 1 },
+        context: { workId: works[0]!.id }
+      })
+
+      expect(res.status).toBe('resolved')
+      if (res.status === 'resolved') {
+        expect(res.target).toMatchObject({ kind: 'chapter', workId: works[1]!.id })
+      }
+    })
+
+    it('hỏi lại khi mô tả khớp cả tác phẩm đang mở và tác phẩm khác', () => {
+      const { library, works } = openWorks(['Kiếm Đạo', 'Kiếm Thần'])
+
+      const res = resolveTarget(library, {
+        selector: { workTitle: 'Kiếm' },
+        context: { workId: works[0]!.id }
+      })
+
+      expect(res.status).toBe('ambiguous')
+      if (res.status === 'ambiguous') {
+        expect(res.candidates.map((c) => c.workId).sort()).toEqual(works.map((w) => w.id).sort())
+      }
+    })
+
+    it('resolves thẳng tác phẩm đang mở khi mô tả chỉ khớp nó', () => {
+      const { library, works } = openWorks(['Kiếm Đạo', 'Hoa Sen'])
+
+      const res = resolveTarget(library, {
+        selector: { workTitle: 'kiếm' },
+        context: { workId: works[0]!.id }
+      })
+
+      expect(res).toEqual({
+        status: 'resolved',
+        target: { kind: 'work', workId: works[0]!.id, workLabel: 'Kiếm Đạo' }
+      })
+    })
+  })
 })

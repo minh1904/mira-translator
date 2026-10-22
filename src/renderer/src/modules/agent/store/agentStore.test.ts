@@ -7,7 +7,7 @@ import type {
   AgentTurnView
 } from '../../../../../shared/contracts/agent'
 import { resetAllStores } from '../../../lib/testing/resetStores'
-import { NEW_CHAT, useAgentStore } from './agentStore'
+import { NEW_CHAT, composeActive, useAgentStore } from './agentStore'
 
 const session = {
   id: 's1',
@@ -224,13 +224,36 @@ describe('agentStore', () => {
     expect(await useAgentStore.getState().send('so sánh')).toBe(false)
     expect(useAgentStore.getState().composer.s1?.attachments).toEqual([chapter13])
 
-    // The open chapter is still dimmed in Agent, so only the added chip goes.
+    // The open chapter is still dimmed in Agent, so only the open work and the added chip go.
     expect(await useAgentStore.getState().send('so sánh')).toBe(true)
     expect(api.turn.send).toHaveBeenLastCalledWith(
-      expect.objectContaining({ context: { attachments: [chapter13] } })
+      expect.objectContaining({ context: { workId: 'w', attachments: [chapter13] } })
     )
     expect(useAgentStore.getState().composer.s1).toBeUndefined()
     store.adapter.setActiveContextGetter(() => null)
+  })
+
+  it('keeps a dismissed work chip off for the session, and per work', async () => {
+    const api = bridge(async () => ({ ok: true, value: detail({ turns: [turn()] }) }))
+    await useAgentStore.getState().selectSession('s1')
+    const { adapter } = useAgentStore.getState()
+    adapter.setActiveContextGetter(() => ({ workId: 'a' }))
+    useAgentStore.getState().setWorkDismissed('a', true)
+    expect(composeActive(useAgentStore.getState()).context).toEqual({})
+
+    useAgentStore.setState({ isStreaming: false, streamingTurnId: null })
+    expect(await useAgentStore.getState().send('hỏi')).toBe(true)
+    expect(api.turn.send).toHaveBeenLastCalledWith(expect.objectContaining({ context: {} }))
+    // The send cleared the draft, not the dismissal.
+    expect(composeActive(useAgentStore.getState()).context).toEqual({})
+
+    adapter.setActiveContextGetter(() => ({ workId: 'b' }))
+    expect(composeActive(useAgentStore.getState()).context).toEqual({ workId: 'b' })
+
+    useAgentStore.getState().setWorkDismissed('a', false)
+    adapter.setActiveContextGetter(() => ({ workId: 'a' }))
+    expect(composeActive(useAgentStore.getState()).context).toEqual({ workId: 'a' })
+    adapter.setActiveContextGetter(() => null)
   })
 
   it('sends the model chosen in the composer, and none when the composer has none', async () => {

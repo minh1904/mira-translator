@@ -38,19 +38,22 @@ export interface ContextChipRowProps {
   chips: ComposerChip[]
   onAddSuggested(): void
   onRemoveSuggested(): void
+  onDismissWork(): void
   onPinSelection(): void
   onRemove(key: string): void
   onOpenTarget?: (target: ResolvedTarget) => void
 }
 
 /**
- * Hàng ngữ cảnh phía trên chỗ gõ (C1–C3, C5): chip gợi ý mờ cho tới khi được thêm, chip vùng chọn
- * luôn được gửi và ghim được, chip người dùng thêm có × bên trái. Không có chip thì không vẽ gì.
+ * Hàng ngữ cảnh phía trên chỗ gõ (C1–C3, C5): chip tác phẩm đang mở luôn được gửi và tắt được, chip
+ * chương gợi ý mờ cho tới khi được thêm, chip vùng chọn luôn được gửi và ghim được, chip người dùng thêm
+ * có × bên trái. Không có chip thì không vẽ gì.
  */
 export function ContextChipRow({
   chips,
   onAddSuggested,
   onRemoveSuggested,
+  onDismissWork,
   onPinSelection,
   onRemove,
   onOpenTarget
@@ -63,7 +66,15 @@ export function ContextChipRow({
     >
       {chips.map((chip) => (
         <li key={chip.key} className="min-w-0 max-w-full">
-          {chip.type === 'suggested' ? (
+          {chip.type === 'work' ? (
+            <Tag
+              icon={<KindIcon kind="work" />}
+              removeLabel={`Bỏ ${chip.label} khỏi ngữ cảnh`}
+              onRemove={onDismissWork}
+            >
+              {chip.label}
+            </Tag>
+          ) : chip.type === 'suggested' ? (
             chip.added ? (
               <Tag
                 icon={<KindIcon kind={chip.kind} />}
