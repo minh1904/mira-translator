@@ -89,6 +89,9 @@ Phản hồi cộng đồng do người dùng cung cấp ủng hộ nhiều lự
 > [!IMPORTANT]
 > **Cập nhật quyết định sản phẩm (2026-10-23):**
 > Chủ sản phẩm đã chốt bãi bỏ hoàn toàn cơ chế duyệt tiền kiểm đối với cả thuật ngữ và xưng hô.
-> 1. AI trích xuất thuật ngữ/xưng hô sẽ lưu trực tiếp vào từ điển ở trạng thái có hiệu lực (active), không còn trạng thái `pending` hay `rejected`.
+> 1. AI trích xuất thuật ngữ/xưng hô sẽ lưu trực tiếp vào từ điển ở trạng thái có hiệu lực (`approved`). Không còn
+>    `pending`: migration 17 của file tác phẩm chuyển mục `pending` cũ thành `approved`. `rejected` vẫn giữ làm trí
+>    nhớ "đừng đề xuất lại" (model gọi `not-a-term`, hoặc người dùng từ chối trước đây), bị ẩn khỏi bảng, và bước
+>    trích không còn mở lại nó.
 > 2. Pipeline dịch tự động chạy xuyên suốt, không ngắt luồng sang `waiting_user(context_review)`.
 > 3. Toàn bộ thanh lọc trạng thái `[ Tất cả | Đã duyệt | Chờ duyệt | Từ chối ]`, các nút Duyệt/Từ chối trên UI được dọn dẹp. Người dùng kiểm soát chất lượng qua hậu kiểm (sửa, xóa, cấm dùng trực tiếp trong bảng).

@@ -6,13 +6,6 @@ import type {
 } from '../../../../../shared/contracts/addressing'
 import type { ContextStatus } from '../../../../../shared/contracts/glossary'
 
-const requestedFilter = new Map<string, ContextStatus>()
-
-/** "Xem và duyệt": the next Addressing screen of this work opens on this status filter. */
-export function requestAddressingFilter(workId: string, status: ContextStatus): void {
-  requestedFilter.set(workId, status)
-}
-
 export interface UseAddressingOptions {
   workId: string
 }
@@ -24,8 +17,6 @@ export interface UseAddressingReturn {
   error: string | null
   query: string
   setQuery: (q: string) => void
-  statusFilter: 'all' | ContextStatus
-  setStatusFilter: (s: 'all' | ContextStatus) => void
   chapterFilter: string | 'all'
   setChapterFilter: (c: string | 'all') => void
   reload: () => Promise<void>
@@ -73,13 +64,6 @@ export function useAddressing({ workId }: UseAddressingOptions): UseAddressingRe
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [query, setQuery] = useState('')
-  const [statusFilter, setStatusFilter] = useState<'all' | ContextStatus>(
-    () => requestedFilter.get(workId) ?? 'all'
-  )
-  // Taken once: a later visit opens on "all" again.
-  useEffect(() => {
-    requestedFilter.delete(workId)
-  }, [workId])
   const [chapterFilter, setChapterFilter] = useState<string | 'all'>('all')
 
   // `quiet` refetches without the loading state: a task wrote pairs while the list is open.
@@ -91,13 +75,14 @@ export function useAddressing({ workId }: UseAddressingOptions): UseAddressingRe
         const [charsRes, dyadsRes] = await Promise.all([
           window.mira.addressing.characters.list({
             workId,
-            status: statusFilter === 'all' ? undefined : statusFilter,
+            // Rejected rows only keep the model from proposing them again; the flat list hides them.
+            status: 'approved',
             query: query.trim() || undefined
           }),
           window.mira.addressing.dyads.list({
             workId,
             chapterId: chapterFilter === 'all' ? undefined : chapterFilter,
-            status: statusFilter === 'all' ? undefined : statusFilter
+            status: 'approved'
           })
         ])
 
@@ -118,7 +103,7 @@ export function useAddressing({ workId }: UseAddressingOptions): UseAddressingRe
         setLoading(false)
       }
     },
-    [workId, statusFilter, query, chapterFilter]
+    [workId, query, chapterFilter]
   )
 
   useEffect(() => {
@@ -245,8 +230,6 @@ export function useAddressing({ workId }: UseAddressingOptions): UseAddressingRe
     error,
     query,
     setQuery,
-    statusFilter,
-    setStatusFilter,
     chapterFilter,
     setChapterFilter,
     reload,

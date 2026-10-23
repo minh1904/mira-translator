@@ -169,7 +169,7 @@ function writesOf(): ChatToolWrites & { proposals: ToolProposalInput[]; terms: u
       proposals.push(input)
       return { proposalId: 'p' + proposals.length, partIds: ['part' + proposals.length] }
     },
-    createPendingTerm: (_workId, input) => {
+    createTerm: (_workId, input) => {
       if (input.term === '魔王') throw new Error('Thuật ngữ "魔王" đã có trong glossary.')
       terms.push(input)
       return { entryId: 'e' + terms.length }
@@ -200,7 +200,7 @@ const call = (name: string, args: unknown = {}): { id: string; name: string; arg
 })
 
 describe('the tool list', () => {
-  it('starts with where the user is, and says the writing tools only propose', () => {
+  it('starts with where the user is, and says the text tools only propose', () => {
     const names = CHAT_TOOL_DEFINITIONS.map((tool) => tool.function.name)
     expect(names).toEqual([
       'get_current_chapter',
@@ -215,7 +215,8 @@ describe('the tool list', () => {
       'propose_glossary_term'
     ])
     for (const tool of CHAT_TOOL_DEFINITIONS.filter((item) =>
-      item.function.name.startsWith('propose_')
+      // A glossary term applies at once (change unblock-auto-translate-context); text edits wait.
+      ['propose_edit', 'propose_translation'].includes(item.function.name)
     )) {
       expect(tool.function.description).toContain('ĐỀ XUẤT')
       expect(tool.function.description).toMatch(/chờ (người dùng )?duyệt/)
@@ -463,7 +464,7 @@ describe('propose_translation', () => {
 })
 
 describe('propose_glossary_term', () => {
-  it('adds a pending term and reports it', () => {
+  it('adds a term and reports it', () => {
     const writes = writesOf()
     const result = tools(libraryOf(), writes).run(
       call('propose_glossary_term', {

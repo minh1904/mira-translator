@@ -13,3 +13,16 @@
 
 - [x] 3.1 Cập nhật các ca kiểm thử backend (`taskService.context.test.ts`, `contextExtractionService.test.ts`) để phản ánh việc lưu `approved` trực tiếp và pipeline không bị ngắt.
 - [x] 3.2 Cập nhật các bài test frontend liên quan đến bộ lọc trạng thái và chạy `node scripts/check.mjs` để xác nhận toàn bộ test, lint và typecheck đều pass.
+
+## 4. Sửa sau review (2026-10-23)
+
+- [x] 4.1 Migration 17 của file tác phẩm chuyển mục `pending` cũ thành `approved`, giữ `rejected`.
+- [x] 4.2 `saveExtraction` không mở lại mục `rejected` về `pending`; kiểu ứng viên chỉ còn `approved | rejected`.
+- [x] 4.3 Thuật ngữ trợ lý chat thêm (`propose_glossary_term`, `createTerm`) lưu `approved`.
+- [x] 4.4 Bỏ `statusFilter` và `requestGlossaryFilter`/`requestAddressingFilter` khỏi hook; "Xem và duyệt" thành "Xem ngữ cảnh" và không còn mở bảng lọc theo `pending` mà người dùng không thoát ra được.
+- [x] 4.5 Bảng phẳng chỉ liệt kê mục `approved`; bỏ badge "chờ duyệt" trên tab Xưng hô.
+
+## 5. Phần còn lại
+
+- [x] 5.1 Gỡ API duyệt: kênh `glossary:review`/`glossary:bulkApprove`, preload, `desktopApi`, `GlossaryService.review/bulkApprove`, storage `reviewContextEntry`/`bulkApproveContextEntries`, schema và kiểu lệnh duyệt, `pendingByType`.
+- [x] 5.2 Sửa spec: mục cấm dùng vẫn vào prompt như chỉ dẫn cấm; thêm yêu cầu cho dữ liệu cũ và mục bị loại.

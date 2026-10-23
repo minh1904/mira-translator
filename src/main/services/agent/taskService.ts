@@ -798,8 +798,8 @@ export class AgentTaskService {
 
   /**
    * Term extraction before the first item (change `add-agent-context-workflow`), as an operation of
-   * that item so its calls and usage count toward the task's caps. New `pending` entries put the task
-   * in `waiting_user(context_review)` with every item still queued; `true` means go on with the item.
+   * that item so its calls and usage count toward the task's caps. What it finds applies at once, so
+   * the task goes on without review (change `unblock-auto-translate-context`); `true` means go on.
    */
   private async extractTerms(
     task: AgentTaskView,

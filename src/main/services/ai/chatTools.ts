@@ -32,8 +32,8 @@ import { addressingLines, approvedDyads, glossaryLines } from './translate/trans
  *
  * Nguyên tắc bất biến: tool chỉ được đọc, được trỏ và được đề xuất; chỉ người dùng
  * mới có quyền áp dụng vào văn bản. Các công cụ đọc không làm thay đổi dữ liệu.
- * Các công cụ ghi chỉ tạo đề xuất chờ duyệt hoặc thuật ngữ chờ duyệt; không công cụ nào
- * tự ý thay đổi văn bản của chương hay thuật ngữ đã duyệt.
+ * Các công cụ ghi chỉ tạo đề xuất chờ duyệt hoặc thêm thuật ngữ mới (có hiệu lực ngay); không công
+ * cụ nào tự ý thay đổi văn bản của chương hay sửa thuật ngữ đã có.
  *
  * Phạm vi hoạt động gắn chặt với tác phẩm (`workId`) và chương hiện tại mà người dùng đang mở.
  */
@@ -74,7 +74,7 @@ export interface ToolProposalInput {
 }
 
 /**
- * Các quyền ghi duy nhất của công cụ: tạo đề xuất hoặc thuật ngữ chờ duyệt.
+ * Các quyền ghi duy nhất của công cụ: tạo đề xuất hoặc thêm thuật ngữ.
  * Nếu không có, các công cụ ghi sẽ thông báo không khả dụng.
  */
 export interface ChatToolWrites {
@@ -82,7 +82,7 @@ export interface ChatToolWrites {
     workId: string,
     input: ToolProposalInput
   ): { proposalId: string; partIds: string[] }
-  createPendingTerm(
+  createTerm(
     workId: string,
     input: { term: string; translation: string; variants: string[]; note: string | null }
   ): { entryId: string }
@@ -309,7 +309,7 @@ export const CHAT_TOOL_DEFINITIONS = [
     function: {
       name: 'propose_glossary_term',
       description:
-        'ĐỀ XUẤT thêm một thuật ngữ vào glossary. Mục mới ở trạng thái chờ duyệt; không đổi mục đã duyệt nào.',
+        'Thêm một thuật ngữ mới vào glossary. Mục mới có hiệu lực ngay cho các lượt dịch sau; không sửa mục đã có.',
       parameters: {
         type: 'object',
         properties: {
@@ -1082,7 +1082,7 @@ export function createChatTools(
     }
     let created: { entryId: string }
     try {
-      created = scope.writes.createPendingTerm(workId, {
+      created = scope.writes.createTerm(workId, {
         term,
         translation,
         variants: [...new Set(variants)],
@@ -1098,7 +1098,7 @@ export function createChatTools(
       id: call.id,
       name: call.name,
       detail: `Đề xuất thuật ngữ ${label}`,
-      content: `Đã thêm thuật ngữ ${label} vào glossary ở trạng thái chờ duyệt. Chưa dùng nó như mục đã duyệt cho tới khi người dùng duyệt.`,
+      content: `Đã thêm thuật ngữ ${label} vào glossary. Mục có hiệu lực ngay; người dùng sửa hoặc xóa ở màn Thuật ngữ nếu cần.`,
       status: 'ok',
       proposal: {
         type: 'term',

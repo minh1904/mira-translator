@@ -7,13 +7,6 @@ import type {
   ImportNamesResult
 } from '../../../../../shared/contracts/glossary'
 
-const requestedFilter = new Map<string, ContextStatus>()
-
-/** "Xem và duyệt": the next Glossary screen of this work opens on this status filter. */
-export function requestGlossaryFilter(workId: string, status: ContextStatus): void {
-  requestedFilter.set(workId, status)
-}
-
 export interface UseGlossaryOptions {
   workId: string
   kind?: ContextKind
@@ -25,8 +18,6 @@ export interface UseGlossaryReturn {
   error: string | null
   query: string
   setQuery: (q: string) => void
-  statusFilter: 'all' | ContextStatus
-  setStatusFilter: (s: 'all' | ContextStatus) => void
   reload: () => Promise<void>
   createEntry: (input: {
     source: string
@@ -62,15 +53,7 @@ export function useGlossary({ workId, kind = 'term' }: UseGlossaryOptions): UseG
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [query, setQuery] = useState('')
-  const [statusFilter, setStatusFilter] = useState<'all' | ContextStatus>(
-    () => requestedFilter.get(workId) ?? 'all'
-  )
   const [reviewInfo, setReviewInfo] = useState<Map<string, ContextReviewInfo>>(new Map())
-
-  // Taken once: a later visit opens on "all" again.
-  useEffect(() => {
-    requestedFilter.delete(workId)
-  }, [workId])
 
   // `quiet` refetches without the loading state: a task wrote entries while the list is open.
   const reload = useCallback(
@@ -81,7 +64,8 @@ export function useGlossary({ workId, kind = 'term' }: UseGlossaryOptions): UseG
         const res = await window.mira.glossary.list({
           workId,
           kind,
-          status: statusFilter === 'all' ? undefined : statusFilter,
+          // Rejected rows only keep the model from proposing them again; the flat list hides them.
+          status: 'approved',
           query: query.trim() || undefined
         })
         if (res.ok) {
@@ -101,7 +85,7 @@ export function useGlossary({ workId, kind = 'term' }: UseGlossaryOptions): UseG
         setLoading(false)
       }
     },
-    [workId, kind, statusFilter, query]
+    [workId, kind, query]
   )
 
   useEffect(() => {
@@ -205,8 +189,6 @@ export function useGlossary({ workId, kind = 'term' }: UseGlossaryOptions): UseG
     error,
     query,
     setQuery,
-    statusFilter,
-    setStatusFilter,
     reload,
     createEntry,
     updateEntry,

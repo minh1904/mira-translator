@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState, type JSX } from 'react'
+import type { JSX } from 'react'
 import {
   AddIcon,
   BookBookmarkIcon,
@@ -64,16 +64,6 @@ const TERMS: TermRow[] = [
  * là màn hình thực tế của thuật ngữ và xưng hô; phần văn phong là giao diện mẫu tạm thời.
  */
 export function ContextAreaMock({ workId }: { workId?: string } = {}): JSX.Element {
-  // Pairs the addressing analysis left for review; recounted whenever the tab changes.
-  const [pendingPairs, setPendingPairs] = useState(0)
-  const countPending = useCallback(() => {
-    if (!workId) return
-    void window.mira.addressing.dyads.list({ workId, status: 'pending' }).then((result) => {
-      if (result.ok) setPendingPairs(result.value.dyads.length)
-    })
-  }, [workId])
-  useEffect(countPending, [countPending])
-
   return (
     <section
       aria-labelledby="context-heading"
@@ -89,16 +79,11 @@ export function ContextAreaMock({ workId }: { workId?: string } = {}): JSX.Eleme
         </p>
       </div>
 
-      <TabsRoot defaultValue="thuat-ngu" onValueChange={countPending}>
+      <TabsRoot defaultValue="thuat-ngu">
         <TabsList aria-label="Loại ngữ cảnh">
           <TabsTab value="thuat-ngu">Thuật ngữ</TabsTab>
           <TabsTab value="xung-ho">
             Xưng hô
-            {pendingPairs > 0 && (
-              <span className="ml-1.5 rounded-sm bg-warning/10 px-1 py-px text-body-xs text-warning">
-                {pendingPairs} chờ duyệt
-              </span>
-            )}
             {!workId && (
               <span className="ml-1.5 rounded-sm bg-selected px-1 py-px text-body-xs text-subtle">
                 {SOON_LABEL}

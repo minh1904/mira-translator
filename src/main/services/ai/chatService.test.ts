@@ -860,7 +860,7 @@ describe('tool ghi và vị trí (agentic-chat)', () => {
           created.push(input)
           return { proposalId: 'p1', partIds: ['part1'] }
         },
-        createPendingTerm: () => {
+        createTerm: () => {
           throw new Error('not used')
         }
       },

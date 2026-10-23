@@ -622,6 +622,14 @@ CREATE TABLE qa_dismissal (
 `
 
 /**
+ * Context review was dropped (change unblock-auto-translate-context): every entry applies once saved, so
+ * an entry still waiting for review applies too. `rejected` stays as the record of what not to propose.
+ */
+const version17 = `
+UPDATE context_entry SET status = 'approved' WHERE status = 'pending';
+`
+
+/**
  * Chapters downloaded from a source were saved with their text but no segments, and translation
  * needs segments. Give every such source side its segments at its current revision, without raising
  * the revision, so an open editor or a pinned task sees no change.
@@ -747,6 +755,12 @@ export const workSchema: SchemaSpec = {
       version: 16,
       up(db) {
         segmentBareSources(db)
+      }
+    },
+    {
+      version: 17,
+      up(db) {
+        db.exec(version17)
       }
     }
   ]

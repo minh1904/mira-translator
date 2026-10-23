@@ -152,7 +152,7 @@ export function createServices({
             createToolProposalInDb(db, input, library.appNow(), () => library.newAppId())
           )
         ),
-      createPendingTerm: (workId, input) =>
+      createTerm: (workId, input) =>
         library.withWork(workId, (db) => ({
           entryId: createContextEntry(db, {
             id: library.newAppId(),
@@ -161,7 +161,7 @@ export function createServices({
             target: input.translation,
             aliases: input.variants,
             notes: input.note,
-            status: 'pending',
+            status: 'approved',
             origin: 'ai',
             now: library.appNow()
           }).id

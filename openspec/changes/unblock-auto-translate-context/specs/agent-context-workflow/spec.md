@@ -16,11 +16,15 @@ Sau bước trích xuất ngữ cảnh, Mira SHALL lưu các mục trích xuất
 - **THEN** các mục mới được lưu vào kho tác phẩm ở trạng thái có hiệu lực và task lập tức bắt đầu chạy dịch item đầu tiên mà không chuyển sang `waiting_user`
 
 ### Requirement: Chỉ mục đã duyệt và đúng phạm vi vào prompt
-Mira SHALL dựng Context của mỗi item bằng resolver hiện có (`getEffectiveGlossary`, `getEffectiveDyadsForChapter`) qua `takeContextSnapshot`, đưa mọi mục ngữ cảnh có hiệu lực (không bị đánh dấu cấm dùng) và có phạm vi chứa chương của item vào prompt. Mira SHALL đưa xưng hô trong lời thoại và đại từ người kể vào prompt như hai chỉ dẫn có nhãn riêng và SHALL không áp phép thay chuỗi nào lên bản dịch. Mira SHALL coi Context đã đổi khi hash bản chụp dựng từ kho khác hash bản chụp đã ghim của item.
+Mira SHALL dựng Context của mỗi item bằng resolver hiện có (`getEffectiveGlossary`, `getEffectiveDyadsForChapter`) qua `takeContextSnapshot`, đưa mọi mục ngữ cảnh có hiệu lực (`approved`, tức không bị `rejected`) và có phạm vi chứa chương của item vào prompt. Mục cấm dùng (`forbidden`) vẫn vào prompt nhưng dưới dạng chỉ dẫn "không dùng bản dịch này". Mira SHALL đưa xưng hô trong lời thoại và đại từ người kể vào prompt như hai chỉ dẫn có nhãn riêng và SHALL không áp phép thay chuỗi nào lên bản dịch. Mira SHALL coi Context đã đổi khi hash bản chụp dựng từ kho khác hash bản chụp đã ghim của item.
 
-#### Scenario: Duyệt một phần
-- **WHEN** kho có nhiều mục ngữ cảnh trong đó có mục bị đánh dấu cấm dùng (`forbidden`)
-- **THEN** bản chụp của item chỉ chứa các mục có hiệu lực và không chứa các mục cấm dùng
+#### Scenario: Mục model gọi là không phải thuật ngữ
+- **WHEN** bước trích lưu 12 ứng viên, trong đó 2 mục model gọi là `not-a-term` (lưu `rejected`)
+- **THEN** bản chụp của item chứa 10 mục còn lại cùng các mục có sẵn, không chứa 2 mục `rejected`
+
+#### Scenario: Mục cấm dùng
+- **WHEN** một thuật ngữ được đánh dấu cấm dùng
+- **THEN** prompt đưa nó vào nhóm chỉ dẫn cấm dùng, không đưa vào nhóm thuật ngữ phải theo
 
 #### Scenario: Mục ngoài phạm vi
 - **WHEN** mục chỉ áp dụng chương 1–10 và item là chương 11
@@ -41,9 +45,20 @@ Trong màn chương, tab Ngữ cảnh của side panel SHALL hiển thị Contex
 - **WHEN** activity báo task đã trích xuất thêm các mục ngữ cảnh và người dùng bấm xem
 - **THEN** màn Từ điển của đúng tác phẩm mở ra hiển thị toàn bộ danh sách ngữ cảnh
 
-#### Scenario: Mục pending không hiện là đang áp dụng
-- **WHEN** một mục ngữ cảnh bị đánh dấu cấm dùng hoặc nằm ngoài phạm vi chương hiện tại
-- **THEN** tab Ngữ cảnh không liệt kê mục đó
+#### Scenario: Mục bị loại không hiện là đang áp dụng
+- **WHEN** một mục ngữ cảnh bị `rejected` hoặc nằm ngoài phạm vi chương hiện tại
+- **THEN** tab Ngữ cảnh không liệt kê mục đó, và bảng phẳng của màn Từ điển/Xưng hô cũng ẩn mục `rejected`
+
+### Requirement: Dữ liệu cũ chờ duyệt có hiệu lực
+Mira SHALL chuyển mọi mục ngữ cảnh còn `pending` của tác phẩm cũ thành `approved` bằng migration của file tác phẩm, và SHALL giữ nguyên các mục `rejected`. Bước trích SHALL không mở lại mục `rejected`, kể cả khi có trích dẫn từ chương mới. Thuật ngữ do trợ lý chat thêm (`propose_glossary_term`) SHALL có hiệu lực ngay.
+
+#### Scenario: Mở tác phẩm có mục chờ duyệt từ trước
+- **WHEN** file tác phẩm ở schema 16 có một mục `pending` và một mục `rejected`
+- **THEN** sau migration lên 17, mục `pending` thành `approved` còn mục `rejected` giữ nguyên
+
+#### Scenario: Mục bị loại gặp lại ở chương mới
+- **WHEN** bước trích gặp lại nguồn của một mục `rejected` với trích dẫn từ chương mới
+- **THEN** mục đó vẫn `rejected` và không vào prompt
 
 ## REMOVED Requirements
 

@@ -198,6 +198,6 @@ describe('createServices', () => {
     expect(stored.all).toBe(1)
     expect(library.readText(work.id, chapter.id, 'target').content).toBe('')
     const term = services.glossary.list(work.id).find((entry) => entry.source === 'Winter')
-    expect(term).toMatchObject({ target: 'Mùa đông', status: 'pending', origin: 'ai' })
+    expect(term).toMatchObject({ target: 'Mùa đông', status: 'approved', origin: 'ai' })
   })
 })

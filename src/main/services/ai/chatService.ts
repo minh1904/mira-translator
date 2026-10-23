@@ -81,7 +81,7 @@ export interface ChatServiceOptions {
    */
   library?: ChatToolLibrary
   /**
-   * Hai lối ghi của tool ghi: đề xuất chờ duyệt và thuật ngữ chờ duyệt. Thiếu thì tool ghi trả lời là
+   * Hai lối ghi của tool ghi: đề xuất chờ duyệt và thuật ngữ có hiệu lực ngay. Thiếu thì tool ghi trả lời là
    * lượt này không được tạo đề xuất.
    */
   writes?: ChatToolWrites

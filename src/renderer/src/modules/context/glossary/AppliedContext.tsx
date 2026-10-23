@@ -6,13 +6,13 @@ import { EmptyState } from '../../../components/ui/EmptyState'
 export interface AppliedContextProps {
   workId: string
   chapterId: string
-  /** "Xem và duyệt": opens the work's Glossary screen on pending entries. */
+  /** "Xem ngữ cảnh": opens the work's Glossary screen to edit what applies. */
   onReview(workId: string): void
 }
 
 /**
  * Tab Ngữ cảnh of the chapter side panel: what a translation of this chapter would use now, read through
- * the same snapshot function as the prompt, so pending or out-of-scope entries never show. Read-only.
+ * the same snapshot function as the prompt, so rejected or out-of-scope entries never show. Read-only.
  */
 export function AppliedContext({ workId, chapterId, onReview }: AppliedContextProps): JSX.Element {
   const [value, setValue] = useState<AppliedContextValue | null>(null)
@@ -34,7 +34,7 @@ export function AppliedContext({ workId, chapterId, onReview }: AppliedContextPr
 
   const review = (
     <Button variant="light" onClick={() => onReview(workId)}>
-      Xem và duyệt
+      Xem ngữ cảnh
     </Button>
   )
 
@@ -49,7 +49,7 @@ export function AppliedContext({ workId, chapterId, onReview }: AppliedContextPr
   if (value.glossary.length + value.dyads.length + value.characters.length === 0) {
     return (
       <EmptyState title="Chưa có ngữ cảnh áp dụng" actions={review}>
-        Chương này chưa có thuật ngữ, nhân vật hay cặp xưng hô đã duyệt.
+        Chương này chưa có thuật ngữ, nhân vật hay cặp xưng hô nào.
       </EmptyState>
     )
   }

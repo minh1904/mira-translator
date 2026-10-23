@@ -501,7 +501,7 @@ export interface ExtractedCandidateWrite {
   target: string
   termType: string
   /** `rejected` for what the model called `not-a-term`, so it is not proposed again. */
-  status: 'pending' | 'rejected' | 'approved'
+  status: 'approved' | 'rejected'
   aliases?: string[]
   notes?: string | null
   /** Flags the caller already knows (`script_mismatch`); alias conflicts are found here. */
@@ -521,7 +521,7 @@ export interface SaveExtractionInput {
 }
 
 export interface SaveExtractionResult {
-  /** New `pending` entries plus rejected ones reopened as `pending`. */
+  /** New entries that apply (`approved`); not-a-term rows are left out. */
   pending: string[]
   skipped: number
 }
@@ -558,9 +558,9 @@ const parseFlags = (json: string): ReviewFlag[] => {
 
 /**
  * Writes one extraction step in one transaction: candidates, their quotes and the scanned chapters. A
- * candidate that matches an approved or pending entry is dropped; one that matches a rejected entry
- * comes back as `pending` (flag `reopened`) only with a quote from a chapter its old evidence lacks. An
- * alias another entry owns is left off and becomes an `alias_conflict` flag instead of an error.
+ * candidate that matches any entry is dropped, a rejected one included: with no review step left, a
+ * person's rejection or the model's not-a-term stands. An alias another entry owns is left off and
+ * becomes an `alias_conflict` flag instead of an error.
  */
 export function saveExtraction(db: Db, input: SaveExtractionInput): SaveExtractionResult {
   const now = input.now ?? Date.now()
@@ -590,29 +590,8 @@ export function saveExtraction(db: Db, input: SaveExtractionInput): SaveExtracti
 
     for (const candidate of input.candidates) {
       const source = candidate.source.trim()
-      const existing = ownerOf(db, source)
-      if (existing) {
-        if (existing.status !== 'rejected' || candidate.status === 'rejected') {
-          skipped++
-          continue
-        }
-        const known = new Set(
-          db
-            .prepare('SELECT chapter_id FROM context_entry_evidence WHERE entry_id = ?')
-            .all<{ chapter_id: string | null }>(existing.id)
-            .map((row) => row.chapter_id)
-        )
-        // No old quote: the model called it not-a-term, or a person rejected it by hand. Stays rejected.
-        if (known.size === 0 || !candidate.evidence.some((quote) => !known.has(quote.chapterId))) {
-          skipped++
-          continue
-        }
-        const flags = parseFlags(existing.review_flags).filter((flag) => flag.code !== 'reopened')
-        db.prepare(
-          "UPDATE context_entry SET status = 'pending', review_flags = ?, updated_at = ? WHERE id = ?"
-        ).run(JSON.stringify([...flags, { code: 'reopened' }]), now, existing.id)
-        addEvidence(existing.id, candidate.evidence)
-        pending.push(existing.id)
+      if (ownerOf(db, source)) {
+        skipped++
         continue
       }
 

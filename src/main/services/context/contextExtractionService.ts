@@ -66,7 +66,7 @@ export interface ExtractContextInput {
 export interface ExtractContextResult {
   state: 'completed' | 'stopped'
   stopReason: ExtractionStopReason | null
-  /** Entries this run left `pending` (new or reopened), then the new pending addressing pairs. */
+  /** Entries this run added (they apply at once), then the new addressing pairs. Named before review went. */
   pending: string[]
   scannedChapterIds: string[]
   calls: number
@@ -299,8 +299,8 @@ export class ContextExtractionService {
   }
   /**
    * Addressing analysis after the sweep (decision 2026-10-14): the work's people — characters and
-   * glossary persons, approved or pending — with dialogue lines in the task's chapters, one model call,
-   * and every proposed pair with a verbatim quote saved `pending` next to the terms. Fewer than two
+   * glossary persons that are not rejected — with dialogue lines in the task's chapters, one model call,
+   * and every proposed pair with a verbatim quote saved `approved` next to the terms. Fewer than two
    * people with lines means no call; an answer that is not JSON proposes nothing.
    */
   private async analyzeAddressing(

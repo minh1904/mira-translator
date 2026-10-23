@@ -31,7 +31,7 @@ const candidate = (patch: Partial<ExtractedCandidateWrite> = {}): ExtractedCandi
   source: '彰',
   target: 'Akira',
   termType: 'person',
-  status: 'pending',
+  status: 'approved',
   evidence: [{ chapterId: 'c1', quote: '彰が笑った' }],
   ...patch
 })
@@ -47,14 +47,14 @@ const save = (db: Db, candidates: ExtractedCandidateWrite[], scanned: string[] =
   })
 
 describe('saveExtraction', () => {
-  it('stores a pending AI entry with its type, quote, run, model and prompt hash, and the scan', () => {
+  it('stores an applied AI entry with its type, quote, run, model and prompt hash, and the scan', () => {
     const db = createTestDb()
     const { pending } = save(db, [candidate()], ['c1'])
     expect(pending).toHaveLength(1)
     expect(getContextEntry(db, pending[0]!)).toMatchObject({
       source: '彰',
       target: 'Akira',
-      status: 'pending',
+      status: 'approved',
       origin: 'ai'
     })
     expect(readReviewInfo(db, pending)).toEqual([
@@ -74,8 +74,8 @@ describe('saveExtraction', () => {
       }
     ])
     expect([...listScannedChapterIds(db)]).toEqual(['c1'])
-    // Pending entries never reach the effective glossary.
-    expect(getEffectiveGlossary(db, 'c1')).toEqual([])
+    // Extracted entries apply right away: there is no review step.
+    expect(getEffectiveGlossary(db, 'c1').map((entry) => entry.source)).toEqual(['彰'])
     db.close()
   })
 
@@ -104,30 +104,21 @@ describe('saveExtraction', () => {
     db.close()
   })
 
-  it('keeps a rejected entry rejected unless a quote comes from a new chapter, then reopens it', () => {
+  it('keeps a rejected entry rejected even with a quote from a new chapter', () => {
     const db = createTestDb()
     const first = save(db, [candidate({ source: '先生', target: 'thầy' })])
     const id = first.pending[0]!
     db.prepare("UPDATE context_entry SET status = 'rejected' WHERE id = ?").run(id)
 
-    expect(save(db, [candidate({ source: '先生', target: 'thầy' })])).toEqual({
-      pending: [],
-      skipped: 1
-    })
-    expect(getContextEntry(db, id)?.status).toBe('rejected')
-
-    const reopened = save(db, [
+    const again = save(db, [
       candidate({
         source: '先生',
         target: 'thầy',
         evidence: [{ chapterId: 'c2', quote: '先生が' }]
       })
     ])
-    expect(reopened.pending).toEqual([id])
-    expect(getContextEntry(db, id)?.status).toBe('pending')
-    const info = readReviewInfo(db, [id])[0]!
-    expect(info.flags).toEqual([{ code: 'reopened' }])
-    expect(info.evidence.map((quote) => quote.chapterId)).toEqual(['c1', 'c2'])
+    expect(again).toEqual({ pending: [], skipped: 1 })
+    expect(getContextEntry(db, id)?.status).toBe('rejected')
     db.close()
   })
 

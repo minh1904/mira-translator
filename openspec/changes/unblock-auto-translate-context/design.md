@@ -42,8 +42,16 @@ Quyết định ngày 2026-10-23 của chủ sản phẩm yêu cầu bãi bỏ h
 - **Lý do:** Đảm bảo luồng dịch hàng loạt chạy hoàn toàn tự động từ đầu đến cuối mà không cần can thiệp thủ công.
 
 ### 4. Xử lý tương thích dữ liệu hiện có
-- **Quyết định:** Trong database SQLite, các bảng `context_entry` và `addressing_dyad` vẫn giữ CHECK constraint hiện tại. Khi nạp hoặc cập nhật dữ liệu, mọi mục sẽ được xử lý như `approved`. Một câu query cập nhật nhẹ có thể chạy khi mở tác phẩm để chuyển toàn bộ các mục `pending` cũ thành `approved`.
-- **Lý do:** Không cần bump schema version của SQLite, đảm bảo an toàn tuyệt đối cho dữ liệu người dùng cũ.
+- **Quyết định:** Bảng `context_entry` (chứa cả thuật ngữ, nhân vật và cặp xưng hô) giữ nguyên CHECK constraint. Migration 17 của file tác phẩm chạy một lần `UPDATE context_entry SET status = 'approved' WHERE status = 'pending'`. Mục `rejected` giữ nguyên: đó là trí nhớ "đừng đề xuất lại" của các mục model gọi là `not-a-term` hoặc người dùng đã từ chối trước đây.
+- **Lý do:** Không có migration thì mục `pending` cũ không bao giờ vào prompt nhưng vẫn hiện như mục bình thường trên bảng phẳng, mà không còn nút nào để duyệt chúng. Migration theo cơ chế sẵn có chạy đúng một lần, không đổi schema.
+
+### 5. Không mở lại mục bị loại, ẩn mục bị loại khỏi bảng
+- **Quyết định:** `saveExtraction` bỏ nhánh mở lại mục `rejected` khi có trích dẫn từ chương mới (trước đây nhánh này đưa mục về `pending`). Bảng Từ điển và Xưng hô chỉ liệt kê mục `approved`. Lối "Xem ngữ cảnh" (trước là "Xem và duyệt") chỉ mở khu Ngữ cảnh, không đặt bộ lọc.
+- **Lý do:** Không còn bước duyệt nên mở lại sẽ tự động đảo quyết định của người dùng. Mục `rejected` không có hiệu lực; hiện nó trong bảng phẳng không kèm badge sẽ khiến người dùng tưởng nó đang được áp dụng.
+
+### 6. Gỡ API duyệt
+- **Quyết định:** Gỡ `glossary:review`, `glossary:bulkApprove`, `reviewContextEntry`, `bulkApproveContextEntries` và các kiểu `ContextReviewCommand`/`ContextReviewOutcome`. Giữ `glossary:reviewInfo` vì bảng vẫn hiện loại, cờ và câu trích. Giữ lý do `context_review` trong contract để task cũ đang chờ vẫn đọc được và bấm Tiếp tục.
+- **Lý do:** Không còn màn hình nào gọi tới các API này.
 
 ## Risks / Trade-offs
 

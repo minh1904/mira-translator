@@ -309,7 +309,7 @@ export interface TaskListProps {
   /** Only the tasks of this work (the work's Tasks area); all tasks when absent. */
   workId?: string
   onOpenChapter: (workId: string, chapterId: string) => void
-  /** "Xem và duyệt" of a task waiting for context review. */
+  /** "Xem ngữ cảnh" of a task left waiting for context review before review was dropped. */
   onReviewContext?: (workId: string) => void
   /** "Mở đoạn" of a quality warning: the chapter, scrolled to the source paragraph. */
   onOpenSegment?: (workId: string, chapterId: string, paragraphIndex: number) => void
@@ -379,7 +379,7 @@ function TaskRow({
       <div className="flex flex-wrap items-center gap-xs">
         {task.reason === 'context_review' && onReviewContext && (
           <Button variant="solid" onClick={() => onReviewContext(task.workId)}>
-            Xem và duyệt
+            Xem ngữ cảnh
           </Button>
         )}
         {COMMANDS[task.state].map(({ command, label }) => (

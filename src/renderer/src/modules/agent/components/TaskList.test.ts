@@ -94,16 +94,16 @@ describe('TaskList', () => {
     expect(html).not.toContain('Tiếp tục')
   })
 
-  it('offers "Xem và duyệt" on a task waiting for context review', async () => {
+  it('offers "Xem ngữ cảnh" on a task waiting for context review', async () => {
     bridge([summary({ state: 'waiting_user', reason: 'context_review' })])
     await useTaskStore.getState().refresh()
     Object.assign(useTaskStore.getInitialState(), useTaskStore.getState())
     const html = renderToStaticMarkup(
       createElement(TaskList, { onOpenChapter: () => {}, onReviewContext: () => {} })
     )
-    expect(html).toContain('Xem và duyệt')
+    expect(html).toContain('Xem ngữ cảnh')
     expect(html).toContain('cần duyệt ngữ cảnh')
-    expect(render()).not.toContain('Xem và duyệt')
+    expect(render()).not.toContain('Xem ngữ cảnh')
   })
 
   it('sends commands with the version it saw and refetches and announces on a change event', async () => {

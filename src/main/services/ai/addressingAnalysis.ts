@@ -14,7 +14,7 @@ import { languageName } from './translate/languageProfiles'
  * Hai tầng. Mã thuần gom bằng chứng — các câu thoại có tên một nhân vật, kèm câu dẫn liền trước để
  * biết ai nói, và số lần mỗi đại từ xuất hiện. Model đọc bằng chứng và trả JSON: giới tính, đại từ
  * ngôi ba của từng nhân vật; với từng cặp A → B: tự xưng, cách gọi, đại từ ngôi hai dự phòng, ghi
- * chú và câu trích làm chứng. Đề xuất luôn ở trạng thái chờ duyệt — AI không tự thành sự thật.
+ * chú và câu trích làm chứng. Kết quả có hiệu lực ngay; người dùng sửa sau ở màn Xưng hô.
  */
 
 export interface AnalysisCharacter {
