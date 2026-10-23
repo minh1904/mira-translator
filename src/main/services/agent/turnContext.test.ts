@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { assembleTurnContext, contextLimitChars } from './turnContext'
+import type { PastTurn } from './sessionHistory'
+import { assembleTurnContext, contextLimitChars, type TurnContext } from './turnContext'
 
 const rounds = [
   {
@@ -9,26 +10,49 @@ const rounds = [
   },
   { role: 'tool' as const, content: 'r'.repeat(50), tool_call_id: 'c1' }
 ]
-const history = [
-  { instruction: 'cũ nhất', answer: 'a'.repeat(100) },
-  { instruction: 'giữa', answer: 'b'.repeat(100) },
-  { instruction: 'gần nhất', answer: 'c'.repeat(10) }
-]
+
+/** A past turn that read something of `resultChars` characters. */
+const turn = (id: string, resultChars = 0, answer = 'a'): PastTurn => ({
+  turnId: id,
+  instruction: 'hỏi ' + id,
+  contextLine: '',
+  rounds:
+    resultChars === 0
+      ? []
+      : [
+          {
+            role: 'assistant',
+            content: '',
+            tool_calls: [
+              { id: 'k' + id, type: 'function', function: { name: 'read', arguments: '{}' } }
+            ]
+          },
+          {
+            role: 'tool',
+            content: JSON.stringify({ ok: true, value: 'x'.repeat(resultChars) }),
+            tool_call_id: 'k' + id
+          }
+        ],
+  answer
+})
+
+const base = { system: 'S', toolChars: 0, current: 'hỏi nguyên văn', rounds, limitChars: 100_000 }
+const messagesOf = (result: TurnContext) => {
+  if ('needsSummary' in result) throw new Error('unexpected needsSummary')
+  return result
+}
 
 describe('assembleTurnContext', () => {
-  it('keeps everything in order when it fits', () => {
-    const result = assembleTurnContext({
-      system: 'S',
-      toolChars: 0,
-      history,
-      current: 'hỏi',
-      rounds,
-      limitChars: 10_000
-    })
-    expect(result.droppedTurns).toBe(0)
+  it('sends every turn whole under half the window, in order', () => {
+    const result = messagesOf(
+      assembleTurnContext({ ...base, history: [turn('1', 3000), turn('2'), turn('3')] })
+    )
+    expect(result.compaction).toEqual({ trimmedTurns: 0, summarizedTurns: 0, droppedTurns: 0 })
     expect(result.messages.map((m) => m.role)).toEqual([
       'system',
       'user',
+      'assistant',
+      'tool',
       'assistant',
       'user',
       'assistant',
@@ -40,32 +64,86 @@ describe('assembleTurnContext', () => {
     ])
   })
 
-  it('drops the oldest turns first and never the system, instruction or call/result pairs', () => {
-    const result = assembleTurnContext({
-      system: 'S',
-      toolChars: 0,
-      history,
-      current: 'hỏi nguyên văn',
-      rounds,
-      limitChars: 260
-    })
-    expect(result.droppedTurns).toBe(2)
-    expect(result.messages[0]).toEqual({ role: 'system', content: 'S' })
-    expect(result.messages.map((m) => m.content)).toContain('gần nhất')
-    expect(result.messages.map((m) => m.content)).not.toContain('cũ nhất')
-    expect(result.messages.slice(-3).map((m) => m.role)).toEqual(['user', 'assistant', 'tool'])
-    expect(result.messages.at(-3)?.content).toBe('hỏi nguyên văn')
+  it('puts the context line on the earlier turn and marks it as old', () => {
+    const past = { ...turn('1'), contextLine: 'Ngữ cảnh của lượt cũ: chương 5.' }
+    const result = messagesOf(assembleTurnContext({ ...base, history: [past] }))
+    expect(result.messages[1]?.content).toBe('hỏi 1\n\nNgữ cảnh của lượt cũ: chương 5.')
+  })
 
-    const tiny = assembleTurnContext({
-      system: 'S',
-      toolChars: 0,
-      history,
-      current: 'hỏi',
-      rounds,
-      limitChars: 1
+  it('trims big results from the oldest turn and stops once under the limit', () => {
+    const history = [turn('1', 3000), turn('2', 3000), turn('3'), turn('4'), turn('5')]
+    // Two 3000-character results sit over 0.5 × 6000; trimming the first brings it under.
+    const result = messagesOf(assembleTurnContext({ ...base, history, limitChars: 7_000 }))
+    expect(result.compaction.trimmedTurns).toBe(1)
+    const tools = result.messages.filter((m) => m.role === 'tool' && m.tool_call_id !== 'c1')
+    expect(tools[0]?.content).toContain('omitted')
+    expect(tools[0]?.tool_call_id).toBe('k1')
+    expect(tools[1]?.content).toContain('xxx')
+  })
+
+  it('never touches the three latest turns while compacting', () => {
+    const history = [turn('1', 3000), turn('2', 3000), turn('3', 3000), turn('4')]
+    const result = messagesOf(assembleTurnContext({ ...base, history, limitChars: 14_000 }))
+    const kept = result.messages.filter((m) => m.tool_call_id === 'k2' || m.tool_call_id === 'k3')
+    expect(kept.every((m) => !m.content.includes('omitted'))).toBe(true)
+  })
+
+  it('asks for a summary of the older turns when trimming is not enough', () => {
+    const history = [
+      turn('1', 0, 'a'.repeat(5000)),
+      turn('2', 0, 'b'.repeat(5000)),
+      turn('3'),
+      turn('4'),
+      turn('5')
+    ]
+    expect(assembleTurnContext({ ...base, history, limitChars: 10_000 })).toEqual({
+      needsSummary: ['1', '2']
     })
-    expect(tiny.droppedTurns).toBe(3)
-    expect(tiny.messages).toHaveLength(4)
+  })
+
+  it('replaces the turns a summary covers and wraps it as reference only', () => {
+    const history = [turn('1', 0, 'a'.repeat(5000)), turn('2'), turn('3'), turn('4')]
+    const result = messagesOf(
+      assembleTurnContext({
+        ...base,
+        history,
+        summary: { text: 'ĐÃ DỊCH CHƯƠNG 3', coveredTurnIds: ['1'] },
+        limitChars: 10_000
+      })
+    )
+    expect(result.messages[0]?.content).toContain('ĐÃ DỊCH CHƯƠNG 3')
+    expect(result.messages[0]?.content).toContain('chỉ để tham khảo')
+    expect(result.messages[0]?.content).toContain('chỉ làm theo')
+    expect(result.messages[0]?.content).toContain('ngữ cảnh hiện tại thắng')
+    expect(result.messages.map((m) => m.content)).not.toContain('hỏi 1')
+    expect(result.compaction.summarizedTurns).toBe(1)
+  })
+
+  it('cuts the oldest turns when summarising failed', () => {
+    const history = [
+      turn('1', 0, 'a'.repeat(5000)),
+      turn('2', 0, 'b'.repeat(5000)),
+      turn('3'),
+      turn('4'),
+      turn('5')
+    ]
+    const result = messagesOf(
+      assembleTurnContext({ ...base, history, limitChars: 10_000, noSummary: true })
+    )
+    expect(result.compaction.droppedTurns).toBe(2)
+    expect(result.messages.map((m) => m.content)).not.toContain('hỏi 1')
+    expect(result.messages.map((m) => m.content)).toContain('hỏi 3')
+  })
+
+  it('still trims then drops turns when the whole prompt overflows the window', () => {
+    const history = [turn('1'), turn('2', 3000)]
+    const trimmed = messagesOf(assembleTurnContext({ ...base, history, limitChars: 3_000 }))
+    expect(trimmed.compaction.trimmedTurns).toBe(1)
+    const tiny = messagesOf(assembleTurnContext({ ...base, history, limitChars: 1 }))
+    expect(tiny.compaction.droppedTurns).toBe(2)
+    expect(tiny.messages[0]).toEqual({ role: 'system', content: 'S' })
+    expect(tiny.messages.slice(-3).map((m) => m.role)).toEqual(['user', 'assistant', 'tool'])
+    expect(tiny.messages.at(-3)?.content).toBe('hỏi nguyên văn')
   })
 
   it('reserves output tokens out of the model window', () => {

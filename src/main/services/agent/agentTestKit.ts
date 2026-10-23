@@ -188,9 +188,12 @@ export function setupAgent(options: { omitTranslationUsage?: boolean } = {}) {
     providerId: 'google'
   })
   services.connections.addApiKey(connection.id, 'key')
-  const entryId = services.connections.addModels(connection.id, [
-    { model: 'mock-model', name: 'Mock Model' }
-  ]).models[0]!.id
+  const entries = services.connections.addModels(connection.id, [
+    { model: 'mock-model', name: 'Mock Model' },
+    { model: 'aux-model', name: 'Aux Model' }
+  ]).models
+  const entryId = entries[0]!.id
+  const auxEntryId = entries[1]!.id
 
   const work1 = library.create({ title: 'Đại Đạo Triều Thiên', sourceLang: 'zh-Hans' })
   const ch1_1 = library.createChapter(work1.id, 'Chương 1').chapter
@@ -215,6 +218,8 @@ export function setupAgent(options: { omitTranslationUsage?: boolean } = {}) {
   const registry = new CapabilityRegistry()
   for (const cap of defaultReadCapabilities) registry.register(cap)
   const model = new ScriptedModel()
+  // The auxiliary model (summaries) is scripted apart from the turn's own model.
+  const auxModel = new ScriptedModel()
   model.settingsKeyOf = (selection) =>
     services.connections.translator(selection.connectionId, selection.entryId).settingsKey
   const agent = new AgentService({
@@ -222,7 +227,8 @@ export function setupAgent(options: { omitTranslationUsage?: boolean } = {}) {
     connections: services.connections,
     repository,
     registry,
-    openChatModel: (selection) => model.open(selection)
+    openChatModel: (selection) =>
+      (selection.entryId === auxEntryId ? auxModel : model).open(selection)
   })
   const modelSelection = { connectionId: connection.id, entryId }
 
@@ -233,6 +239,8 @@ export function setupAgent(options: { omitTranslationUsage?: boolean } = {}) {
     registry,
     agent,
     model,
+    auxModel,
+    auxEntryId,
     modelSelection,
     translations,
     work1,

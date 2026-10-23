@@ -169,7 +169,7 @@ describe('library.db v4 → v5', () => {
       frozen_scope: 'day',
       freeze_strikes: 2
     })
-    expect(readPragmas(db).userVersion).toBe(17)
+    expect(readPragmas(db).userVersion).toBe(18)
     db.close()
   })
 
@@ -197,7 +197,7 @@ describe('library.db v4 → v5', () => {
   it('is complete from nothing: a new file has the latest tables and no rows', () => {
     const db = openDatabase(join(tempDir(), 'fresh.db'))
     migrate(db, librarySchema)
-    expect(readPragmas(db).userVersion).toBe(17)
+    expect(readPragmas(db).userVersion).toBe(18)
     expect(db.prepare('SELECT COUNT(*) AS n FROM ai_model').get<{ n: number }>()!.n).toBe(0)
     db.close()
   })
@@ -241,7 +241,7 @@ describe('library.db v4 → v5', () => {
     }
     expect(error).toBeInstanceOf(StorageError)
     expect((error as StorageError).code).toBe('unsupported_version')
-    expect(readPragmas(db).userVersion).toBe(17)
+    expect(readPragmas(db).userVersion).toBe(18)
     db.close()
   })
 })
@@ -291,7 +291,7 @@ describe('library schema v8', () => {
   it('creates adapter, auth, job and rebuildable schedule storage with constrained states', () => {
     const db = openDatabase(join(tempDir(), 'v8.db'))
     migrate(db, librarySchema)
-    expect(readPragmas(db).userVersion).toBe(17)
+    expect(readPragmas(db).userVersion).toBe(18)
     db.exec(`
       INSERT INTO source_adapter_install (adapter_id, version, manifest_json, artifact_sha256,
         trust_level, state, installed_at, updated_at)
@@ -338,7 +338,7 @@ describe('library schema v8', () => {
       (id, file_name, title, source_lang, status, archived, chapter_count, created_at, updated_at)
       VALUES ('w', 'w.mira', 'Tác phẩm', 'ja', 'not-started', 0, 0, 1, 2)`)
       migrate(db, librarySchema)
-      expect(readPragmas(db).userVersion).toBe(17)
+      expect(readPragmas(db).userVersion).toBe(18)
       expect(db.prepare("SELECT title FROM work_index WHERE id = 'w'").get()).toEqual({
         title: 'Tác phẩm'
       })

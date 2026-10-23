@@ -23,6 +23,13 @@ import type { TokenUsage } from '../../../shared/contracts/usage'
 import { StorageError } from './errors'
 import type { Db } from './sqlite'
 
+/** Rolling summary of the session's older turns (change `add-agent-session-memory`). */
+export interface AgentSessionSummary {
+  text: string
+  coveredTurnIds: string[]
+  modelLabel: string | null
+}
+
 export interface AgentSession {
   id: string
   title: string
@@ -977,6 +984,47 @@ export class AgentRepository {
     this.transaction(() => {
       for (const id of turnIds) mark.run(now, now, id)
     })
+  }
+
+  /** The session's summary; one that covers a reverted (or missing) turn is deleted and reads as `null`. */
+  getSessionSummary(sessionId: string): AgentSessionSummary | null {
+    const row = this.db
+      .prepare(
+        'SELECT text, covered_turn_ids_json, model_label FROM agent_session_summary WHERE session_id = ?'
+      )
+      .get<{ text: string; covered_turn_ids_json: string; model_label: string | null }>(sessionId)
+    if (!row) return null
+    const covered = JSON.parse(row.covered_turn_ids_json) as string[]
+    const live = new Set(this.listTurns(sessionId).map((turn) => turn.id))
+    if (!covered.every((turnId) => live.has(turnId))) {
+      this.clearSessionSummary(sessionId)
+      return null
+    }
+    return { text: row.text, coveredTurnIds: covered, modelLabel: row.model_label }
+  }
+
+  saveSessionSummary(sessionId: string, summary: AgentSessionSummary, now: number): void {
+    this.db
+      .prepare(
+        `INSERT INTO agent_session_summary
+           (session_id, text, covered_turn_ids_json, model_label, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?)
+         ON CONFLICT(session_id) DO UPDATE SET text = excluded.text,
+           covered_turn_ids_json = excluded.covered_turn_ids_json,
+           model_label = excluded.model_label, updated_at = excluded.updated_at`
+      )
+      .run(
+        sessionId,
+        summary.text,
+        JSON.stringify(summary.coveredTurnIds),
+        summary.modelLabel,
+        now,
+        now
+      )
+  }
+
+  clearSessionSummary(sessionId: string): void {
+    this.db.prepare('DELETE FROM agent_session_summary WHERE session_id = ?').run(sessionId)
   }
 
   listSessionOperations(sessionId: string): AgentOperation[] {

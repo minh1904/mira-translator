@@ -553,6 +553,18 @@ ALTER TABLE agent_operation ADD COLUMN kept_at INTEGER;
 ALTER TABLE agent_turn ADD COLUMN reverted_at INTEGER;
 `
 
+// Bản tóm tắt lịch sử chat của session (change `add-agent-session-memory`): một bản mỗi session.
+const version18 = `
+CREATE TABLE agent_session_summary (
+  session_id TEXT PRIMARY KEY REFERENCES agent_session (id) ON DELETE CASCADE,
+  text TEXT NOT NULL,
+  covered_turn_ids_json TEXT NOT NULL,
+  model_label TEXT,
+  created_at INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL
+);
+`
+
 export const librarySchema: SchemaSpec = {
   applicationId: LIBRARY_APPLICATION_ID,
   migrations: [
@@ -657,6 +669,12 @@ export const librarySchema: SchemaSpec = {
       version: 17,
       up(db) {
         db.exec(version17)
+      }
+    },
+    {
+      version: 18,
+      up(db) {
+        db.exec(version18)
       }
     }
   ]

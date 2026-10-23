@@ -420,7 +420,7 @@ describe('AgentService budget and loop', () => {
     expect(model.requests).toHaveLength(2)
   })
 
-  it('drops the oldest turns from a long session and records how many', async () => {
+  it('cuts the oldest turns from a long session and records it as activity, not in the transcript', async () => {
     const { agent, model, modelSelection } = setupAgent()
     model.script(say('Một câu trả lời rất dài. '.repeat(40)))
     const first = await agent.send({ instruction: 'câu đầu', modelSelection })
@@ -434,10 +434,12 @@ describe('AgentService budget and loop', () => {
     const messages = model.requests[1].messages
     expect(messages.map((m) => m.content)).not.toContain('câu đầu')
     expect(messages.some((m) => m.content.startsWith('câu hai nguyên văn'))).toBe(true)
-    const dropped = agent
-      .getSessionDetail(second.sessionId)
-      .parts.find((part) => part.turnId === second.turnId && part.kind === 'progress')
-    expect(dropped?.text).toBe('Bỏ 1 lượt cũ khỏi ngữ cảnh model')
+    const detail = agent.getSessionDetail(second.sessionId)
+    expect(detail.parts.some((part) => part.kind === 'progress')).toBe(false)
+    const compaction = detail.activities.find(
+      (item) => item.turnId === second.turnId && item.kind === 'compaction'
+    )
+    expect(compaction?.detail).toMatchObject({ droppedTurns: 1, summarizedTurns: 0 })
   })
 })
 

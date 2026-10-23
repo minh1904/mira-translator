@@ -221,7 +221,7 @@ export interface AgentActivity {
   turnId: string
   operationId: string | null
   stepSeq: number
-  kind: 'thinking' | 'resolve' | 'read' | 'write' | 'progress' | 'result'
+  kind: 'thinking' | 'resolve' | 'read' | 'write' | 'progress' | 'result' | 'compaction'
   state: AgentActivityState
   label: string
   detail: unknown | null

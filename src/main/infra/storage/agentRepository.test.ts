@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest'
 import { createTempDirs } from '../../testing/testing'
 import { librarySchema } from './librarySchema'
 import { migrate } from './migrate'
-import { openDatabase } from './sqlite'
+import { openDatabase, type Db } from './sqlite'
 import { AgentRepository } from './agentRepository'
 import { StorageError } from './errors'
 
@@ -35,6 +35,27 @@ describe('AgentRepository', () => {
       context: { workId: id(3), chapterId: id(4) }
     })
     expect(repo.listTurns(id(1)).map((turn) => turn.id)).toEqual([id(2)])
+    close()
+  })
+
+  it('keeps a session summary until a turn it covers is reverted or the session is gone', () => {
+    const { repo, close } = repository()
+    repo.createSession({ id: id(1), title: '', now: 1 })
+    repo.createTurn({ id: id(2), sessionId: id(1), instruction: 'a', context: {}, now: 2 })
+    repo.transitionTurn(id(2), 'running', 3)
+    repo.transitionTurn(id(2), 'completed', 4)
+    repo.createTurn({ id: id(3), sessionId: id(1), instruction: 'b', context: {}, now: 5 })
+    const summary = { text: 'tóm tắt', coveredTurnIds: [id(2)], modelLabel: 'm' }
+    repo.saveSessionSummary(id(1), summary, 6)
+    expect(repo.getSessionSummary(id(1))).toEqual(summary)
+    repo.saveSessionSummary(id(1), { ...summary, text: 'bản dồn' }, 7)
+    expect(repo.getSessionSummary(id(1))?.text).toBe('bản dồn')
+    repo.markTurnsReverted([id(2)], 8)
+    expect(repo.getSessionSummary(id(1))).toBeNull()
+    repo.saveSessionSummary(id(1), summary, 9)
+    const raw = (repo as unknown as { db: Db }).db
+    raw.prepare('DELETE FROM agent_session WHERE id = ?').run(id(1))
+    expect(repo.getSessionSummary(id(1))).toBeNull()
     close()
   })
 
