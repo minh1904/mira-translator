@@ -1,20 +1,14 @@
 import { describe, expect, it } from 'vitest'
 import { createCharacter, setDyad } from '../../../infra/storage/addressingEntries'
-import {
-  bulkApproveContextEntries,
-  createContextEntry,
-  listContextEntries,
-  reviewContextEntry,
-  saveExtraction
-} from '../../../infra/storage/contextEntries'
+import { createContextEntry, saveExtraction } from '../../../infra/storage/contextEntries'
 import { createRunContext, getRunContext } from '../../../infra/storage/translateRunContext'
 import { setupAgent } from '../../agent/agentTestKit'
 import { promptFromSnapshot, takeContextSnapshot } from './contextSnapshot'
 import { buildTranslateRequest } from './translatePrompt'
 
 /**
- * Characterization for change `add-agent-context-workflow`: only approved entries whose scope holds the
- * chapter reach a snapshot, through the resolver and snapshot that already exist.
+ * Characterization for changes `add-agent-context-workflow` and `unblock-auto-translate-context`: every
+ * entry that is not rejected and whose scope holds the chapter reaches a snapshot, with no review step.
  */
 function work(chapterCount: number) {
   const kit = setupAgent()
@@ -30,8 +24,8 @@ function work(chapterCount: number) {
   return { ...kit, workId: work.id, chapters, snapshotTerms }
 }
 
-describe('context snapshot after review', () => {
-  it('holds the 8 approved of 12 candidates plus earlier entries, not the rejected or pending', () => {
+describe('context snapshot after extraction', () => {
+  it('holds the 10 extracted terms plus earlier entries, not the two the model called not-a-term', () => {
     const { library, workId, chapters, snapshotTerms } = work(1)
     const sources = Array.from({ length: 12 }, (_, index) => `术语${index + 1}`)
     library.withWork(workId, (db) => {
@@ -41,35 +35,20 @@ describe('context snapshot after review', () => {
         model: 'm',
         promptHash: 'h',
         scannedChapterIds: [],
-        candidates: sources.map((source) => ({
+        candidates: sources.map((source, index) => ({
           source,
-          target: source + ' vi',
+          target: index < 10 ? source + ' vi' : '',
           termType: 'term',
-          status: 'pending' as const,
+          status: index < 10 ? ('approved' as const) : ('rejected' as const),
           evidence: [{ chapterId: chapters[0]!.id, quote: source }]
         })),
         now: 5
       })
-      const pending = listContextEntries(db, { status: 'pending' }).sort((a, b) =>
-        a.source.localeCompare(b.source, 'en', { numeric: true })
-      )
-      bulkApproveContextEntries(
-        db,
-        pending.slice(0, 8).map((entry) => ({ entryId: entry.id, expectedUpdatedAt: 5 })),
-        6
-      )
-      for (const entry of pending.slice(8, 10)) {
-        reviewContextEntry(
-          db,
-          { kind: 'reject', entryId: entry.id, expectedUpdatedAt: 5, reason: 'không' },
-          6
-        )
-      }
     })
     const terms = snapshotTerms(chapters[0]!.id)
-    expect(terms).toHaveLength(9)
+    expect(terms).toHaveLength(11)
     expect(terms).toContain('旧词')
-    for (const source of sources.slice(8)) expect(terms).not.toContain(source)
+    for (const source of sources.slice(10)) expect(terms).not.toContain(source)
   })
 
   it('leaves an entry scoped to chapters 1–10 out of chapter 11', () => {

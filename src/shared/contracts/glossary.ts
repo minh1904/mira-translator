@@ -122,49 +122,6 @@ export const deleteGlossaryEntrySchema = v.strictObject({
   entryId
 })
 
-/**
- * Review of a `pending` entry (change `add-agent-context-workflow`). Every command carries the
- * `updatedAt` the reviewer saw; an entry changed since is a `conflict` and stays as it is.
- */
-const expectedUpdatedAt = v.pipe(v.number(), v.integer(), v.minValue(0))
-
-export const reviewContextCommandSchema = v.variant('kind', [
-  v.strictObject({ kind: v.literal('approve'), entryId, expectedUpdatedAt }),
-  v.strictObject({
-    kind: v.literal('edit_approve'),
-    entryId,
-    expectedUpdatedAt,
-    target: v.optional(termTextSchema),
-    aliases: v.optional(v.array(termTextSchema)),
-    fromChapterId: v.optional(chapterIdNullable),
-    toChapterId: v.optional(chapterIdNullable),
-    notes: v.optional(v.nullish(termNotesSchema))
-  }),
-  v.strictObject({
-    kind: v.literal('reject'),
-    entryId,
-    expectedUpdatedAt,
-    reason: termNotesSchema
-  })
-])
-export type ContextReviewCommand = v.InferOutput<typeof reviewContextCommandSchema>
-
-export const reviewContextSchema = v.strictObject({ workId, command: reviewContextCommandSchema })
-
-/** Approves several entries of one term type in one transaction; each entry gets its own result. */
-export const bulkApproveContextSchema = v.strictObject({
-  workId,
-  items: v.pipe(
-    v.array(v.strictObject({ entryId, expectedUpdatedAt })),
-    v.minLength(1, 'Chọn ít nhất một mục.'),
-    v.maxLength(500, 'Tối đa 500 mục một lần.')
-  )
-})
-
-export type ContextReviewOutcome =
-  | { entryId: string; ok: true; entry: ContextEntryItem }
-  | { entryId: string; ok: false; code: 'conflict' | 'not_found'; message: string }
-
 export const reviewInfoSchema = v.strictObject({
   workId,
   entryIds: v.optional(v.array(entryId))

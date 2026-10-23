@@ -3,17 +3,13 @@ import type {
   ContextEntryItem,
   ContextKind,
   ContextOrigin,
-  ContextReviewCommand,
   ContextReviewInfo,
-  ContextReviewOutcome,
   ContextStatus,
   ImportNamesResult
 } from '../../../shared/contracts/glossary'
 import {
-  bulkApproveContextEntries,
   createContextEntry,
   readReviewInfo,
-  reviewContextEntry,
   deleteContextEntry,
   getContextEntry,
   getEffectiveGlossary,
@@ -42,17 +38,6 @@ export class GlossaryService {
 
   list(workId: string, options: ListContextOptions = {}): ContextEntryItem[] {
     return this.library.withWork(workId, (db) => listContextEntries(db, options))
-  }
-
-  review(workId: string, command: ContextReviewCommand): ContextEntryItem {
-    return this.library.withWork(workId, (db) => reviewContextEntry(db, command, this.now()))
-  }
-
-  bulkApprove(
-    workId: string,
-    items: Array<{ entryId: string; expectedUpdatedAt: number }>
-  ): ContextReviewOutcome[] {
-    return this.library.withWork(workId, (db) => bulkApproveContextEntries(db, items, this.now()))
   }
 
   /** Read-only: the same snapshot function a translation of the chapter would use now. */

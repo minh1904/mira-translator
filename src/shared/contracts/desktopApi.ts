@@ -71,9 +71,7 @@ import type {
   ContextKind,
   ContextOrigin,
   ContextStatus,
-  ContextReviewCommand,
   ContextReviewInfo,
-  ContextReviewOutcome,
   GlossaryComplianceReport,
   ImportNamesResult
 } from './glossary'
@@ -328,15 +326,6 @@ export interface GlossaryApi {
   }): Promise<Result<ContextEntryItem>>
   delete(options: { workId: string; entryId: string }): Promise<Result<void>>
   importNames(input: { workId: string; content: string }): Promise<Result<ImportNamesResult>>
-  /** Approve, edit then approve, or reject a pending entry, guarded by `expectedUpdatedAt`. */
-  review(input: {
-    workId: string
-    command: ContextReviewCommand
-  }): Promise<Result<ContextEntryItem>>
-  bulkApprove(input: {
-    workId: string
-    items: Array<{ entryId: string; expectedUpdatedAt: number }>
-  }): Promise<Result<{ results: ContextReviewOutcome[] }>>
   reviewInfo(input: {
     workId: string
     entryIds?: string[]

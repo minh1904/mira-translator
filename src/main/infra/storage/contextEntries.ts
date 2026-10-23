@@ -4,9 +4,7 @@ import type {
   ContextEvidence,
   ContextKind,
   ContextOrigin,
-  ContextReviewCommand,
   ContextReviewInfo,
-  ContextReviewOutcome,
   ContextStatus,
   ReviewFlag
 } from '../../../shared/contracts/glossary'
@@ -730,104 +728,4 @@ export function readReviewInfo(db: Db, entryIds?: string[]): ContextReviewInfo[]
       flags: parseFlags(row.review_flags),
       evidence: evidence.get(row.id) ?? []
     }))
-}
-
-// -----------------------------------------------------------------------------------------------------
-// Review of pending entries, guarded by the `updatedAt` the reviewer saw.
-
-/**
- * One review command in its own (nested) transaction. Approving still checks the source and aliases like
- * every context write, and an `alias_conflict` whose form another entry still owns is a `conflict`
- * until the reviewer edits the aliases. Approving clears the review flags; quotes stay.
- */
-export function reviewContextEntry(
-  db: Db,
-  command: ContextReviewCommand,
-  now = Date.now()
-): ContextEntryItem {
-  return db.transaction(() => {
-    const row = db
-      .prepare('SELECT status, updated_at, review_flags FROM context_entry WHERE id = ?')
-      .get<{ status: ContextStatus; updated_at: number; review_flags: string }>(command.entryId)
-    if (!row) throw new StorageError('not_found', 'Không tìm thấy mục thuật ngữ.')
-    if (row.updated_at !== command.expectedUpdatedAt) {
-      throw new StorageError('conflict', 'Mục đã đổi ở nơi khác; hãy tải lại rồi duyệt.')
-    }
-    if (row.status !== 'pending') throw new StorageError('conflict', 'Mục không còn chờ duyệt.')
-
-    if (command.kind === 'reject') {
-      return updateContextEntry(db, command.entryId, {
-        status: 'rejected',
-        notes: command.reason,
-        now
-      })
-    }
-    const current = getContextEntry(db, command.entryId)!
-    const aliases = command.kind === 'edit_approve' ? command.aliases : undefined
-    if (aliases === undefined) {
-      for (const flag of parseFlags(row.review_flags)) {
-        const owner =
-          flag.code === 'alias_conflict' && flag.detail ? ownerOf(db, flag.detail) : null
-        if (owner && owner.id !== command.entryId) {
-          throw new StorageError(
-            'conflict',
-            `Dạng viết khác "${flag.detail}" đã thuộc mục khác; sửa dạng viết rồi duyệt.`
-          )
-        }
-      }
-      checkUniqueness(db, current.source, current.aliases, command.entryId)
-    }
-    const entry = updateContextEntry(db, command.entryId, {
-      ...(command.kind === 'edit_approve'
-        ? {
-            target: command.target,
-            aliases: command.aliases,
-            fromChapterId: command.fromChapterId,
-            toChapterId: command.toChapterId,
-            notes: command.notes
-          }
-        : {}),
-      status: 'approved',
-      now
-    })
-    db.prepare("UPDATE context_entry SET review_flags = '[]' WHERE id = ?").run(command.entryId)
-    return entry
-  })
-}
-
-/**
- * Approves entries of one term type. A mixed batch is refused before anything changes; otherwise each
- * entry is approved on its own and reports its own result, so a failed one is never counted approved.
- */
-export function bulkApproveContextEntries(
-  db: Db,
-  items: Array<{ entryId: string; expectedUpdatedAt: number }>,
-  now = Date.now()
-): ContextReviewOutcome[] {
-  return db.transaction(() => {
-    const types = new Set<string | null>()
-    for (const item of items) {
-      const row = db
-        .prepare('SELECT term_type FROM context_entry WHERE id = ?')
-        .get<{ term_type: string | null }>(item.entryId)
-      if (row) types.add(row.term_type)
-    }
-    if (types.size > 1) {
-      throw new StorageError('validation', 'Chỉ duyệt hàng loạt các mục cùng một loại thuật ngữ.')
-    }
-    return items.map((item): ContextReviewOutcome => {
-      try {
-        const entry = reviewContextEntry(db, { kind: 'approve', ...item }, now)
-        return { entryId: item.entryId, ok: true, entry }
-      } catch (error) {
-        if (!(error instanceof StorageError)) throw error
-        return {
-          entryId: item.entryId,
-          ok: false,
-          code: error.code === 'not_found' ? 'not_found' : 'conflict',
-          message: error.message
-        }
-      }
-    })
-  })
 }

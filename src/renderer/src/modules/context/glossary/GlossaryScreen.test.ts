@@ -1,7 +1,7 @@
 import { createElement } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { GlossaryScreen, pendingByType, reviewFlagLabel } from './GlossaryScreen'
+import { GlossaryScreen, reviewFlagLabel } from './GlossaryScreen'
 
 const WORK_ID = '11111111-1111-4111-8111-111111111111'
 
@@ -85,31 +85,6 @@ describe('GlossaryScreen component', () => {
 })
 
 describe('glossary review helpers', () => {
-  const entry = (id: string, status: 'pending' | 'approved') =>
-    ({ id, status, source: id, updatedAt: 1 }) as never
-  it('groups pending entries by term type and skips approved or untyped ones', () => {
-    const info = new Map([
-      ['a', { entryId: 'a', termType: 'person', flags: [], evidence: [] }],
-      ['b', { entryId: 'b', termType: 'place', flags: [], evidence: [] }],
-      ['c', { entryId: 'c', termType: 'person', flags: [], evidence: [] }],
-      ['d', { entryId: 'd', termType: 'person', flags: [], evidence: [] }]
-    ])
-    const groups = pendingByType(
-      [
-        entry('a', 'pending'),
-        entry('b', 'pending'),
-        entry('c', 'pending'),
-        entry('d', 'approved'),
-        entry('e', 'pending')
-      ],
-      info
-    )
-    expect(groups.map((group) => [group.type, group.entries.length])).toEqual([
-      ['person', 2],
-      ['place', 1]
-    ])
-  })
-
   it('names every flag for the reviewer', () => {
     expect(reviewFlagLabel({ code: 'alias_conflict', detail: 'アキ' })).toBe(
       'Dạng viết "アキ" thuộc mục khác'

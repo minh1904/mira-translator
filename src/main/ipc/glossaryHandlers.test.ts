@@ -4,7 +4,6 @@ import type {
   AppliedContext,
   ContextEntryItem,
   ContextReviewInfo,
-  ContextReviewOutcome,
   GlossaryComplianceReport,
   ImportNamesResult
 } from '../../shared/contracts/glossary'
@@ -178,56 +177,35 @@ describe('glossary IPC handlers', () => {
   })
 })
 
-describe('glossary review IPC', () => {
-  /** AI candidates of `type`, written the way an extraction run writes them. */
-  function seed(ctx: SetupContext, sources: string[], type = 'person', aliases: string[] = []) {
+describe('extracted entries over IPC', () => {
+  it('lists an extracted entry as applied, with its quote in reviewInfo', async () => {
+    const ctx = setup()
     ctx.library.withWork(ctx.workId, (db) =>
       saveExtraction(db, {
         runId: 'run-1',
         model: 'mock-model',
         promptHash: 'sha256:p',
         scannedChapterIds: [],
-        candidates: sources.map((source) => ({
-          source,
-          target: source + ' (vi)',
-          termType: type,
-          status: 'pending' as const,
-          aliases,
-          evidence: [{ chapterId: ctx.chapterId, quote: source + ' xuất hiện' }]
-        })),
+        candidates: [
+          {
+            source: '韩立',
+            target: 'Hàn Lập',
+            termType: 'person',
+            status: 'approved',
+            evidence: [{ chapterId: ctx.chapterId, quote: '韩立 xuất hiện' }]
+          }
+        ],
         now: 10
       })
     )
-    return value(
-      ctx.call<{ entries: ContextEntryItem[] }>(CHANNELS.glossaryList, {
+    const { entries } = value(
+      await ctx.call<{ entries: ContextEntryItem[] }>(CHANNELS.glossaryList, {
         workId: ctx.workId,
-        status: 'pending'
-      }) as Result<{ entries: ContextEntryItem[] }>
-    ).entries.filter((entry) => sources.includes(entry.source))
-  }
-  const byId = (ctx: SetupContext, id: string) =>
-    value(
-      ctx.call<ContextEntryItem>(CHANNELS.glossaryGet, {
-        workId: ctx.workId,
-        entryId: id
-      }) as Result<ContextEntryItem>
-    )
-
-  it('edits then approves, keeping the extraction quote', async () => {
-    const ctx = setup()
-    const [entry] = seed(ctx, ['韩立'])
-    const approved = value(
-      await ctx.call<ContextEntryItem>(CHANNELS.glossaryReview, {
-        workId: ctx.workId,
-        command: {
-          kind: 'edit_approve',
-          entryId: entry!.id,
-          expectedUpdatedAt: entry!.updatedAt,
-          target: 'Hàn Lập'
-        }
+        status: 'approved'
       })
     )
-    expect(approved).toMatchObject({ status: 'approved', target: 'Hàn Lập' })
+    const entry = entries.find((item) => item.source === '韩立')
+    expect(entry).toMatchObject({ status: 'approved', target: 'Hàn Lập', origin: 'ai' })
     const info = value(
       await ctx.call<{ entries: ContextReviewInfo[] }>(CHANNELS.glossaryReviewInfo, {
         workId: ctx.workId,
@@ -235,89 +213,6 @@ describe('glossary review IPC', () => {
       })
     )
     expect(info.entries[0]?.evidence.map((quote) => quote.quote)).toEqual(['韩立 xuất hiện'])
-  })
-
-  it('refuses a stale updatedAt with conflict and leaves the entry pending; rejects with a reason', async () => {
-    const ctx = setup()
-    const [entry] = seed(ctx, ['先生'])
-    const stale = await ctx.call(CHANNELS.glossaryReview, {
-      workId: ctx.workId,
-      command: { kind: 'approve', entryId: entry!.id, expectedUpdatedAt: entry!.updatedAt - 1 }
-    })
-    expect(codeOf(stale)).toBe('conflict')
-    expect(byId(ctx, entry!.id).status).toBe('pending')
-
-    const rejected = value(
-      await ctx.call<ContextEntryItem>(CHANNELS.glossaryReview, {
-        workId: ctx.workId,
-        command: {
-          kind: 'reject',
-          entryId: entry!.id,
-          expectedUpdatedAt: entry!.updatedAt,
-          reason: 'danh xưng chung'
-        }
-      })
-    )
-    expect(rejected).toMatchObject({ status: 'rejected', notes: 'danh xưng chung' })
-  })
-
-  it('refuses a bulk approval that mixes term types and changes nothing', async () => {
-    const ctx = setup()
-    const [person] = seed(ctx, ['韩立'])
-    const [place] = seed(ctx, ['天南'], 'place')
-    const mixed = await ctx.call(CHANNELS.glossaryBulkApprove, {
-      workId: ctx.workId,
-      items: [person!, place!].map((entry) => ({
-        entryId: entry.id,
-        expectedUpdatedAt: entry.updatedAt
-      }))
-    })
-    expect(codeOf(mixed)).toBe('validation')
-    expect(byId(ctx, person!.id).status).toBe('pending')
-    expect(byId(ctx, place!.id).status).toBe('pending')
-  })
-
-  it('approves four of five names and reports the one with a taken alias as conflict', async () => {
-    const ctx = setup()
-    value(
-      await ctx.call(CHANNELS.glossaryCreate, {
-        workId: ctx.workId,
-        source: 'アキラ',
-        target: 'Akira',
-        aliases: ['アキ']
-      })
-    )
-    const names = seed(ctx, ['甲', '乙', '丙', '丁'])
-    const [taken] = seed(ctx, ['彰'], 'person', ['アキ'])
-    const { results } = value(
-      await ctx.call<{ results: ContextReviewOutcome[] }>(CHANNELS.glossaryBulkApprove, {
-        workId: ctx.workId,
-        items: [...names, taken!].map((entry) => ({
-          entryId: entry.id,
-          expectedUpdatedAt: entry.updatedAt
-        }))
-      })
-    )
-    expect(results.filter((result) => result.ok)).toHaveLength(4)
-    expect(results.find((result) => result.entryId === taken!.id)).toMatchObject({
-      ok: false,
-      code: 'conflict'
-    })
-    expect(byId(ctx, taken!.id).status).toBe('pending')
-
-    // Editing the aliases resolves it.
-    const approved = value(
-      await ctx.call<ContextEntryItem>(CHANNELS.glossaryReview, {
-        workId: ctx.workId,
-        command: {
-          kind: 'edit_approve',
-          entryId: taken!.id,
-          expectedUpdatedAt: taken!.updatedAt,
-          aliases: []
-        }
-      })
-    )
-    expect(approved.status).toBe('approved')
   })
 })
 

@@ -40,20 +40,6 @@ export function reviewFlagLabel(flag: ReviewFlag): string {
   return 'Mở lại vì có bằng chứng mới'
 }
 
-/** Pending entries grouped by term type, for "approve all of one type". */
-export function pendingByType(
-  entries: ContextEntryItem[],
-  info: Map<string, ContextReviewInfo>
-): Array<{ type: string; entries: ContextEntryItem[] }> {
-  const groups = new Map<string, ContextEntryItem[]>()
-  for (const entry of entries) {
-    const type = info.get(entry.id)?.termType
-    if (entry.status !== 'pending' || !type) continue
-    groups.set(type, [...(groups.get(type) ?? []), entry])
-  }
-  return [...groups].map(([type, list]) => ({ type, entries: list }))
-}
-
 function ReviewDetails({
   info,
   chapterNumber

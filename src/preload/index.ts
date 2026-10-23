@@ -69,7 +69,6 @@ import type {
   AppliedContext,
   ContextEntryItem,
   ContextReviewInfo,
-  ContextReviewOutcome,
   ImportNamesResult
 } from '../shared/contracts/glossary'
 import type { GlossaryComplianceReport } from '../shared/context/glossaryCompliance'
@@ -354,12 +353,6 @@ const desktopApi: DesktopApi = {
       ipcRenderer.invoke(CHANNELS.glossaryImportNames, input) as Promise<Result<ImportNamesResult>>,
     applied: (input) =>
       ipcRenderer.invoke(CHANNELS.glossaryApplied, input) as Promise<Result<AppliedContext>>,
-    review: (input) =>
-      ipcRenderer.invoke(CHANNELS.glossaryReview, input) as Promise<Result<ContextEntryItem>>,
-    bulkApprove: (input) =>
-      ipcRenderer.invoke(CHANNELS.glossaryBulkApprove, input) as Promise<
-        Result<{ results: ContextReviewOutcome[] }>
-      >,
     reviewInfo: (input) =>
       ipcRenderer.invoke(CHANNELS.glossaryReviewInfo, input) as Promise<
         Result<{ entries: ContextReviewInfo[] }>

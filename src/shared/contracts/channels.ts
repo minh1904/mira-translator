@@ -68,8 +68,6 @@ export const CHANNELS = {
   glossaryDelete: 'glossary:delete',
   glossaryImportNames: 'glossary:importNames',
   glossaryCheckCompliance: 'glossary:checkCompliance',
-  glossaryReview: 'glossary:review',
-  glossaryBulkApprove: 'glossary:bulkApprove',
   glossaryReviewInfo: 'glossary:reviewInfo',
   glossaryApplied: 'glossary:applied',
   addressingCharactersList: 'addressing:characters:list',

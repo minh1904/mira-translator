@@ -2,9 +2,7 @@ import { useCallback, useEffect, useState } from 'react'
 import type {
   ContextEntryItem,
   ContextKind,
-  ContextReviewCommand,
   ContextReviewInfo,
-  ContextReviewOutcome,
   ContextStatus,
   ImportNamesResult
 } from '../../../../../shared/contracts/glossary'
@@ -57,8 +55,6 @@ export interface UseGlossaryReturn {
   importNames: (content: string) => Promise<ImportNamesResult>
   /** Type, flags and quotes of the listed entries that have any. */
   reviewInfo: Map<string, ContextReviewInfo>
-  review: (command: ContextReviewCommand) => Promise<ContextEntryItem>
-  bulkApprove: (entries: ContextEntryItem[]) => Promise<ContextReviewOutcome[]>
 }
 
 export function useGlossary({ workId, kind = 'term' }: UseGlossaryOptions): UseGlossaryReturn {
@@ -202,34 +198,9 @@ export function useGlossary({ workId, kind = 'term' }: UseGlossaryOptions): UseG
     [workId, reload]
   )
 
-  const review = useCallback(
-    async (command: ContextReviewCommand) => {
-      const res = await window.mira.glossary.review({ workId, command })
-      await reload()
-      if (!res.ok) throw new Error(res.error.message)
-      return res.value
-    },
-    [workId, reload]
-  )
-
-  const bulkApprove = useCallback(
-    async (selected: ContextEntryItem[]) => {
-      const res = await window.mira.glossary.bulkApprove({
-        workId,
-        items: selected.map((entry) => ({ entryId: entry.id, expectedUpdatedAt: entry.updatedAt }))
-      })
-      await reload()
-      if (!res.ok) throw new Error(res.error.message)
-      return res.value.results
-    },
-    [workId, reload]
-  )
-
   return {
     entries,
     reviewInfo,
-    review,
-    bulkApprove,
     loading,
     error,
     query,
