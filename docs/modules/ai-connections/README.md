@@ -351,6 +351,30 @@ có chủ ý.
 - Mở menu bằng phím tắt `Ctrl+Shift+M` không kích hoạt lần hỏi đầu tiên (chỉ lần mở bằng chuột/phím trên
   pill); "Tải lại model" vẫn chạy.
 
+## Đã triển khai (bộ nhớ phiên Trợ lý và Model phụ, change `add-agent-session-memory`, 2026-10-23)
+
+Trạng thái: **có trong mã và có test**; chưa thử bằng tay trong app (task 6.3 của change).
+
+- **Lịch sử đầy đủ:** turn cũ của phiên được dựng lại với dòng ngữ cảnh, các vòng tool và câu trả lời (dùng lại
+  `roundMessages`), không còn chỉ `{ instruction, answer }`. Handle `ctx…`/`t…` của lượt cũ được thay bằng nhãn
+  đích vì handle chỉ có nghĩa trong lượt sinh ra nó; `extra_content` của provider bị bỏ.
+- **Rút gọn theo thứ tự** (`assembleTurnContext`): vượt 50% giới hạn context thì lược kết quả tool > 2.000 ký tự từ
+  turn cũ nhất (ba turn gần nhất giữ nguyên); vẫn vượt thì yêu cầu tóm tắt; tóm tắt lỗi thì cắt turn cũ nhất như
+  trước. Giới hạn cứng giữ nguyên.
+- **Bản tóm tắt** lưu ở bảng `agent_session_summary` (schema thư viện v18), một bản mỗi phiên, dồn dần. Revert một
+  turn đã được tóm tắt thì bản tóm tắt bị xóa khi đọc. Khi chèn vào prompt nó được đánh dấu "chỉ để tham khảo".
+- **Model phụ** (`ai.auxiliary` trong `meta`, Cài đặt › Model › Model phụ): chạy việc tóm tắt, lỗi thì thử model
+  của lượt. Chưa chọn thì dùng model của lượt. Không có mức suy luận riêng.
+- Phần tử `progress` "Bỏ N lượt cũ…" trong transcript đã bỏ; thay bằng activity `compaction` ghi số liệu.
+
+**Giới hạn đã biết:** vẫn ước lượng 2 ký tự/token; không tóm tắt bên trong một turn đang chạy; test component
+Model phụ chỉ kiểm trạng thái "chưa chọn" vì render tĩnh đọc state khởi tạo của store.
+
+**Quan sát Hermes** (`agent/context_compressor.py`, đã mô tả ở
+[mục 3d](hermes-runtime-research.md#3d-tóm-tắt-các-quyết-định-thay-vì-bỏ-lượt-cũ)): Hermes lược kết quả tool
+trước rồi mới tóm tắt có cấu trúc, cập nhật dần, bọc bằng `SUMMARY_PREFIX`. Mira lấy đúng thứ tự đó và lời dặn
+"chỉ tham khảo"; khác ở chỗ bản tóm tắt gắn với danh sách turn đã phủ để revert vô hiệu hóa được.
+
 ## 1. Snapshot Mira trước các change (quan sát mã, 2026-10-07)
 
 **Kết nối:**
