@@ -13,6 +13,7 @@ import {
   getEffectiveDyadsForChapter,
   listCharacters,
   listDyads,
+  saveAddressingProposals,
   setDyad,
   updateCharacter
 } from './addressingEntries'
@@ -90,6 +91,39 @@ describe('addressingEntries storage', () => {
     expect(() => createCharacter(db, { source: '韩立', target: 'Hàn Lập 2' })).toThrowError(
       StorageError
     )
+  })
+
+  it('adding a hidden rejected person by hand brings the same row back, approved', () => {
+    const db = createTestDb()
+    const old = createCharacter(db, { source: '墨大夫', target: 'Mặc', status: 'rejected' })
+    const again = createCharacter(db, { source: '墨大夫', target: 'Mặc đại phu' })
+    expect(again).toMatchObject({ id: old.id, target: 'Mặc đại phu', status: 'approved' })
+    expect(listCharacters(db)).toHaveLength(1)
+  })
+
+  it('a new AI pair approves a rejected person, so the pair reaches the prompt', () => {
+    const db = createTestDb()
+    const han = createCharacter(db, { source: '韩立', target: 'Hàn Lập' })
+    const mo = createCharacter(db, { source: '墨大夫', target: 'Mặc đại phu', status: 'rejected' })
+    saveAddressingProposals(db, {
+      runId: 'run',
+      model: 'm',
+      promptHash: 'h',
+      now: 200,
+      proposals: [
+        {
+          from: { source: '韩立', target: 'Hàn Lập' },
+          to: { source: '墨大夫', target: 'Mặc đại phu' },
+          self: 'đệ tử',
+          address: 'sư phụ',
+          evidence: [{ chapterId: 'c1', quote: '韩立道' }]
+        }
+      ]
+    })
+    expect(getCharacter(db, mo.id)?.status).toBe('approved')
+    expect(getEffectiveDyadsForChapter(db, 'c1')).toEqual([
+      expect.objectContaining({ sourceCharacterId: han.id, targetCharacterId: mo.id })
+    ])
   })
 
   it('thao tác thiết lập, truy vấn và xóa quan hệ xưng hô (dyad)', () => {

@@ -112,6 +112,21 @@ describe('contextEntries storage', () => {
     db.close()
   })
 
+  it('replaces a hidden rejected entry when a person adds or renames to the same word', () => {
+    const db = createTestDb()
+    const rejected = createContextEntry(db, { source: '东西', target: '', status: 'rejected' })
+    const added = createContextEntry(db, { source: '东西', target: 'đồ vật' })
+    expect(getContextEntry(db, rejected.id)).toBeNull()
+    expect(getContextEntry(db, added.id)).toMatchObject({ target: 'đồ vật', status: 'approved' })
+
+    createContextEntry(db, { source: '门', target: '', status: 'rejected' })
+    const other = createContextEntry(db, { source: '大门', target: 'cổng' })
+    expect(updateContextEntry(db, other.id, { aliases: ['门'] }).aliases).toEqual(['门'])
+    // An approved entry still blocks.
+    expect(() => createContextEntry(db, { source: '东西', target: 'x' })).toThrow(StorageError)
+    db.close()
+  })
+
   it('validates chapter scope and rejects invalid intervals', () => {
     const db = createTestDb()
     // Non-existent chapter

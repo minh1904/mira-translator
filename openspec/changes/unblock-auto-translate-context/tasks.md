@@ -21,6 +21,8 @@
 - [x] 4.3 Thuật ngữ trợ lý chat thêm (`propose_glossary_term`, `createTerm`) lưu `approved`.
 - [x] 4.4 Bỏ `statusFilter` và `requestGlossaryFilter`/`requestAddressingFilter` khỏi hook; "Xem và duyệt" thành "Xem ngữ cảnh" và không còn mở bảng lọc theo `pending` mà người dùng không thoát ra được.
 - [x] 4.5 Bảng phẳng chỉ liệt kê mục `approved`; bỏ badge "chờ duyệt" trên tab Xưng hô.
+- [x] 4.6 Mục `rejected` bị ẩn không còn chặn người dùng: thêm tay hoặc đổi tên/alias trùng một thuật ngữ `rejected` thì mục đó bị xóa; thêm tay một nhân vật `rejected` thì nhân vật đó trở lại `approved` cùng các cặp của nó.
+- [x] 4.7 Cặp xưng hô AI mới với một nhân vật `rejected` đưa nhân vật đó về `approved`, để cặp thật sự vào prompt; bỏ đoạn duyệt nhân vật `pending` không còn dùng trong `setDyad`.
 
 ## 5. Phần còn lại
 

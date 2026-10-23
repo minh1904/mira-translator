@@ -249,8 +249,14 @@ export function createCharacter(
   }
 
   const existing = db
-    .prepare("SELECT id FROM context_entry WHERE kind = 'character' AND lower(source) = lower(?)")
-    .get<{ id: string }>(trimmedSource)
+    .prepare(
+      "SELECT id, status FROM context_entry WHERE kind = 'character' AND lower(source) = lower(?)"
+    )
+    .get<{ id: string; status: ContextStatus }>(trimmedSource)
+  // The list hides a rejected person; adding them by hand brings the row back with the pairs it has.
+  if (existing?.status === 'rejected') {
+    return updateCharacter(db, existing.id, { ...params, status: 'approved' }, now)
+  }
   if (existing) {
     throw new StorageError('conflict', `Nhân vật với tên gốc "${trimmedSource}" đã tồn tại.`)
   }
@@ -566,13 +572,6 @@ export function setDyad(
     }
   }
 
-  // Approving a pair accepts its two people too: a pair reaches the prompt only with approved characters.
-  if (getDyad(db, id)!.status === 'approved') {
-    db.prepare(
-      "UPDATE context_entry SET status = 'approved', updated_at = ? WHERE kind = 'character' AND status = 'pending' AND id IN (?, ?)"
-    ).run(now, sourceCharacterId, targetCharacterId)
-  }
-
   touchWork(db, now)
   return getDyad(db, id)!
 }
@@ -729,10 +728,11 @@ export interface AddressingProposal {
 }
 
 /**
- * AI addressing proposals of one context extraction run, in one transaction. Each becomes a `pending`
- * pair with its quotes; a person without a character row gets a `pending` one (aliases stay on the
- * glossary entry, which owns them). A direction that already has a pair in any status or scope is left
- * alone, so the AI never overrides or reopens a reviewed pair. Returns the new pending pairs.
+ * AI addressing proposals of one context extraction run, in one transaction. Each becomes an `approved`
+ * pair with its quotes; a person without a character row gets an `approved` one (aliases stay on the
+ * glossary entry, which owns them), and a rejected person in a new pair applies again, since a pair
+ * reaches the prompt only with both people approved. A direction that already has a pair in any status
+ * or scope is left alone, so the AI never overrides a pair. Returns the new pairs.
  */
 export function saveAddressingProposals(
   db: Db,
@@ -755,7 +755,12 @@ export function saveAddressingProposals(
         .get<{ id: string }>(source.trim())?.id ?? null
     const characterOf = (person: ProposedCharacter): string => {
       const found = findCharacter(person.source)
-      if (found) return found
+      if (found) {
+        db.prepare(
+          "UPDATE context_entry SET status = 'approved', updated_at = ? WHERE id = ? AND status = 'rejected'"
+        ).run(now, found)
+        return found
+      }
       const created = createCharacter(
         db,
         {

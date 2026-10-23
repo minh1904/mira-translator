@@ -95,6 +95,19 @@ function validateChapters(
  */
 const GLOSSARY = "kind NOT IN ('character', 'dyad')"
 
+/**
+ * The lists hide rejected entries, so one must not block a word a person adds by hand: it goes, with its
+ * aliases and quotes. Its only job was to stop the model proposing the word again.
+ */
+function dropRejectedOwners(db: Db, forms: string[], excludeEntryId?: string): void {
+  for (const form of forms) {
+    const owner = ownerOf(db, form.trim())
+    if (owner?.status === 'rejected' && owner.id !== excludeEntryId) {
+      db.prepare('DELETE FROM context_entry WHERE id = ?').run(owner.id)
+    }
+  }
+}
+
 function checkUniqueness(db: Db, source: string, aliases: string[], excludeEntryId?: string): void {
   const trimmedSource = source.trim()
   const trimmedAliases = aliases.map((a) => a.trim())
@@ -327,6 +340,7 @@ export function createContextEntry(db: Db, params: CreateContextEntryParams): Co
     const now = params.now ?? Date.now()
 
     validateChapters(db, fromChapterId, toChapterId)
+    dropRejectedOwners(db, [source, ...aliases])
     checkUniqueness(db, source, aliases)
 
     db.prepare(`
@@ -428,6 +442,7 @@ export function updateContextEntry(
       nextAliases.some((a, i) => a.toLowerCase() !== (current.aliases[i]?.toLowerCase() ?? ''))
 
     if (sourceChanged || aliasesChanged) {
+      dropRejectedOwners(db, [nextSource, ...nextAliases], id)
       checkUniqueness(db, nextSource, nextAliases, id)
     }
 
