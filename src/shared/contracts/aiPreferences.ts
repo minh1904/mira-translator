@@ -32,9 +32,13 @@ export const setFallbacksSchema = v.strictObject({
   )
 })
 
+export const setAuxiliaryModelSchema = v.strictObject({ auxiliary: v.nullable(modelRefSchema) })
+
 export interface AiPreferences {
   main: MainModel | null
   fallbacks: ModelRef[]
+  /** Model for background agent work such as summarising chat history; `null` uses the turn's model. */
+  auxiliary: ModelRef | null
   /** Onboarding was dismissed with "Để sau". */
   onboardingSkipped: boolean
 }

@@ -43,6 +43,7 @@ import { probeEndpoint } from './endpointProbe'
 import {
   pruneAiPreferences,
   readAiPreferences,
+  writeAuxiliaryModel,
   writeFallbacks,
   writeMainModel,
   writeOnboardingSkipped
@@ -365,6 +366,12 @@ export class ConnectionService {
   setFallbacks(fallbacks: ModelRef[]): AiPreferences {
     for (const ref of fallbacks) findModelEntry(this.options.db, ref.entryId)
     writeFallbacks(this.options.db, fallbacks)
+    return this.preferences()
+  }
+
+  setAuxiliaryModel(auxiliary: ModelRef | null): AiPreferences {
+    if (auxiliary) findModelEntry(this.options.db, auxiliary.entryId)
+    writeAuxiliaryModel(this.options.db, auxiliary)
     return this.preferences()
   }
 

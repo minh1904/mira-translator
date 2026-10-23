@@ -36,7 +36,7 @@ describe('connectionStore', () => {
           preferences: {
             get: vi.fn().mockResolvedValue({
               ok: true,
-              value: { main: null, fallbacks: [], onboardingSkipped: false }
+              value: { main: null, fallbacks: [], auxiliary: null, onboardingSkipped: false }
             })
           },
           models: {

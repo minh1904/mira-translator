@@ -264,6 +264,7 @@ export interface AiApi {
     get(): Promise<Result<AiPreferences>>
     setMain(main: MainModel | null): Promise<Result<AiPreferences>>
     setFallbacks(fallbacks: ModelRef[]): Promise<Result<AiPreferences>>
+    setAuxiliary(auxiliary: ModelRef | null): Promise<Result<AiPreferences>>
     setOnboardingSkipped(skipped: boolean): Promise<Result<AiPreferences>>
   }
   /** Dán khóa vào thẻ provider: tạo kết nối từ preset nếu chưa có, rồi thêm khóa. */

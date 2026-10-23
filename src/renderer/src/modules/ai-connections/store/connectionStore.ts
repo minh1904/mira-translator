@@ -87,6 +87,7 @@ export interface ConnectionState {
   loadPreferences(): Promise<void>
   setMainModel(main: MainModel | null): Promise<boolean>
   setFallbacks(fallbacks: ModelRef[]): Promise<boolean>
+  setAuxiliaryModel(auxiliary: ModelRef | null): Promise<boolean>
   setOnboardingSkipped(skipped: boolean): Promise<void>
   reset(): void
 }
@@ -177,6 +178,16 @@ export const useConnectionStore = create<ConnectionState>((set, get) => {
 
     setFallbacks: async (fallbacks) => {
       const result = await window.mira.ai.preferences.setFallbacks(fallbacks)
+      if (!result.ok) {
+        set({ notice: result.error.message })
+        return false
+      }
+      set({ preferences: result.value })
+      return true
+    },
+
+    setAuxiliaryModel: async (auxiliary) => {
+      const result = await window.mira.ai.preferences.setAuxiliary(auxiliary)
       if (!result.ok) {
         set({ notice: result.error.message })
         return false

@@ -205,6 +205,10 @@ const desktopApi: DesktopApi = {
         ipcRenderer.invoke(CHANNELS.aiPreferencesSetFallbacks, { fallbacks }) as Promise<
           Result<AiPreferences>
         >,
+      setAuxiliary: (auxiliary: ModelRef | null) =>
+        ipcRenderer.invoke(CHANNELS.aiPreferencesSetAuxiliary, { auxiliary }) as Promise<
+          Result<AiPreferences>
+        >,
       setOnboardingSkipped: (skipped: boolean) =>
         ipcRenderer.invoke(CHANNELS.aiPreferencesSetOnboardingSkipped, { skipped }) as Promise<
           Result<AiPreferences>

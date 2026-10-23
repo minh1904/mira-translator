@@ -30,6 +30,11 @@ export const STATIC_INDEX: SettingsIndexEntry[] = [
     location: { group: 'model', page: 'fallbacks', key: 'fallbacks' }
   },
   {
+    title: 'Model phụ',
+    description: 'Model rẻ cho việc nền của agent như tóm tắt lịch sử chat',
+    location: { group: 'model', page: 'auxiliary', key: 'auxiliary-model' }
+  },
+  {
     title: 'Tài khoản',
     description: 'Đăng nhập bằng gói thuê bao: ChatGPT/Codex, GitHub Copilot',
     location: { group: 'connections', page: 'accounts' }

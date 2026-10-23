@@ -743,6 +743,7 @@ describe('main model and fallbacks', () => {
     expect(prefs).toEqual({
       main: { connectionId: connection.id, entryId: flash!.id, thinking: 'high' },
       fallbacks: [{ connectionId: connection.id, entryId: pro!.id }],
+      auxiliary: null,
       onboardingSkipped: false
     })
   })
@@ -770,6 +771,18 @@ describe('main model and fallbacks', () => {
     unwrap(await call(handlers, CHANNELS.aiConnectionsDelete, { id: connection.id }))
     prefs = unwrap(await call(handlers, CHANNELS.aiPreferencesGet))
     expect(prefs.fallbacks).toEqual([])
+  })
+
+  it('saves the auxiliary model and reads it as unset once its entry is deleted', async () => {
+    const { handlers, connection } = await withEntries()
+    const [flash] = connection.models
+    const auxiliary = { connectionId: connection.id, entryId: flash!.id }
+    unwrap(await call(handlers, CHANNELS.aiPreferencesSetAuxiliary, { auxiliary }))
+    let prefs = unwrap(await call<{ auxiliary: unknown }>(handlers, CHANNELS.aiPreferencesGet))
+    expect(prefs.auxiliary).toEqual(auxiliary)
+    unwrap(await call(handlers, CHANNELS.aiModelsDelete, { entryId: flash!.id }))
+    prefs = unwrap(await call<{ auxiliary: unknown }>(handlers, CHANNELS.aiPreferencesGet))
+    expect(prefs.auxiliary).toBeNull()
   })
 
   it('refuses a main model that does not exist', async () => {

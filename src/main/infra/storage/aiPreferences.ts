@@ -16,6 +16,7 @@ import type { Db } from './sqlite'
  */
 const MAIN_KEY = 'ai.main'
 const FALLBACKS_KEY = 'ai.fallbacks'
+const AUXILIARY_KEY = 'ai.auxiliary'
 const ONBOARDING_KEY = 'ai.onboarding.skipped'
 
 function readMeta(db: Db, key: string): unknown {
@@ -58,7 +59,10 @@ export function readAiPreferences(db: Db): AiPreferences {
     .filter((ref) => entryExists(db, ref))
     .slice(0, MAX_FALLBACKS)
 
-  return { main, fallbacks, onboardingSkipped: readMeta(db, ONBOARDING_KEY) === true }
+  const auxRaw = v.safeParse(modelRefSchema, readMeta(db, AUXILIARY_KEY))
+  const auxiliary = auxRaw.success && entryExists(db, auxRaw.output) ? auxRaw.output : null
+
+  return { main, fallbacks, auxiliary, onboardingSkipped: readMeta(db, ONBOARDING_KEY) === true }
 }
 
 export function writeMainModel(db: Db, main: MainModel | null): void {
@@ -76,6 +80,10 @@ export function writeFallbacks(db: Db, fallbacks: ModelRef[]): void {
   writeMeta(db, FALLBACKS_KEY, unique.length > 0 ? unique : null)
 }
 
+export function writeAuxiliaryModel(db: Db, auxiliary: ModelRef | null): void {
+  writeMeta(db, AUXILIARY_KEY, auxiliary)
+}
+
 export function writeOnboardingSkipped(db: Db, skipped: boolean): void {
   writeMeta(db, ONBOARDING_KEY, skipped ? true : null)
 }
@@ -85,4 +93,5 @@ export function pruneAiPreferences(db: Db): void {
   const current = readAiPreferences(db)
   writeMainModel(db, current.main)
   writeFallbacks(db, current.fallbacks)
+  writeAuxiliaryModel(db, current.auxiliary)
 }

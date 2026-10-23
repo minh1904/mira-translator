@@ -30,6 +30,7 @@ export const CHANNELS = {
   aiPreferencesGet: 'ai:preferences:get',
   aiPreferencesSetMain: 'ai:preferences:set-main',
   aiPreferencesSetFallbacks: 'ai:preferences:set-fallbacks',
+  aiPreferencesSetAuxiliary: 'ai:preferences:set-auxiliary',
   aiPreferencesSetOnboardingSkipped: 'ai:preferences:set-onboarding-skipped',
   aiConnectionsEnsureWithKey: 'ai:connections:ensure-with-key',
   aiKeysAdd: 'ai:connections:keys:add',

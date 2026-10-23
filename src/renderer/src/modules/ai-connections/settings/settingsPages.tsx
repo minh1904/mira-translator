@@ -2,7 +2,7 @@ import { AboutPage } from './AboutPage'
 import { AppearancePanel } from './AppearancePanel'
 import { EndpointsPage, KeysPage, LocalPage } from './connectionPages'
 import { AccountsPage } from './AccountsPage'
-import { FallbacksPage, MainModelPage } from './modelPages'
+import { AuxiliaryModelPage, FallbacksPage, MainModelPage } from './modelPages'
 import { ModelListPage } from './ModelListPage'
 import type { SettingsPages } from './SettingsModal'
 
@@ -11,6 +11,7 @@ export const SETTINGS_PAGES: SettingsPages = {
   'model/main': () => <MainModelPage />,
   'model/models': () => <ModelListPage />,
   'model/fallbacks': () => <FallbacksPage />,
+  'model/auxiliary': () => <AuxiliaryModelPage />,
   'connections/accounts': () => <AccountsPage />,
   'connections/keys': () => <KeysPage />,
   'connections/endpoints': () => <EndpointsPage />,

@@ -242,6 +242,61 @@ export function MainModelPage(): JSX.Element {
   )
 }
 
+const SAME_AS_TURN = 'Dùng model của lượt'
+
+/** Cài đặt › Model › Model phụ: việc nền của agent (tóm tắt lịch sử chat), tự lưu khi chọn. */
+export function AuxiliaryModelPage(): JSX.Element {
+  usePreferences()
+  const { connections } = useConnections()
+  const store = useConnectionStore()
+  const auxiliary = store.preferences?.auxiliary ?? null
+  const live = usable(connections)
+  const connection = live.find((item) => item.id === auxiliary?.connectionId) ?? null
+
+  return (
+    <SettingsSection title="Model phụ" icon={<CpuIcon size={16} />}>
+      <SettingRow
+        id="auxiliary-model"
+        wide
+        title="Model cho việc nền của agent"
+        hint="Dùng để tóm tắt các lượt chat cũ khi phiên quá dài, nên chọn một model rẻ và nhanh. Không dùng cho chat hay dịch. Chưa chọn thì dùng model của lượt."
+        below={
+          <div className="flex flex-wrap items-center gap-2">
+            <Select
+              label="Kết nối"
+              value={connection?.id ?? ''}
+              options={[
+                { value: '', label: SAME_AS_TURN },
+                ...live.map((item) => ({ value: item.id, label: item.name }))
+              ]}
+              onChange={(value) => {
+                const next = live.find((item) => item.id === value)
+                const entry =
+                  next?.models.find((item) => item.id === next.defaultEntryId) ?? next?.models[0]
+                void store.setAuxiliaryModel(
+                  next && entry ? { connectionId: next.id, entryId: entry.id } : null
+                )
+              }}
+              className="min-w-40"
+            />
+            {connection && (
+              <Select
+                label="Mục model"
+                value={auxiliary?.entryId ?? ''}
+                options={connection.models.map((item) => ({ value: item.id, label: item.name }))}
+                onChange={(entryId) =>
+                  void store.setAuxiliaryModel({ connectionId: connection.id, entryId })
+                }
+                className="min-w-60"
+              />
+            )}
+          </div>
+        }
+      />
+    </SettingsSection>
+  )
+}
+
 /** Cài đặt › Model › Dự phòng: danh sách có thứ tự, tự lưu sau mỗi thay đổi. */
 export function FallbacksPage(): JSX.Element {
   usePreferences()

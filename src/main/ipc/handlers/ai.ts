@@ -19,6 +19,7 @@ import {
 } from '../../../shared/contracts/aiTranslateProposals'
 import { CHANNELS } from '../../../shared/contracts/channels'
 import {
+  setAuxiliaryModelSchema,
   setFallbacksSchema,
   setMainModelSchema,
   setOnboardingSkippedSchema
@@ -59,6 +60,9 @@ export function aiHandlers(
     ),
     [CHANNELS.aiPreferencesSetFallbacks]: createHandler(setFallbacksSchema, ({ fallbacks }) =>
       connectionsOf(deps).setFallbacks(fallbacks)
+    ),
+    [CHANNELS.aiPreferencesSetAuxiliary]: createHandler(setAuxiliaryModelSchema, ({ auxiliary }) =>
+      connectionsOf(deps).setAuxiliaryModel(auxiliary)
     ),
     [CHANNELS.aiPreferencesSetOnboardingSkipped]: createHandler(
       setOnboardingSkippedSchema,
