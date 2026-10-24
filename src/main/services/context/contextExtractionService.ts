@@ -3,7 +3,6 @@ import type { ReviewFlag } from '../../../shared/contracts/glossary'
 import type { TokenUsage } from '../../../shared/contracts/usage'
 import { addUsage, toWireUsage, type Usage } from '../../infra/providers/usage'
 import { appendAiCall } from '../../infra/storage/aiCallLog'
-import { CHARACTER_GENDERS } from '../../../shared/contracts/addressing'
 import {
   listCharacters,
   saveAddressingProposals,
@@ -20,6 +19,7 @@ import {
   buildAnalysisMessages,
   collectAddressingEvidence,
   parseAnalysis,
+  provenGender,
   verifiedQuotes,
   type AnalysisCharacter
 } from '../ai/addressingAnalysis'
@@ -28,15 +28,21 @@ import { suggestRegister } from '../ai/translate/languageProfiles'
 import {
   buildClassifyMessages,
   buildSweepMessages,
+  familyBatches,
+  familyMismatches,
   japaneseCandidates,
+  knownForBatch,
   mergeCandidates,
   parseClassification,
   parseSweep,
+  shortAliasClash,
+  stripAuthorNote,
   sweepChunks,
   verifyTerms,
   type ExtractedTerm,
   type ExtractionChapter,
-  type ExtractionMessage
+  type ExtractionMessage,
+  type KnownTerm
 } from '../ai/glossaryExtraction'
 import type { LibraryStore } from '../library/library'
 
@@ -74,6 +80,7 @@ export interface ExtractContextResult {
 }
 
 const CLASSIFY_BATCH = 60
+const CANDIDATE_LIMIT = 400
 const QUOTES_PER_TERM = 3
 const NAME_TYPES = new Set(['person', 'place', 'organization'])
 
@@ -166,18 +173,23 @@ export class ContextExtractionService {
       this.library.listChapters(input.workId).map((chapter) => [chapter.id, chapter.number])
     )
     const unscanned = new Set(this.unscanned(input.workId, input.chapterIds))
-    // Every chapter of the task is addressing evidence; only the unscanned ones are swept.
-    const taskChapters: Array<ExtractionChapter & { id: string }> = []
-    for (const id of input.chapterIds) {
+    // Frequencies count over every chapter up to the task's last one, never past it (no spoilers), read
+    // once per run without the author's end notes.
+    const last = Math.max(-Infinity, ...input.chapterIds.flatMap((id) => numbers.get(id) ?? []))
+    const corpus: Array<ExtractionChapter & { id: string }> = []
+    for (const [id, number] of [...numbers].sort((a, b) => a[1] - b[1])) {
+      if (number > last) break
       let text = ''
       try {
-        text = this.library.readText(input.workId, id, 'source').content
+        text = stripAuthorNote(this.library.readText(input.workId, id, 'source').content)
       } catch {
         // A chapter without a readable source is not scanned; a later run tries again.
       }
-      if (text.trim() !== '' && numbers.has(id))
-        taskChapters.push({ id, number: numbers.get(id)!, text })
+      if (text.trim() !== '') corpus.push({ id, number, text })
     }
+    const inTask = new Set(input.chapterIds)
+    // Every chapter of the task is addressing evidence; only the unscanned ones are swept.
+    const taskChapters = corpus.filter((chapter) => inTask.has(chapter.id))
     const chapters = taskChapters.filter((chapter) => unscanned.has(chapter.id))
 
     let calls = 0
@@ -216,28 +228,80 @@ export class ContextExtractionService {
       for (const chunk of sweepChunks(chapters)) {
         input.signal?.throwIfAborted()
         const swept = parseSweep(await ask(buildSweepMessages(sourceLang, chunk)))
-        const fromCode = sourceLang === 'ja' ? japaneseCandidates(chunk) : []
-        const candidates = mergeCandidates(fromCode, swept, chunk)
+        const entries = this.knownTerms(input.workId)
+        // Existing terms are never classified again, rejected ones included.
+        const owned = new Set(
+          entries.flatMap((entry) => [entry.source, ...entry.aliases]).map((f) => f.toLowerCase())
+        )
+        const fromCode = sourceLang === 'ja' ? japaneseCandidates(chunk, { corpus }) : []
+        const candidates = mergeCandidates(fromCode, swept, chunk, { corpus, limit: Infinity })
+          .filter((candidate) => !owned.has(candidate.source.toLowerCase()))
+          .slice(0, CANDIDATE_LIMIT)
+        const known: KnownTerm[] = entries.filter((entry) => entry.status !== 'rejected')
         const terms: ExtractedTerm[] = []
-        for (let i = 0; i < candidates.length; i += CLASSIFY_BATCH) {
-          const batch = candidates.slice(i, i + CLASSIFY_BATCH)
-          terms.push(...parseClassification(await ask(buildClassifyMessages(sourceLang, batch))))
+        for (const batch of familyBatches(
+          candidates,
+          CLASSIFY_BATCH,
+          known.map((term) => term.source)
+        )) {
+          const messages = buildClassifyMessages(sourceLang, batch, knownForBatch(batch, known))
+          terms.push(...parseClassification(await ask(messages)))
         }
         input.signal?.throwIfAborted()
-        const verified = verifyTerms(terms, chunk, sourceLang)
+        const verified = verifyTerms(terms, corpus, sourceLang)
+        const readings = new Map(candidates.map((c) => [c.source, c.reading]))
+        // `alias_of` turns a form into an alias of the entry it names; one that names nothing is a new term.
+        const fresh: ExtractedTerm[] = []
+        const variants: ExtractedCandidateWrite[] = []
+        for (const term of verified.accepted) {
+          const of = term.alias_of?.toLowerCase()
+          const entry = of
+            ? known.find((e) =>
+                [e.source, ...(e.aliases ?? [])].some((f) => f.toLowerCase() === of)
+              )
+            : undefined
+          if (entry) {
+            variants.push({
+              source: entry.source,
+              target: entry.target,
+              termType: term.type,
+              status: 'approved',
+              aliases: [term.source, ...(term.aliases ?? [])],
+              evidence: quotesOf(term.source, chunk)
+            })
+          } else if (term.target?.trim()) fresh.push(term)
+        }
+        const mismatched = familyMismatches(
+          fresh.map((term) => ({ source: term.source, target: term.target!, type: term.type })),
+          known
+        )
+        const forms = new Set([
+          ...owned,
+          ...fresh.flatMap((term) =>
+            [term.source, ...(term.aliases ?? [])].map((f) => f.toLowerCase())
+          )
+        ])
         const writes: ExtractedCandidateWrite[] = [
-          ...verified.accepted.map((term) => {
+          ...variants,
+          ...fresh.map((term) => {
             const target = term.target!.trim()
             const flags: ReviewFlag[] = scriptMismatch(sourceLang, term.type, target)
               ? [{ code: 'script_mismatch' }]
               : []
+            if (mismatched.has(term.source)) flags.push({ code: 'family_mismatch' })
+            const aliases = (term.aliases ?? []).filter((alias) => {
+              if (!shortAliasClash(alias, corpus, forms)) return true
+              flags.push({ code: 'short_alias', detail: alias })
+              return false
+            })
             return {
               source: term.source,
               target,
               termType: term.type,
               status: 'approved' as const,
-              aliases: term.aliases,
+              aliases,
               notes: term.note ?? null,
+              reading: term.reading ?? readings.get(term.source) ?? null,
               flags,
               evidence: quotesOf(term.source, chunk)
             }
@@ -297,6 +361,20 @@ export class ContextExtractionService {
       usage: wire(true)
     }
   }
+  /** The work's glossary terms, rejected ones included, with the type extraction gave them. */
+  private knownTerms(workId: string): Array<KnownTerm & { aliases: string[]; status: string }> {
+    return this.library.withWork(workId, (db) => {
+      const types = new Map(readReviewInfo(db).map((info) => [info.entryId, info.termType]))
+      return listContextEntries(db, { kind: 'term' }).map((entry) => ({
+        source: entry.source,
+        target: entry.target,
+        aliases: entry.aliases,
+        status: entry.status,
+        type: types.get(entry.id) ?? null
+      }))
+    })
+  }
+
   /**
    * Addressing analysis after the sweep (decision 2026-10-14): the work's people — characters and
    * glossary persons that are not rejected — with dialogue lines in the task's chapters, one model call,
@@ -364,7 +442,7 @@ export class ContextExtractionService {
       const known = people.get(source)
       if (!known) return null
       const fact = facts.get(source)
-      const gender = CHARACTER_GENDERS.find((each) => each === fact?.gender)
+      const gender = provenGender(fact, [known.source, ...(known.aliases ?? [])], chapters)
       return {
         source: known.source,
         target: known.target,

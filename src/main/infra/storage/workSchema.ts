@@ -657,6 +657,11 @@ function segmentBareSources(db: Db): void {
   }
 }
 
+/** Kana reading of an extracted term (change `improve-glossary-extraction`); never sent to translation. */
+const version18 = `
+ALTER TABLE context_entry ADD COLUMN reading TEXT;
+`
+
 export const workSchema: SchemaSpec = {
   applicationId: WORK_APPLICATION_ID,
   migrations: [
@@ -761,6 +766,12 @@ export const workSchema: SchemaSpec = {
       version: 17,
       up(db) {
         db.exec(version17)
+      }
+    },
+    {
+      version: 18,
+      up(db) {
+        db.exec(version18)
       }
     }
   ]

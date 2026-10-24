@@ -100,7 +100,7 @@ describe('saveExtraction', () => {
       aliases: ['ミリ']
     })
     const result = save(db, [candidate(), candidate({ source: 'ミリ', target: 'Mili' })])
-    expect(result).toEqual({ pending: [], skipped: 2 })
+    expect(result).toEqual({ pending: [], skipped: 2, aliasesAdded: 0 })
     db.close()
   })
 
@@ -117,8 +117,45 @@ describe('saveExtraction', () => {
         evidence: [{ chapterId: 'c2', quote: '先生が' }]
       })
     ])
-    expect(again).toEqual({ pending: [], skipped: 1 })
+    expect(again).toEqual({ pending: [], skipped: 1, aliasesAdded: 0 })
     expect(getContextEntry(db, id)?.status).toBe('rejected')
+    db.close()
+  })
+
+  it('adds the new forms of a candidate that matches a term as aliases of that term', () => {
+    const db = createTestDb()
+    const noel = createContextEntry(db, { source: 'ノエル・アーデン', target: 'Noel Arden' })
+    const result = save(db, [
+      candidate({
+        source: 'ノエル・アーデン',
+        target: 'Noel Arden',
+        aliases: ['ノエル様'],
+        evidence: [{ chapterId: 'c2', quote: 'ノエル様が来た' }]
+      })
+    ])
+    expect(result).toEqual({ pending: [], skipped: 1, aliasesAdded: 1 })
+    expect(getContextEntry(db, noel.id)?.aliases).toEqual(['ノエル様'])
+    expect(readReviewInfo(db, [noel.id])[0]?.evidence.map((e) => e.quote)).toEqual([
+      'ノエル様が来た'
+    ])
+    db.close()
+  })
+
+  it('gives a rejected entry no aliases', () => {
+    const db = createTestDb()
+    const id = save(db, [candidate({ source: '先生', target: 'thầy' })]).pending[0]!
+    db.prepare("UPDATE context_entry SET status = 'rejected' WHERE id = ?").run(id)
+    expect(save(db, [candidate({ source: '先生', aliases: ['先生方'] })]).aliasesAdded).toBe(0)
+    expect(getContextEntry(db, id)?.aliases).toEqual([])
+    db.close()
+  })
+
+  it('stores the reading', () => {
+    const db = createTestDb()
+    const { pending } = save(db, [candidate({ source: '桐谷彰', reading: 'きりたにあきら' })])
+    expect(db.prepare('SELECT reading FROM context_entry WHERE id = ?').get(pending[0])).toEqual({
+      reading: 'きりたにあきら'
+    })
     db.close()
   })
 

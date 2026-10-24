@@ -91,5 +91,9 @@ describe('glossary review helpers', () => {
     )
     expect(reviewFlagLabel({ code: 'script_mismatch' })).toBe('Bản dịch sai hệ chữ')
     expect(reviewFlagLabel({ code: 'reopened' })).toBe('Mở lại vì có bằng chứng mới')
+    expect(reviewFlagLabel({ code: 'family_mismatch' })).toBe('Lệch khuôn với thuật ngữ cùng họ')
+    expect(reviewFlagLabel({ code: 'short_alias', detail: 'セラ' })).toBe(
+      'Dạng ngắn "セラ" dễ khớp nhầm'
+    )
   })
 })

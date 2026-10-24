@@ -6,6 +6,7 @@ tăng dần theo chương đã quét, cờ `alias_conflict`/`script_mismatch`/`r
 5–6 (hàng duyệt) có dạng tối thiểu trong màn Từ điển; bước 7 **đã triển khai** từ 2026-10-14 (phân tích xưng
 hô cùng bước trích, xem [nhân vật và xưng hô](characters-and-addressing.md#phân-tích-xưng-hô-trong-bước-trích-quyết-định-2026-10-14)). Lab vẫn gọi cùng các hàm
 thuần của [`glossaryExtraction.ts`](../../../src/main/services/ai/glossaryExtraction.ts). Nguyên tắc ở mục 1 là **quyết định của chủ sản phẩm** (2026-10-06).
+Hành vi hiện tại của bước trích sau change `improve-glossary-extraction` (2026-10-24) ở mục 8.
 Chủ trì: kỹ thuật (luồng, phép đo), sản phẩm/ngôn ngữ (chính sách phiên âm, hàng duyệt).
 Câu hỏi: làm sao để AI tự lập glossary đủ tốt để bản dịch nhất quán hơn, mà người dịch vẫn là người chốt?
 
@@ -30,6 +31,14 @@ Câu hỏi: làm sao để AI tự lập glossary đủ tốt để bản dịch
 | [WMT25, hệ thống nhất quán thuật ngữ](https://www2.statmt.org/wmt25/pdf/2025.wmt-1.30.pdf) | Bước chuẩn bị: LLM trích thuật ngữ, khớp từ điển song ngữ, gộp glossary người dùng | Miền kỹ thuật, không phải văn học |
 | [ATE bằng LLM, ACL Findings 2025](https://arxiv.org/abs/2506.21222) | Few-shot chọn ví dụ theo cú pháp thay vì theo nghĩa cải thiện F1 trích thuật ngữ | Gợi ý: ví dụ mẫu nên giống **dạng** câu nguồn |
 | [DelTA](https://arxiv.org/abs/2410.08143) | Bộ nhớ tên riêng là một tầng riêng khi dịch tài liệu dài | Ủng hộ tách tên riêng khỏi phần ngữ cảnh khác |
+
+Đọc mã nguồn thêm (quan sát, 2026-10-23):
+
+- **KeywordGacha** đếm tần suất dạng dài trước và che vị trí đã khớp, nên tên ngắn không bị đếm lại bên trong
+  tên dài. Mira dùng lại cách này (mục 8).
+- **AiNiee** gom các dạng gần nhau thành nhóm rồi gọi model thêm một lần để "phán quyết" cách dịch chung cho
+  nhóm. Mira không thêm lời gọi đó; thay vào đó xếp cả nhóm vào một lô và gửi kèm các mục đã chốt.
+- **LinguaGacha** vẫn tách trích thuật ngữ thành bước chạy trước khi dịch, như đã ghi ở bảng trên.
 
 Điểm chung: trích xuất là **bước riêng trước khi dịch**, AI làm phần hiểu (loại, nhóm biến thể, đề xuất
 dịch), và glossary chỉ có giá trị nếu sau đó được giữ nhất quán. Không nguồn nào cho số đo Nhật–Việt.
@@ -173,6 +182,65 @@ gọi LLM sau mỗi câu; đưa thông tin chương sau vào ghi chú của mụ
 Câu hỏi mở: tự duyệt alias tách bằng code? Đổi target giữa truyện mặc định "từ chương N" hay toàn bộ? Sửa nào
 tính là tín hiệu (sửa tay, hay cả đề xuất của chat đã nhận)? Lời gọi LLM chạy nền có tính vào ngân sách task?
 Truyện đang ra tự quét khi có chương mới?
+
+## 8. Bước trích sau change `improve-glossary-extraction` (đã triển khai 2026-10-24)
+
+Mục này mô tả hành vi hiện tại; các mục 3–4 ở trên là thiết kế ban đầu. Không thêm lời gọi model nào: một lần
+chạy vẫn là một lượt quét và các lô phân loại cho mỗi khúc, rồi một lời gọi phân tích xưng hô.
+
+- **Đếm trên toàn phạm vi.** Tần suất đếm trên mọi chương từ chương đầu tới chương cuối của task, không riêng
+  khúc đang quét. Không đọc chương sau chương cuối của task. Đếm dạng dài trước và che vị trí đã khớp (theo
+  KeywordGacha): "田中" trong "田中太郎" không được đếm thêm.
+- **Ngưỡng.** Ứng viên code cần ≥ 2 lần. Dạng model quét được chỉ cần có nguyên văn trong khúc; dạng không có thì
+  bị bỏ trước khi phân loại.
+- **Lời nhắn của tác giả.** Đoạn cuối chương sau dòng ngăn cách (`――――`, `◇◇◇`…) mà có từ khóa xin đánh giá
+  (`評価|ブックマーク|感想|レビュー|お願い`) bị cắt khỏi văn bản dùng cho bước trích. Bản dịch không đổi.
+- **Lọc rác (tiếng Nhật).** Bỏ chuỗi katakana mà mọi lần xuất hiện đều dính đuôi hiragana không phải trợ từ
+  hay hậu tố gọi người (バレる); bỏ tượng thanh: tận cùng ッ, cụm lặp (ゴチャゴチャ), một chữ lặp ba lần
+  (アハハハ).
+- **Chú âm.** `漢字（カナ）` và ruby `｜漢字《よみ》` thành ứng viên dù chỉ xuất hiện một lần, kèm cách đọc.
+- **Không phân loại lại mục đã có.** Ứng viên trùng nguồn hoặc alias của một mục thuật ngữ, kể cả mục `rejected`,
+  không được gửi phân loại.
+- **Lô theo họ thuật ngữ.** Các dạng là chuỗi con của nhau, hoặc chung kanji đầu hay cuối và dài chênh ≤ 1
+  (銀級, 鉄級, 金級), nằm chung một lô. Lô kèm tối đa 30 mục đã chốt trong `<known>`: trước là mục cùng họ, sau là
+  mục chung kanji. Prompt yêu cầu dịch theo khuôn của mục đã chốt.
+- **`alias_of`.** Model có thể trả một dạng là biến thể của mục đã có; dạng đó thành alias của mục, không tạo
+  mục mới. `alias_of` không khớp mục nào thì dạng đó được xử lý như ứng viên mới.
+- **Gắn alias khi trùng.** `saveExtraction` không bỏ hẳn ứng viên trùng một mục thuật ngữ nữa: alias chưa thuộc
+  mục nào được gắn vào mục đó. Mục `rejected` không nhận alias.
+- **Cờ mới, không tự sửa:**
+  - `family_mismatch`: bản dịch của mục mới lệch khuôn với mục cùng họ chung hậu tố/tiền tố. Hai bản dịch cùng
+    khuôn khi có chung một từ và cách viết hoa giống nhau; từ đứng đầu bản dịch không so hoa thường. Tên người
+    không so.
+  - `short_alias`: alias dài ≤ 2 ký tự nằm trong một chuỗi cùng hệ chữ dài hơn không thuộc mục nào
+    (セラ trong セラミック). Alias đó không được lưu.
+- **Cách đọc.** Lưu ở cột `context_entry.reading` (migration 19 của file tác phẩm); không vào prompt dịch.
+- **Giới tính.** Phân tích xưng hô chỉ giữ `male`/`female` khi `genderEvidence` là câu có thật, chứa tên hoặc
+  alias của nhân vật và một từ chỉ giới tính (女, 男, 娘, 少年, 彼女, 彼…). Đại từ tự xưng 僕, 俺, 私 không tính.
+  Không có câu như vậy thì giới tính là `unknown`.
+
+### Số đo khi chạy lại không gọi model (2026-10-24)
+
+Cách đo: lấy lại các câu trả lời quét đã lưu trong log của tác phẩm, rồi cho chạy qua phần code mới. Không gọi
+model nào. Số mục `term` và số alias chỉ đo được khi chạy lại cả bước phân loại bằng model, nên **chưa đo**.
+
+| Chỉ số | Noel (`23c0b9a2…`) | Zeke (`439f4af4…`) |
+| --- | --- | --- |
+| Dạng model quét bị mất trước khi phân loại | 15/48 → **0/48** | không có log quét |
+| Ứng viên code gửi phân loại | 35 → 25 | 130 → 153 |
+| Mục đã có sẽ bị cờ `family_mismatch` nếu là mục mới | 0 | 14 |
+
+Đọc kết quả:
+- **Noel.** Có 10 ứng viên rác bị bỏ, đều từ lời nhắn của tác giả: クリック, レビュー, スマホ, スクロール…
+- **Zeke.** Ứng viên tăng thêm 23, vì đếm trên toàn phạm vi kéo vào cả từ thông dụng (ポケット, リスト, ゼロ) và tượng
+  thanh chưa lọc được (コツン, ポツリ). Bước phân loại phải loại các từ này, nên tốn thêm token; mỗi từ chỉ bị loại
+  một lần, vì đã loại thì được nhớ.
+- **Cờ lệch khuôn ở Zeke.** Phần lớn là lệch thật:
+  - "Hạng Bạc" và "Cấp Sắt";
+  - "Ma thuật Cấp Hai" và "Ma thuật cấp Ba";
+  - "Đồng vàng", "Tiền sắt" và "Đồng xu đồng".
+
+  Có một cờ nhầm: 魔力操作 "Thao tác ma lực" với 魔術学院 "Học viện Ma thuật".
 
 ## 7. Câu hỏi còn mở
 

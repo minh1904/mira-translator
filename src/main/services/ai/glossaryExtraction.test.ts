@@ -2,12 +2,19 @@ import { describe, expect, it } from 'vitest'
 import {
   buildClassifyMessages,
   buildSweepMessages,
+  countForms,
+  familyBatches,
+  familyMismatches,
   japaneseCandidates,
+  knownForBatch,
   mergeCandidates,
   parseClassification,
   parseSweep,
+  shortAliasClash,
+  stripAuthorNote,
   sweepChunks,
   verifyTerms,
+  type Candidate,
   type ExtractionChapter
 } from './glossaryExtraction'
 
@@ -119,6 +126,171 @@ describe('glossaryExtraction', () => {
       { source: '闇の剣', reason: 'không có trong bản gốc' },
       { source: '光の剣', reason: 'không có bản dịch đề xuất' },
       { source: 'ミリィ姉さん', reason: 'trùng mục khác' }
+    ])
+  })
+})
+
+const one = (text: string): ExtractionChapter[] => [{ number: 1, text }]
+const cand = (source: string, count = 2): Candidate => ({
+  source,
+  count,
+  contexts: [],
+  signals: []
+})
+
+describe('glossaryExtraction: lọc, đếm, họ thuật ngữ', () => {
+  it('cắt lời nhắn của tác giả sau dòng ngăn cách, giữ dòng ngăn cách giữa truyện', () => {
+    const note = [
+      'ノエルは剣を抜いた。',
+      '――――――――',
+      '【感謝＆大切なお願い】',
+      '面白いと思ったら、下の☆☆☆☆☆をクリックして評価をお願いします！',
+      'レビューもお待ちしています。'
+    ].join('\n')
+    expect(stripAuthorNote(note)).toBe('ノエルは剣を抜いた。')
+    const story = ['ノエルは眠った。', '◇◇◇◇◇◇', '翌朝、ミリィが来た。'].join('\n')
+    expect(stripAuthorNote(story)).toBe(story)
+  })
+
+  it('đếm dạng dài trước và che, câu ngữ cảnh là câu gốc', () => {
+    const text = [...Array(5).fill('田中太郎が来た。'), '田中だけが残った。'].join('\n')
+    const counts = countForms(['田中', '田中太郎'], one(text))
+    expect(counts.get('田中太郎')?.count).toBe(5)
+    expect(counts.get('田中')?.count).toBe(1)
+    expect(counts.get('田中')?.contexts[0]?.line).toBe('田中だけが残った。')
+  })
+
+  it('bỏ mảnh động từ và tượng thanh, giữ tên katakana', () => {
+    const text = [
+      'バレる前に逃げた。すぐバレた。',
+      'ゴチャゴチャした部屋。ゴチャゴチャだ。カッと光った。カッと熱い。アハハハ。アハハハ。',
+      'ミリィが笑った。そう言ったのはミリィ',
+      'ミリィさんは優しい。'
+    ].join('\n')
+    const forms = japaneseCandidates(one(text)).map((c) => c.source)
+    expect(forms).not.toContain('バレ')
+    expect(forms).not.toContain('ゴチャゴチャ')
+    expect(forms).not.toContain('カッ')
+    expect(forms).not.toContain('アハハハ')
+    expect(forms).toContain('ミリィ')
+  })
+
+  it('kanji có chú âm thành ứng viên dù chỉ một lần, kèm cách đọc', () => {
+    const found = japaneseCandidates(one('ノエルは診断（スキャン）を使った。'))
+    expect(found.find((c) => c.source === '診断')).toMatchObject({
+      count: 1,
+      reading: 'スキャン',
+      signals: ['ruby']
+    })
+  })
+
+  it('dạng AI quét chỉ cần có một lần trong khúc, dạng bịa bị bỏ; tần suất đếm trên corpus', () => {
+    const chunk = one('王立回復術師協会から手紙が届いた。ミリィが読んだ。')
+    const corpus = [{ number: 0, text: 'ミリィが来た。' }, ...chunk]
+    const merged = mergeCandidates(
+      japaneseCandidates(chunk, { corpus }),
+      ['王立回復術師協会', '闇ギルド'],
+      chunk,
+      { corpus }
+    )
+    const forms = new Map(merged.map((c) => [c.source, c.count]))
+    expect(forms.get('王立回復術師協会')).toBe(1)
+    expect(forms.has('闇ギルド')).toBe(false)
+    // Một lần ở chương trước, một lần ở khúc này: đủ ngưỡng 2.
+    expect(forms.get('ミリィ')).toBe(2)
+  })
+
+  it('xếp họ thuật ngữ vào cùng lô, không gom tên katakana chỉ vì cùng tận cùng ン', () => {
+    const batches = familyBatches(
+      [cand('銀級', 9), cand('リオン', 8), cand('ガイゼルン', 7), cand('鉄級', 1), cand('金級', 1)],
+      3
+    )
+    expect(batches.map((batch) => batch.map((c) => c.source))).toEqual([
+      ['銀級', '鉄級', '金級'],
+      ['リオン', 'ガイゼルン']
+    ])
+  })
+
+  it('kèm mục đã chốt cùng họ trước, rồi mục chung kanji', () => {
+    const known = [
+      { source: '王都', target: 'Vương đô' },
+      { source: '銅級', target: 'Cấp Đồng' },
+      { source: 'ノエル', target: 'Noel' }
+    ]
+    expect(knownForBatch([cand('銀級'), cand('王立協会')], known).map((k) => k.source)).toEqual([
+      '銅級',
+      '王都'
+    ])
+  })
+
+  it('gắn cờ lệch khuôn cho mục mới trong họ chung hậu tố', () => {
+    expect([
+      ...familyMismatches(
+        [{ source: '銀級', target: 'Hạng Bạc' }],
+        [{ source: '鉄級', target: 'Cấp Sắt' }]
+      )
+    ]).toEqual(['銀級'])
+    expect(
+      [
+        ...familyMismatches(
+          [
+            { source: '第二級魔術', target: 'Ma thuật Cấp Hai' },
+            { source: '第三級魔術', target: 'Ma thuật cấp Ba' }
+          ],
+          []
+        )
+      ].sort()
+    ).toEqual(['第三級魔術', '第二級魔術'])
+    expect(
+      familyMismatches(
+        [{ source: '金級', target: 'Cấp Vàng' }],
+        [{ source: '銅級', target: 'Cấp Đồng' }]
+      ).size
+    ).toBe(0)
+    // Chữ hoa đầu cụm không phải lệch khuôn.
+    expect(
+      familyMismatches(
+        [{ source: '魔力操作', target: 'Thao tác ma lực' }],
+        [{ source: '魔法陣', target: 'Ma pháp trận' }]
+      ).size
+    ).toBe(0)
+    // Tên người cùng kanji đầu không phải một họ thuật ngữ.
+    expect(
+      familyMismatches(
+        [{ source: '田中', target: 'Tanaka', type: 'person' }],
+        [{ source: '田村', target: 'Tamura' }]
+      ).size
+    ).toBe(0)
+  })
+
+  it('alias ngắn nằm trong một chuỗi katakana không thuộc mục nào thì đụng', () => {
+    const text = one('セラが笑った。セラミックの皿。セラフィナは来ない。')
+    expect(shortAliasClash('セラ', text, new Set(['セラフィナ', 'セラ']))).toBe(true)
+    expect(
+      shortAliasClash('セラ', one('セラが笑った。セラフィナは来ない。'), new Set(['セラフィナ']))
+    ).toBe(false)
+    expect(shortAliasClash('セラフ', text, new Set())).toBe(false)
+  })
+
+  it('prompt phân loại có mục đã chốt, cách đọc, alias_of; parser đọc alias_of và reading', () => {
+    const messages = buildClassifyMessages(
+      'ja',
+      [{ ...cand('診断', 1), reading: 'スキャン' }],
+      [{ source: 'ハルネ', target: 'Harune', aliases: ['ハルネ村'], type: 'place' }]
+    )
+    expect(messages[0]?.content).toContain('"alias_of"')
+    expect(messages[0]?.content).toContain('Không chắc: "not-a-term"')
+    expect(messages[1]?.content).toContain(
+      '<known>\n- ハルネ (ハルネ村) → Harune [place]\n</known>'
+    )
+    expect(messages[1]?.content).toContain('<candidate source="診断" count="1" reading="スキャン">')
+    expect(
+      parseClassification(
+        '{"terms":[{"source":"ハルネ村","type":"place","alias_of":" ハルネ "},{"source":"桐谷彰","type":"person","target":"Kiritani Akira","reading":"きりたにあきら","alias_of":3}]}'
+      )
+    ).toEqual([
+      { source: 'ハルネ村', type: 'place', alias_of: 'ハルネ' },
+      { source: '桐谷彰', type: 'person', target: 'Kiritani Akira', reading: 'きりたにあきら' }
     ])
   })
 })

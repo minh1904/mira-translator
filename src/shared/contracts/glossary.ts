@@ -28,12 +28,18 @@ export interface ContextEntryItem {
 }
 
 /** Why an AI candidate needs a closer look; shown to the reviewer, never fixed automatically. */
-export const REVIEW_FLAG_CODES = ['alias_conflict', 'script_mismatch', 'reopened'] as const
+export const REVIEW_FLAG_CODES = [
+  'alias_conflict',
+  'script_mismatch',
+  'reopened',
+  'family_mismatch',
+  'short_alias'
+] as const
 export type ReviewFlagCode = (typeof REVIEW_FLAG_CODES)[number]
 
 export interface ReviewFlag {
   code: ReviewFlagCode
-  /** `alias_conflict`: the alias form that belongs to another entry. */
+  /** `alias_conflict`: the alias form that belongs to another entry; `short_alias`: the short form left off. */
   detail?: string
 }
 

@@ -30,7 +30,7 @@ describe('work schema', () => {
   it('stamps the Mira application id and the latest schema version', () => {
     const db = openDatabase(join(tempDir(), 'work.mira'))
     migrate(db, workSchema)
-    expect(readPragmas(db)).toEqual({ userVersion: 17, applicationId: WORK_APPLICATION_ID })
+    expect(readPragmas(db)).toEqual({ userVersion: 18, applicationId: WORK_APPLICATION_ID })
     db.close()
   })
 
@@ -278,7 +278,7 @@ describe('work schema', () => {
 
     // Upgrade through the current schema.
     migrate(db, workSchema)
-    expect(readPragmas(db).userVersion).toBe(17)
+    expect(readPragmas(db).userVersion).toBe(18)
 
     // Data preserved
     const row = db.prepare('SELECT title FROM work WHERE id = ?').get<{ title: string }>('w1')
@@ -320,7 +320,7 @@ describe('work schema', () => {
       INSERT INTO provenance (segment_id, origin, at) VALUES ('s', 'human', 1);
     `)
     migrate(db, workSchema)
-    expect(readPragmas(db).userVersion).toBe(17)
+    expect(readPragmas(db).userVersion).toBe(18)
     expect(
       db
         .prepare("SELECT content, rev FROM chapter_text WHERE chapter_id = 'c' AND side = 'target'")
@@ -387,7 +387,7 @@ describe('work schema', () => {
 
     migrate(db, workSchema)
 
-    expect(readPragmas(db).userVersion).toBe(17)
+    expect(readPragmas(db).userVersion).toBe(18)
     expect(db.prepare('SELECT id, action, answer FROM ai_turn ORDER BY created_at').all()).toEqual([
       { id: 't-ask', action: 'ask', answer: 'Đáp' },
       { id: 't-edit', action: 'edit', answer: 'Bản sửa' },
@@ -486,7 +486,7 @@ describe('work schema', () => {
 
     migrate(db, workSchema)
 
-    expect(readPragmas(db).userVersion).toBe(17)
+    expect(readPragmas(db).userVersion).toBe(18)
     expect(
       db.prepare('SELECT id, action, answer, target_range_json, location_json FROM ai_turn').all()
     ).toEqual([
@@ -535,7 +535,7 @@ describe('work schema', () => {
 
     migrate(db, workSchema)
 
-    expect(readPragmas(db).userVersion).toBe(17)
+    expect(readPragmas(db).userVersion).toBe(18)
     db.exec(`
       INSERT INTO translate_run_context (run_key, chapter_id, snapshot_json, snapshot_hash, created_at)
       VALUES ('translate:r', 'c', '{}', 'h', 1);
@@ -556,7 +556,7 @@ describe('work schema', () => {
       INSERT INTO chapter (id, position, created_at, updated_at) VALUES ('c', 0, 1, 1);
     `)
     migrate(db, workSchema)
-    expect(readPragmas(db).userVersion).toBe(17)
+    expect(readPragmas(db).userVersion).toBe(18)
     const insert = () =>
       db.exec(`INSERT INTO qa_dismissal (rule_code, rule_version, chapter_id, segment_id, target_hash, created_at)
         VALUES ('text.length_ratio', 1, 'c', 's1', 'h', 1)`)
@@ -595,6 +595,23 @@ describe('work schema', () => {
     db.close()
   })
 
+  it('upgrades v17 to v18: existing entries keep their data and have no reading', () => {
+    const db = openDatabase(join(tempDir(), 'v17_to_v18.mira'))
+    migrate(db, {
+      applicationId: WORK_APPLICATION_ID,
+      migrations: workSchema.migrations.filter((m) => m.version <= 17)
+    })
+    db.exec(`
+      INSERT INTO context_entry (id, kind, source, target, status, created_at, updated_at) VALUES
+        ('e', 'term', '桐谷', 'Kiritani', 'approved', 1, 1);
+    `)
+    migrate(db, workSchema)
+    expect(db.prepare('SELECT source, target, reading FROM context_entry').all()).toEqual([
+      { source: '桐谷', target: 'Kiritani', reading: null }
+    ])
+    db.close()
+  })
+
   it('upgrades v16 to v17: entries waiting for review apply, rejected ones stay rejected', () => {
     const db = openDatabase(join(tempDir(), 'v16_to_v17.mira'))
     migrate(db, {
@@ -630,7 +647,7 @@ describe('work schema', () => {
 
     migrate(db, workSchema)
 
-    expect(readPragmas(db).userVersion).toBe(17)
+    expect(readPragmas(db).userVersion).toBe(18)
     expect(
       db
         .prepare("SELECT source, status, term_type, review_flags FROM context_entry WHERE id = 'e'")
@@ -681,7 +698,7 @@ describe('work schema', () => {
         `)
       }
       migrate(db, workSchema)
-      expect(readPragmas(db).userVersion).toBe(17)
+      expect(readPragmas(db).userVersion).toBe(18)
       expect(db.prepare("SELECT title FROM work WHERE id = 'w'").get()).toEqual({
         title: 'Tác phẩm cũ'
       })

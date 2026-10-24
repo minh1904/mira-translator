@@ -37,6 +37,8 @@ export const TERM_TYPE_LABELS: Record<string, string> = {
 export function reviewFlagLabel(flag: ReviewFlag): string {
   if (flag.code === 'alias_conflict') return `Dạng viết "${flag.detail ?? ''}" thuộc mục khác`
   if (flag.code === 'script_mismatch') return 'Bản dịch sai hệ chữ'
+  if (flag.code === 'family_mismatch') return 'Lệch khuôn với thuật ngữ cùng họ'
+  if (flag.code === 'short_alias') return `Dạng ngắn "${flag.detail ?? ''}" dễ khớp nhầm`
   return 'Mở lại vì có bằng chứng mới'
 }
 

@@ -1,6 +1,10 @@
 import { describe, expect, it } from 'vitest'
 import { segment } from '../../../shared/segmentation/segmenter'
-import { createContextEntry, readReviewInfo } from '../../infra/storage/contextEntries'
+import {
+  createContextEntry,
+  getContextEntry,
+  readReviewInfo
+} from '../../infra/storage/contextEntries'
 import { setupAgent } from '../agent/agentTestKit'
 import type { ExtractionMessage } from '../ai/glossaryExtraction'
 import {
@@ -17,11 +21,16 @@ interface Term {
   type: string
   target?: string
   reason?: string
+  aliases?: string[]
+  alias_of?: string
+  /** `false`: the sweep does not return this form, so only the code candidates can find it. */
+  swept?: boolean
 }
 
 /** A fake model: the sweep returns `forms`, the classification returns `terms` for the forms asked. */
 function scriptedCaller(terms: Term[]) {
   const sweeps: string[] = []
+  const classifies: string[] = []
   let calls = 0
   let failOn: number | undefined
   const caller = () => async (messages: ExtractionMessage[]) => {
@@ -30,15 +39,22 @@ function scriptedCaller(terms: Term[]) {
     const user = messages[1]!.content
     if (messages[0]!.content.startsWith('Bạn đọc truyện')) {
       sweeps.push(user)
-      const forms = terms.map((term) => term.source).filter((form) => user.includes(form))
+      const forms = terms
+        .filter((term) => term.swept !== false)
+        .map((term) => term.source)
+        .filter((form) => user.includes(form))
       return { text: JSON.stringify({ terms: forms }), usage: { input: 10, output: 5 } as never }
     }
-    const asked = terms.filter((term) => user.includes(`source="${term.source}"`))
+    classifies.push(user)
+    const asked = terms
+      .filter((term) => user.includes(`source="${term.source}"`))
+      .map(({ swept: _, ...term }) => term)
     return { text: JSON.stringify({ terms: asked }), usage: { input: 10, output: 5 } as never }
   }
   return {
     caller,
     sweeps,
+    classifies,
     calls: () => calls,
     failOn: (n: number) => {
       failOn = n
@@ -46,13 +62,13 @@ function scriptedCaller(terms: Term[]) {
   }
 }
 
-function setup(terms: Term[], texts: string[]) {
+function setup(terms: Term[], texts: string[], sourceLang: 'zh-Hans' | 'ja' = 'zh-Hans') {
   const kit = setupAgent()
-  const work = kit.library.create({ title: 'Truyện thử', sourceLang: 'zh-Hans' })
+  const work = kit.library.create({ title: 'Truyện thử', sourceLang })
   const chapters = texts.map((text, index) => {
     const chapter = kit.library.createChapter(work.id, `Chương ${index + 1}`).chapter
     const full = text + '\n' + FILLER
-    kit.library.saveText(work.id, chapter.id, 'source', full, 0, segment(full, 'zh-Hans'))
+    kit.library.saveText(work.id, chapter.id, 'source', full, 0, segment(full, sourceLang))
     return chapter
   })
   const model = scriptedCaller(terms)
@@ -179,6 +195,85 @@ describe('ContextExtractionService', () => {
     expect(library.withWork(work.id, (db) => readReviewInfo(db, result.pending))[0]?.flags).toEqual(
       [{ code: 'script_mismatch' }]
     )
+  })
+})
+
+describe('ContextExtractionService: counting, known entries and flags', () => {
+  const rows = (kit: ReturnType<typeof setup>) =>
+    kit.library.withWork(kit.work.id, (db) =>
+      db.prepare('SELECT id, source, target FROM context_entry ORDER BY source').all<{
+        id: string
+        source: string
+        target: string
+      }>()
+    )
+
+  it('counts code candidates over every chapter up to the task, so a name once per chunk is classified', async () => {
+    const kit = setup(
+      [{ source: 'ミリィ', type: 'person', target: 'Milly', swept: false }],
+      ['ミリィが来た。', 'ミリィが笑った。'],
+      'ja'
+    )
+    const result = await kit.extract(kit.chapters.map((chapter) => chapter.id))
+    // Chunk 1 has the name once: no classify call. Chunk 2 counts it twice.
+    expect(kit.model.classifies).toHaveLength(1)
+    expect(kit.model.classifies[0]).toContain('<candidate source="ミリィ" count="2">')
+    expect(result.pending).toHaveLength(1)
+  })
+
+  it('never classifies a form an entry already has, and a sweep chunk skips the author note', async () => {
+    const kit = setup(
+      [{ source: '韩立', type: 'person', target: 'Hàn Lập' }],
+      ['韩立来了。韩立走了。', '韩立又来了。', '第三章。\n――――――――\n请给个好评レビューお願い']
+    )
+    await kit.extract(kit.chapters.map((chapter) => chapter.id))
+    expect(kit.model.classifies).toHaveLength(1)
+    expect(kit.model.sweeps[1]).toContain('第三章')
+    expect(kit.model.sweeps[1]).not.toContain('レビュー')
+    expect(rows(kit).map((row) => row.source)).toEqual(['韩立'])
+  })
+
+  it('turns alias_of into an alias of the entry it names and sends the entry as known', async () => {
+    const kit = setup(
+      [{ source: 'ハルネ村', type: 'place', alias_of: 'ハルネ' }],
+      ['ハルネ村に着いた。'],
+      'ja'
+    )
+    const harune = kit.library.withWork(kit.work.id, (db) =>
+      createContextEntry(db, { source: 'ハルネ', target: 'Harune' })
+    )
+    await kit.extract([kit.chapters[0]!.id])
+    expect(kit.model.classifies[0]).toContain('- ハルネ → Harune')
+    expect(rows(kit).map((row) => row.source)).toEqual(['ハルネ'])
+    expect(
+      kit.library.withWork(kit.work.id, (db) => getContextEntry(db, harune.id))?.aliases
+    ).toEqual(['ハルネ村'])
+  })
+
+  it('flags a new term off its family pattern and a short alias that hits a common word', async () => {
+    const kit = setup(
+      [
+        { source: '銀級', type: 'title', target: 'Hạng Bạc' },
+        { source: 'セラフィナ', type: 'person', target: 'Serafina', aliases: ['セラ'] }
+      ],
+      ['銀級の冒険者セラフィナ。セラが笑う。セラミックの皿。'],
+      'ja'
+    )
+    const iron = kit.library.withWork(kit.work.id, (db) =>
+      createContextEntry(db, { source: '鉄級', target: 'Cấp Sắt' })
+    )
+    const result = await kit.extract([kit.chapters[0]!.id])
+    const info = kit.library.withWork(kit.work.id, (db) => readReviewInfo(db))
+    const flags = (source: string) =>
+      info.find((each) => each.entryId === rows(kit).find((row) => row.source === source)?.id)
+        ?.flags ?? []
+    expect(flags('銀級')).toEqual([{ code: 'family_mismatch' }])
+    expect(flags('鉄級')).toEqual([])
+    expect(flags('セラフィナ')).toEqual([{ code: 'short_alias', detail: 'セラ' }])
+    expect(result.pending).toHaveLength(2)
+    expect(
+      kit.library.withWork(kit.work.id, (db) => getContextEntry(db, iron.id))?.aliases
+    ).toEqual([])
   })
 })
 

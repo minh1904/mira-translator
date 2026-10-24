@@ -24,8 +24,10 @@ export interface Candidate {
   source: string
   count: number
   contexts: CandidateContext[]
-  /** Vì sao thành ứng viên: `katakana`, `honorific`, `ai-sweep`. */
+  /** Vì sao thành ứng viên: `katakana`, `honorific`, `ruby`, `ai-sweep`. */
   signals: string[]
+  /** Cách đọc lấy từ chú âm `漢字（カナ）` hoặc ruby. */
+  reading?: string
 }
 
 export const TERM_TYPES = [
@@ -51,6 +53,16 @@ export interface ExtractedTerm {
   confidence?: string
   evidence?: string[]
   reason?: string
+  /** Nguồn của một mục đã có mà dạng này chỉ là biến thể. */
+  alias_of?: string
+}
+
+/** Mục đã chốt gửi kèm lô phân loại; model không được đổi. */
+export interface KnownTerm {
+  source: string
+  target: string
+  aliases?: string[]
+  type?: string | null
 }
 
 export interface ExtractionMessage {
@@ -70,41 +82,103 @@ function clip(line: string, at: number, length: number): string {
   return line.slice(start, start + CONTEXT_CHARS).replace(/^\s+|\s+$/g, '')
 }
 
-function occurrences(
-  form: string,
+/**
+ * Đếm các dạng, dạng dài trước (theo KeywordGacha): mỗi lần khớp được che bằng \u0000 cùng độ dài, nên
+ * "田中" không được đếm lại bên trong "田中太郎". Câu ngữ cảnh lấy từ dòng gốc chưa che.
+ */
+export function countForms(
+  forms: string[],
   chapters: ExtractionChapter[],
-  limit: number
-): {
-  count: number
-  contexts: CandidateContext[]
-} {
-  let count = 0
-  const contexts: CandidateContext[] = []
-  const seenChapters = new Set<number>()
-  for (const chapter of chapters) {
-    for (const line of chapter.text.split(/\r?\n/)) {
-      let at = line.indexOf(form)
-      while (at !== -1) {
-        count++
-        // Mỗi chương lấy tối đa một câu, để ngữ cảnh trải ra nhiều cảnh.
-        if (contexts.length < limit && !seenChapters.has(chapter.number)) {
-          contexts.push({ chapter: chapter.number, line: clip(line, at, form.length) })
-          seenChapters.add(chapter.number)
+  maxContexts = 3
+): Map<string, { count: number; contexts: CandidateContext[] }> {
+  const lines = chapters.map((chapter) => {
+    const original = chapter.text.split(/\r?\n/)
+    return { number: chapter.number, original, masked: [...original] }
+  })
+  const out = new Map<string, { count: number; contexts: CandidateContext[] }>()
+  const ordered = [...new Set(forms)].filter((form) => form !== '')
+  ordered.sort((a, b) => b.length - a.length)
+  for (const form of ordered) {
+    let count = 0
+    const contexts: CandidateContext[] = []
+    const mask = '\u0000'.repeat(form.length)
+    for (const chapter of lines) {
+      let seen = false
+      chapter.masked.forEach((line, index) => {
+        let at = line.indexOf(form)
+        if (at === -1) return
+        while (at !== -1) {
+          count++
+          // Mỗi chương lấy tối đa một câu, để ngữ cảnh trải ra nhiều cảnh.
+          if (contexts.length < maxContexts && !seen) {
+            contexts.push({
+              chapter: chapter.number,
+              line: clip(chapter.original[index]!, at, form.length)
+            })
+            seen = true
+          }
+          at = line.indexOf(form, at + form.length)
         }
-        at = line.indexOf(form, at + form.length)
-      }
+        chapter.masked[index] = line.split(form).join(mask)
+      })
     }
+    out.set(form, { count, contexts })
   }
-  return { count, contexts }
+  return out
 }
 
-/** Ứng viên tiếng Nhật bằng code: chuỗi katakana và kanji đứng trước hậu tố gọi người. */
+const SEPARATOR = /^[\s　]*[―─━\-=＝＊*◇◆□■☆★・]{6,}[\s　]*$/u
+const AUTHOR_NOTE = /評価|ブックマーク|感想|レビュー|お願い/u
+
+/**
+ * Bỏ phần lời nhắn của tác giả cuối chương (xin đánh giá, ghi dấu, bình luận), chỉ cho bước trích: từ cuối
+ * lên, dòng ngăn cách đầu tiên mà phần sau nó có từ khóa xin đánh giá.
+ */
+export function stripAuthorNote(text: string): string {
+  const lines = text.split(/\r?\n/)
+  for (let i = lines.length - 1; i >= 0; i--) {
+    if (!SEPARATOR.test(lines[i]!)) continue
+    if (AUTHOR_NOTE.test(lines.slice(i + 1).join('\n'))) return lines.slice(0, i).join('\n')
+  }
+  return text
+}
+
+// Hiragana nối sau mà vẫn là tên: trợ từ và hậu tố gọi người. Còn lại (る, た, い…) là đuôi động từ, tính từ.
+const PARTICLES = ['さん', 'ちゃん', 'くん', 'さま', 'たち', ...'がのはをにともへやでねよか']
+const HIRAGANA = /^[ぁ-ゖ]/u
+
+/** Chuỗi mà mọi lần xuất hiện đều dính đuôi hiragana như động từ đang chia (バレる, キレた). */
+function alwaysInflected(form: string, chapters: ExtractionChapter[]): boolean {
+  for (const chapter of chapters) {
+    let at = chapter.text.indexOf(form)
+    while (at !== -1) {
+      const rest = chapter.text.slice(at + form.length, at + form.length + 3)
+      if (!HIRAGANA.test(rest) || PARTICLES.some((p) => rest.startsWith(p))) return false
+      at = chapter.text.indexOf(form, at + form.length)
+    }
+  }
+  return true
+}
+
+/** Tượng thanh, tượng hình: kết thúc bằng ッ, một cụm lặp lại (ゴチャゴチャ), hoặc một chữ lặp ba lần (アハハハ). */
+const isMimetic = (form: string): boolean =>
+  form.endsWith('ッ') || /^(.{1,3})\1+$/u.test(form) || /(.)\1\1/u.test(form)
+
+const GLOSS = /([一-龥々]{1,8})[（(]([ァ-ヶーぁ-ゖ・]{2,})[）)]/gu
+const RUBY = /｜?([一-龥々]+)《([^》]+)》/gu
+
+/**
+ * Ứng viên tiếng Nhật bằng code: chuỗi katakana, kanji đứng trước hậu tố gọi người, và kanji có chú âm.
+ * Dạng lấy từ `chapters` (khúc đang quét); tần suất đếm trên `corpus`, mặc định là chính `chapters`. Chú âm
+ * được miễn ngưỡng tần suất.
+ */
 export function japaneseCandidates(
   chapters: ExtractionChapter[],
-  options: { minCount?: number; maxContexts?: number } = {}
+  options: { minCount?: number; maxContexts?: number; corpus?: ExtractionChapter[] } = {}
 ): Candidate[] {
-  const minCount = options.minCount ?? 2
+  const corpus = options.corpus ?? chapters
   const signals = new Map<string, Set<string>>()
+  const readings = new Map<string, string>()
   const add = (form: string, signal: string): void => {
     if (form.length < 2 && signal === 'katakana') return
     const set = signals.get(form) ?? new Set<string>()
@@ -113,10 +187,31 @@ export function japaneseCandidates(
   }
   for (const chapter of chapters) {
     for (const match of chapter.text.matchAll(KATAKANA)) add(match[0], 'katakana')
-    for (const match of chapter.text.matchAll(HONORIFIC)) add(match[1], 'honorific')
+    for (const match of chapter.text.matchAll(HONORIFIC)) add(match[1]!, 'honorific')
+    for (const match of [...chapter.text.matchAll(GLOSS), ...chapter.text.matchAll(RUBY)]) {
+      add(match[1]!, 'ruby')
+      if (!readings.has(match[1]!)) readings.set(match[1]!, match[2]!)
+    }
   }
-  return withCounts([...signals], chapters, minCount, options.maxContexts ?? 3)
+  for (const [form, set] of signals) {
+    if (set.size !== 1 || !set.has('katakana')) continue
+    if (isMimetic(form) || alwaysInflected(form, corpus)) signals.delete(form)
+  }
+  return withReadings(
+    withCounts([...signals], corpus, options.minCount ?? 2, options.maxContexts ?? 3),
+    readings
+  )
 }
+
+const withReadings = (candidates: Candidate[], readings: Map<string, string>): Candidate[] =>
+  candidates.map((candidate) =>
+    readings.has(candidate.source)
+      ? { ...candidate, reading: readings.get(candidate.source) }
+      : candidate
+  )
+
+/** Dạng có tín hiệu chú âm hoặc do AI quét được miễn ngưỡng tần suất, chỉ cần xuất hiện. */
+const exempt = (signals: Set<string>): boolean => signals.has('ruby') || signals.has('ai-sweep')
 
 function withCounts(
   forms: Array<[string, Set<string>]>,
@@ -124,36 +219,60 @@ function withCounts(
   minCount: number,
   maxContexts: number
 ): Candidate[] {
+  const counts = countForms(
+    forms.map(([form]) => form),
+    chapters,
+    maxContexts
+  )
   const out: Candidate[] = []
   for (const [source, set] of forms) {
-    const { count, contexts } = occurrences(source, chapters, maxContexts)
-    if (count >= minCount) out.push({ source, count, contexts, signals: [...set].sort() })
+    let { count, contexts } = counts.get(source) ?? { count: 0, contexts: [] }
+    // Dạng được miễn mà chỉ nằm trong dạng dài hơn vẫn cần số lần và ngữ cảnh: đếm riêng, không che.
+    if (exempt(set) && count === 0)
+      ({ count, contexts } = countForms([source], chapters, maxContexts).get(source)!)
+    if (count >= minCount || (exempt(set) && count > 0))
+      out.push({ source, count, contexts, signals: [...set].sort() })
   }
   return out.sort((a, b) => b.count - a.count || a.source.localeCompare(b.source))
 }
 
 /**
- * Hợp ứng viên của code với dạng AI quét được. Dạng của AI phải có thật trong bản gốc và đủ tần suất;
- * dạng không có trong văn bản bị bỏ ở đây, trước khi tốn một lời gọi phân loại.
+ * Hợp ứng viên của code với dạng AI quét được. Dạng của AI chỉ cần có nguyên văn trong `chapters` (khúc đã
+ * quét); dạng không có bị bỏ ở đây, trước khi tốn một lời gọi phân loại. Ứng viên code cần ≥ `minCount`
+ * lần. Tần suất đếm trên `corpus`, mặc định là `chapters`.
  */
 export function mergeCandidates(
   fromCode: Candidate[],
   fromSweep: string[],
   chapters: ExtractionChapter[],
-  options: { minCount?: number; maxContexts?: number; limit?: number } = {}
+  options: {
+    minCount?: number
+    maxContexts?: number
+    limit?: number
+    corpus?: ExtractionChapter[]
+  } = {}
 ): Candidate[] {
   const signals = new Map<string, Set<string>>(
     fromCode.map((candidate) => [candidate.source, new Set(candidate.signals)])
   )
+  const readings = new Map<string, string>()
+  for (const candidate of fromCode)
+    if (candidate.reading) readings.set(candidate.source, candidate.reading)
+  const text = chapters.map((chapter) => chapter.text).join('\n')
   for (const form of fromSweep) {
     const clean = form.trim()
-    if (clean === '') continue
+    if (clean === '' || !text.includes(clean)) continue
     const set = signals.get(clean) ?? new Set<string>()
     set.add('ai-sweep')
     signals.set(clean, set)
   }
-  const merged = withCounts([...signals], chapters, options.minCount ?? 2, options.maxContexts ?? 3)
-  return merged.slice(0, options.limit ?? 400)
+  const merged = withCounts(
+    [...signals],
+    options.corpus ?? chapters,
+    options.minCount ?? 2,
+    options.maxContexts ?? 3
+  )
+  return withReadings(merged.slice(0, options.limit ?? 400), readings)
 }
 
 /** Chia chương thành các khúc không quá `maxChars` ký tự cho lượt AI quét. */
@@ -251,13 +370,15 @@ export const EXTRACTION_OUTPUT_EXAMPLE = {
       confidence: 'cao',
       evidence: ['ch3: 「リオン様ったら…」とミリィが言った']
     },
+    { source: 'ミリィさん', type: 'person', alias_of: 'ミリィ' },
     { source: 'ドア', type: 'not-a-term', reason: 'từ thông dụng' }
   ]
 }
 
 export function buildClassifyMessages(
   sourceLang: string,
-  candidates: Candidate[]
+  candidates: Candidate[],
+  known: KnownTerm[] = []
 ): ExtractionMessage[] {
   const lang = languageName(sourceLang)
   const system = [
@@ -266,7 +387,10 @@ export function buildClassifyMessages(
     '',
     '<rules>',
     `- "type" là một trong: ${TERM_TYPES.join(', ')}. Từ thông dụng, từ mượn thường ngày, danh xưng chung, mảnh cắt dở của một từ dài hơn: "not-a-term" kèm "reason".`,
+    '- Chỉ nhận "term" khi đó là khái niệm riêng của thế giới truyện cần dịch thống nhất. Từ thông dụng có cách dịch tùy ngữ cảnh (ベテラン, シスター): "not-a-term". Không chắc: "not-a-term".',
     '- Gom các dạng của cùng một thực thể (tên đầy đủ, tên gọi tắt, tên kèm hậu tố) vào một mục: "source" là dạng đầy đủ nhất, các dạng khác ở "aliases". Chỉ dùng dạng có trong <candidates> hoặc trong câu ngữ cảnh.',
+    '- <known> là các mục đã chốt: không đổi, không phân loại lại. Ứng viên chỉ là dạng khác của một mục đã chốt: ghi "alias_of" là "source" của mục đó. Ứng viên cùng họ với mục đã chốt (cùng hậu tố, cùng tiền tố) dịch theo đúng khuôn của mục đó, kể cả cách viết hoa.',
+    '- Ứng viên có "reading" là cách đọc tác giả chú bên cạnh; dùng nó khi dịch.',
     ...namingPolicy(sourceLang),
     '- "gender" chỉ cho "person": male, female hoặc unknown; chỉ ghi male/female khi ngữ cảnh cho thấy rõ.',
     '- "note" chỉ ghi vai trò hay quan hệ đã lộ trong ngữ cảnh được cho; không đoán diễn biến, không tiết lộ thân phận về sau.',
@@ -278,10 +402,21 @@ export function buildClassifyMessages(
     JSON.stringify(EXTRACTION_OUTPUT_EXAMPLE)
   ].join('\n')
   const user = [
+    ...(known.length > 0
+      ? [
+          '<known>',
+          ...known.map(
+            (term) =>
+              `- ${term.source}${term.aliases?.length ? ` (${term.aliases.join(', ')})` : ''} → ${term.target}${term.type ? ` [${term.type}]` : ''}`
+          ),
+          '</known>',
+          ''
+        ]
+      : []),
     '<candidates>',
     ...candidates.map((candidate) =>
       [
-        `<candidate source="${candidate.source}" count="${candidate.count}">`,
+        `<candidate source="${candidate.source}" count="${candidate.count}"${candidate.reading ? ` reading="${candidate.reading}"` : ''}>`,
         ...candidate.contexts.map((context) => `  - ch${context.chapter}: ${context.line}`),
         '</candidate>'
       ].join('\n')
@@ -299,12 +434,20 @@ export function buildClassifyMessages(
 export function parseClassification(text: string): ExtractedTerm[] {
   const parsed = jsonObjectOf(text) as { terms?: unknown }
   if (!Array.isArray(parsed.terms)) return []
-  return parsed.terms.filter(
-    (term): term is ExtractedTerm =>
-      Boolean(term) &&
-      typeof (term as ExtractedTerm).source === 'string' &&
-      (TERM_TYPES as readonly string[]).includes((term as ExtractedTerm).type)
-  )
+  return parsed.terms
+    .filter(
+      (term): term is ExtractedTerm =>
+        Boolean(term) &&
+        typeof (term as ExtractedTerm).source === 'string' &&
+        (TERM_TYPES as readonly string[]).includes((term as ExtractedTerm).type)
+    )
+    .map(({ alias_of, reading, ...term }) => ({
+      ...term,
+      ...(typeof alias_of === 'string' && alias_of.trim() !== ''
+        ? { alias_of: alias_of.trim() }
+        : {}),
+      ...(typeof reading === 'string' && reading.trim() !== '' ? { reading: reading.trim() } : {})
+    }))
 }
 
 export interface Verification {
@@ -350,7 +493,8 @@ export function verifyTerms(
       dropped.push({ source, reason: 'trùng mục khác' })
       continue
     }
-    if (!term.target || term.target.trim() === '') {
+    // Một biến thể của mục đã có không cần bản dịch riêng; người gọi tra `alias_of`.
+    if (!term.alias_of && (!term.target || term.target.trim() === '')) {
       dropped.push({ source, reason: 'không có bản dịch đề xuất' })
       continue
     }
@@ -370,6 +514,7 @@ export function verifyTerms(
     if (
       sourceLang === 'ja' &&
       term.type === 'person' &&
+      term.target &&
       !/^[\p{Script=Latin}\s.'-]+$/u.test(term.target)
     ) {
       flags.push('tên không phải chữ Latin')
@@ -390,4 +535,162 @@ export function verifyTerms(
     aliases.forEach((alias) => taken.add(alias))
   }
   return { accepted, rejected, dropped }
+}
+
+const KANJI = /^[一-龥々]$/u
+const sharedKanjiAffix = (a: string, b: string): boolean =>
+  Math.abs(a.length - b.length) <= 1 &&
+  ((a[0] === b[0] && KANJI.test(a[0]!)) || (a.at(-1) === b.at(-1) && KANJI.test(a.at(-1)!)))
+const nested = (a: string, b: string): boolean =>
+  Math.min(a.length, b.length) >= 2 && (a.includes(b) || b.includes(a))
+/**
+ * Hai dạng cùng họ thuật ngữ: chuỗi con của nhau, hoặc chung kanji đầu hay cuối và dài chênh ≤ 1 (銀級, 鉄級).
+ * Katakana không dùng luật hậu tố: quá nhiều tên cùng tận cùng bằng ン.
+ */
+const sameFamily = (a: string, b: string): boolean =>
+  a !== b && (nested(a, b) || sharedKanjiAffix(a, b))
+
+/** Gom dạng thành họ thuật ngữ bằng union-find; mỗi họ giữ thứ tự xuất hiện trong `forms`. */
+export function termFamilies(forms: string[]): string[][] {
+  const unique = [...new Set(forms)]
+  const parent = unique.map((_, i) => i)
+  const find = (i: number): number => (parent[i] === i ? i : (parent[i] = find(parent[i]!)))
+  for (let i = 0; i < unique.length; i++)
+    for (let j = i + 1; j < unique.length; j++)
+      if (sameFamily(unique[i]!, unique[j]!)) parent[find(i)] = find(j)
+  const groups = new Map<number, string[]>()
+  unique.forEach((form, i) => {
+    const root = find(i)
+    groups.set(root, [...(groups.get(root) ?? []), form])
+  })
+  return [...groups.values()]
+}
+
+/**
+ * Chia ứng viên thành lô ≤ `size`, giữ nguyên một họ trong một lô (họ lớn hơn lô thì cắt). Họ xếp theo
+ * tần suất cao nhất của họ; `extraForms` (nguồn và alias của mục đã có) chỉ dùng để nối họ.
+ */
+export function familyBatches(
+  candidates: Candidate[],
+  size = 60,
+  extraForms: string[] = []
+): Candidate[][] {
+  const bySource = new Map(candidates.map((candidate) => [candidate.source, candidate]))
+  const families = termFamilies([...candidates.map((c) => c.source), ...extraForms])
+    .map((family) => family.flatMap((form) => bySource.get(form) ?? []))
+    .filter((family) => family.length > 0)
+    .map((family) => family.sort((a, b) => b.count - a.count))
+    .sort((a, b) => b[0]!.count - a[0]!.count)
+  const batches: Candidate[][] = []
+  let current: Candidate[] = []
+  for (const family of families) {
+    if (current.length > 0 && current.length + family.length > size) {
+      batches.push(current)
+      current = []
+    }
+    for (const candidate of family) {
+      if (current.length === size) {
+        batches.push(current)
+        current = []
+      }
+      current.push(candidate)
+    }
+  }
+  if (current.length > 0) batches.push(current)
+  return batches
+}
+
+/**
+ * Mục đã chốt gửi kèm một lô, tối đa `limit`: trước là mục cùng họ với một ứng viên, sau là mục có chung
+ * một kanji với ứng viên.
+ */
+export function knownForBatch(batch: Candidate[], known: KnownTerm[], limit = 30): KnownTerm[] {
+  const forms = (term: KnownTerm): string[] => [term.source, ...(term.aliases ?? [])]
+  const kanji = new Set(batch.flatMap((c) => [...c.source].filter((ch) => KANJI.test(ch))))
+  const family = known.filter((term) =>
+    forms(term).some((form) => batch.some((c) => sameFamily(form, c.source)))
+  )
+  const shared = known.filter(
+    (term) => !family.includes(term) && [...term.source].some((ch) => kanji.has(ch))
+  )
+  return [...family, ...shared].slice(0, limit)
+}
+
+/**
+ * Bản dịch của hai mục cùng họ chung hậu tố/tiền tố có cùng khuôn không: có chung ít nhất một từ (không
+ * phân biệt hoa thường) và mọi từ chung viết hoa giống nhau. Từ đứng đầu một bản dịch không so hoa
+ * thường: tiếng Việt viết hoa chữ đầu cụm ("Ma pháp trận" với "Thao tác ma lực").
+ */
+function sameShape(a: string, b: string): boolean {
+  const lower = (word: string): string => word.toLocaleLowerCase('vi')
+  const words = (text: string): string[] => text.split(/\s+/u).filter(Boolean)
+  const [wordsA, wordsB] = [words(a), words(b)]
+  const other = new Map(wordsB.map((word, index) => [lower(word), { word, index }]))
+  const common = wordsA.flatMap((word, index) => {
+    const match = other.get(lower(word))
+    return match ? [{ word, index, match }] : []
+  })
+  return (
+    common.length > 0 &&
+    common.every(
+      ({ word, index, match }) => index === 0 || match.index === 0 || match.word === word
+    )
+  )
+}
+
+/**
+ * Nguồn của các mục mới lệch khuôn với một mục cùng họ chung hậu tố hoặc tiền tố (mới hoặc đã có). Họ chỉ
+ * gồm chuỗi con thì không so. Tên người bỏ qua: 田中 và 田村 chung kanji đầu mà không cùng khuôn.
+ */
+export function familyMismatches(
+  fresh: Array<{ source: string; target: string; type?: string | null }>,
+  known: Array<{ source: string; target: string; type?: string | null }>
+): Set<string> {
+  const out = new Set<string>()
+  const all = [
+    ...fresh.map((term) => ({ ...term, fresh: true })),
+    ...known.map((term) => ({ ...term, fresh: false }))
+  ].filter((term) => term.type !== 'person' && term.target.trim() !== '')
+  for (let i = 0; i < all.length; i++) {
+    for (let j = i + 1; j < all.length; j++) {
+      const a = all[i]!
+      const b = all[j]!
+      if (!a.fresh && !b.fresh) continue
+      if (!sharedKanjiAffix(a.source, b.source) || nested(a.source, b.source)) continue
+      if (sameShape(a.target, b.target)) continue
+      if (a.fresh) out.add(a.source)
+      if (b.fresh) out.add(b.source)
+    }
+  }
+  return out
+}
+
+const SCRIPT_RUN = [/[ァ-ヶー]/u, /[一-龥々]/u]
+
+/**
+ * Alias ngắn (≤ 2 ký tự) dễ khớp nhầm: có lần xuất hiện nằm trong một chuỗi cùng hệ chữ dài hơn (セラ trong
+ * セラミック) mà chuỗi đó không phải dạng của mục nào (`owned`, so không phân biệt hoa thường).
+ */
+export function shortAliasClash(
+  alias: string,
+  chapters: ExtractionChapter[],
+  owned: Set<string>
+): boolean {
+  if (alias.length > 2) return false
+  const script = SCRIPT_RUN.find((pattern) => [...alias].every((ch) => pattern.test(ch)))
+  if (!script) return false
+  for (const chapter of chapters) {
+    const text = chapter.text
+    let at = text.indexOf(alias)
+    while (at !== -1) {
+      let start = at
+      let end = at + alias.length
+      while (start > 0 && script.test(text[start - 1]!)) start--
+      while (end < text.length && script.test(text[end]!)) end++
+      const run = text.slice(start, end)
+      if (run !== alias && !owned.has(run.toLowerCase())) return true
+      at = text.indexOf(alias, at + 1)
+    }
+  }
+  return false
 }

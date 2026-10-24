@@ -3,6 +3,7 @@ import {
   buildAnalysisMessages,
   collectAddressingEvidence,
   parseAnalysis,
+  provenGender,
   verifiedQuotes
 } from './addressingAnalysis'
 
@@ -66,5 +67,36 @@ describe('addressingAnalysis', () => {
       { chapter: 1, quote: '「リオン様？」' }
     ])
     expect(verifiedQuotes(undefined, chapters)).toEqual([])
+  })
+})
+
+describe('provenGender', () => {
+  const chapters = [
+    { number: 3, text: '「僕は女の子だよ」とモルグレイドは笑った。' },
+    { number: 4, text: '「僕が行く」とモルグレイドが言った。' }
+  ]
+  const forms = ['モルグレイド']
+
+  it('keeps male/female only with a real quote that has the name and a gender word', () => {
+    expect(
+      provenGender(
+        { gender: 'female', genderEvidence: 'ch3: 「僕は女の子だよ」とモルグレイドは笑った。' },
+        forms,
+        chapters
+      )
+    ).toBe('female')
+    // 僕 is no evidence of gender.
+    expect(
+      provenGender(
+        { gender: 'male', genderEvidence: 'ch4: 「僕が行く」とモルグレイドが言った。' },
+        forms,
+        chapters
+      )
+    ).toBe('unknown')
+    expect(
+      provenGender({ gender: 'female', genderEvidence: 'ch9: 彼女はモルグレイド' }, forms, chapters)
+    ).toBe('unknown')
+    expect(provenGender({ gender: 'female' }, forms, chapters)).toBe('unknown')
+    expect(provenGender(undefined, forms, chapters)).toBe('unknown')
   })
 })

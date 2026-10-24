@@ -519,6 +519,8 @@ export interface ExtractedCandidateWrite {
   status: 'approved' | 'rejected'
   aliases?: string[]
   notes?: string | null
+  /** Kana reading from the model or the author's gloss; stored, never sent to translation. */
+  reading?: string | null
   /** Flags the caller already knows (`script_mismatch`); alias conflicts are found here. */
   flags?: ReviewFlag[]
   evidence: Array<{ chapterId: string | null; quote: string }>
@@ -539,10 +541,13 @@ export interface SaveExtractionResult {
   /** New entries that apply (`approved`); not-a-term rows are left out. */
   pending: string[]
   skipped: number
+  /** Forms of a skipped candidate added as aliases of the entry that already had it. */
+  aliasesAdded: number
 }
 
 interface MatchRow {
   id: string
+  kind: ContextKind
   status: ContextStatus
   review_flags: string
 }
@@ -552,9 +557,9 @@ function ownerOf(db: Db, form: string): MatchRow | null {
   return (
     db
       .prepare(
-        `SELECT id, status, review_flags FROM context_entry WHERE lower(source) = lower(?) AND ${GLOSSARY}
+        `SELECT id, kind, status, review_flags FROM context_entry WHERE lower(source) = lower(?) AND ${GLOSSARY}
          UNION ALL
-         SELECT e.id, e.status, e.review_flags FROM context_alias a
+         SELECT e.id, e.kind, e.status, e.review_flags FROM context_alias a
            JOIN context_entry e ON e.id = a.entry_id WHERE lower(a.form) = lower(?)
          LIMIT 1`
       )
@@ -573,9 +578,10 @@ const parseFlags = (json: string): ReviewFlag[] => {
 
 /**
  * Writes one extraction step in one transaction: candidates, their quotes and the scanned chapters. A
- * candidate that matches any entry is dropped, a rejected one included: with no review step left, a
- * person's rejection or the model's not-a-term stands. An alias another entry owns is left off and
- * becomes an `alias_conflict` flag instead of an error.
+ * candidate that matches any entry makes no new entry, a rejected one included: with no review step
+ * left, a person's rejection or the model's not-a-term stands. When the match is a term that is not
+ * rejected, the candidate's other forms that no entry owns become its aliases. An alias another entry
+ * owns is left off and becomes an `alias_conflict` flag instead of an error.
  */
 export function saveExtraction(db: Db, input: SaveExtractionInput): SaveExtractionResult {
   const now = input.now ?? Date.now()
@@ -583,6 +589,10 @@ export function saveExtraction(db: Db, input: SaveExtractionInput): SaveExtracti
   return db.transaction(() => {
     const pending: string[] = []
     let skipped = 0
+    let aliasesAdded = 0
+    const insertAlias = db.prepare(
+      'INSERT INTO context_alias (id, entry_id, form, created_at) VALUES (?, ?, ?, ?)'
+    )
     const insertEvidence = db.prepare(
       `INSERT INTO context_entry_evidence
          (id, entry_id, run_id, chapter_id, quote, model, prompt_hash, created_at)
@@ -605,8 +615,22 @@ export function saveExtraction(db: Db, input: SaveExtractionInput): SaveExtracti
 
     for (const candidate of input.candidates) {
       const source = candidate.source.trim()
-      if (ownerOf(db, source)) {
+      const owner = ownerOf(db, source)
+      if (owner) {
         skipped++
+        if (owner.kind !== 'term' || owner.status === 'rejected') continue
+        let added = false
+        for (const raw of candidate.aliases ?? []) {
+          const form = raw.trim()
+          if (form === '' || ownerOf(db, form)) continue
+          insertAlias.run(newId(), owner.id, form, now)
+          aliasesAdded++
+          added = true
+        }
+        if (added) {
+          addEvidence(owner.id, candidate.evidence)
+          db.prepare('UPDATE context_entry SET updated_at = ? WHERE id = ?').run(now, owner.id)
+        }
         continue
       }
 
@@ -622,8 +646,8 @@ export function saveExtraction(db: Db, input: SaveExtractionInput): SaveExtracti
       const id = newId()
       db.prepare(
         `INSERT INTO context_entry (id, kind, source, target, status, origin, forbidden, notes,
-           term_type, review_flags, created_at, updated_at)
-         VALUES (?, 'term', ?, ?, ?, 'ai', 0, ?, ?, ?, ?, ?)`
+           term_type, review_flags, reading, created_at, updated_at)
+         VALUES (?, 'term', ?, ?, ?, 'ai', 0, ?, ?, ?, ?, ?, ?)`
       ).run(
         id,
         source,
@@ -632,11 +656,9 @@ export function saveExtraction(db: Db, input: SaveExtractionInput): SaveExtracti
         candidate.notes?.trim() || null,
         candidate.termType,
         JSON.stringify(flags),
+        candidate.reading?.trim() || null,
         now,
         now
-      )
-      const insertAlias = db.prepare(
-        'INSERT INTO context_alias (id, entry_id, form, created_at) VALUES (?, ?, ?, ?)'
       )
       for (const form of aliases) insertAlias.run(newId(), id, form, now)
       addEvidence(id, candidate.evidence)
@@ -651,7 +673,7 @@ export function saveExtraction(db: Db, input: SaveExtractionInput): SaveExtracti
       scan.run(chapterId, input.runId, input.model, input.promptHash, now)
     }
     if (input.candidates.length > 0) touchWork(db, now)
-    return { pending, skipped }
+    return { pending, skipped, aliasesAdded }
   })
 }
 
