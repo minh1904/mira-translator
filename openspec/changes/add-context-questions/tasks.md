@@ -34,10 +34,11 @@
       vẫn qua
 - [x] 4.2 Bộ lọc "Cần xem" và thẻ câu hỏi trên mục trong `GlossaryScreen`, gọi IPC trả lời; test chọn lựa chọn rồi
       Ctrl+Enter gửi đúng nhãn, và trạng thái trống
-- [ ] 4.3 Chi tiết task hiện "N câu hỏi ngữ cảnh" (đếm câu hỏi có `runId` của task) và liên kết mở bộ lọc; test số
+- [x] 4.3 Chi tiết task hiện "N câu hỏi ngữ cảnh" (đếm câu hỏi có `runId` của task) và liên kết mở bộ lọc; test số
       đúng và không hiện khi bằng 0
-      (Chưa làm: chi tiết task ở màn Hoạt động `TaskDetail.tsx` là phần việc khác chưa commit; khi nó vào main
-      thì đếm câu hỏi có `runId` là id thao tác trích của task.)
+      (Đếm: `ContextQuestionService.countForRuns`; mở bộ lọc: `openGlossaryReview(workId, 'review')`. Dòng trong
+      `TaskDetail.tsx` và trường `contextQuestions` của chi tiết task nằm cùng phần việc `unify-activity-screen` chưa
+      commit, nên vào main cùng phần đó.)
 
 ## 5. Chat
 

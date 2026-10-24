@@ -29,6 +29,7 @@ import {
   WorkConventionsPanel
 } from './ContextQuestions'
 import { EntryHistoryDialog } from './EntryHistoryDialog'
+import { takeGlossaryView } from './glossaryView'
 import { DeleteGlossaryDialog, EditGlossaryDialog, ImportNamesDialog } from './GlossaryDialogs'
 import { useGlossary } from './useGlossary'
 
@@ -107,7 +108,7 @@ export function GlossaryScreen({ workId, initialView = 'all' }: GlossaryScreenPr
     reviewInfo,
     reload
   } = useGlossary({ workId })
-  const [view, setView] = useState<'all' | 'review'>(initialView)
+  const [view, setView] = useState<'all' | 'review'>(() => takeGlossaryView(workId) ?? initialView)
   const questions = useContextQuestions(workId, () => void reload())
 
   const [chapters, setChapters] = useState<ChapterItem[]>([])

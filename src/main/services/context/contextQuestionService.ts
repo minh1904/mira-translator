@@ -72,6 +72,15 @@ export class ContextQuestionService {
     })
   }
 
+  /** Open questions left by the given extraction runs (a task's `extract_terms` operations). */
+  countForRuns(workId: string, runIds: string[]): number {
+    if (runIds.length === 0) return 0
+    const runs = new Set(runIds)
+    return this.library.withWork(workId, (db) =>
+      listQuestions(db).filter((question) => question.runId !== null && runs.has(question.runId))
+    ).length
+  }
+
   answer(workId: string, questionId: string, label: string): AnswerContextQuestionResult {
     return this.library.withWork(workId, (db) =>
       answerContextQuestion(db, questionId, label, this.now())

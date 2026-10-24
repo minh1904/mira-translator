@@ -105,28 +105,54 @@ export function readTranslationTasksCapability(tasks: {
 export const steerTranslationTaskCapability: CapabilityDefinition<{
   taskId: string
   fromChapter: number
-  instruction: string
+  instruction?: string
+  term?: { source: string; target: string; notes?: string }
 }> = {
   name: STEER_TRANSLATION_TASK,
   description:
-    'Điều chỉnh một tác vụ dịch nền từ một chương trở đi bằng chỉ dẫn mới. "instruction" là TOÀN VĂN chỉ ' +
+    'Điều chỉnh một tác vụ dịch nền từ một chương trở đi, bằng đúng một trong hai: "instruction" là TOÀN VĂN chỉ ' +
     'dẫn sẽ áp dụng (thay thế chỉ dẫn cũ, không cộng dồn): đọc chỉ dẫn hiện hành bằng read_translation_tasks ' +
-    'rồi viết lại. Chương đang dịch hoặc đã dịch giữ bản cũ; kết quả trả về chương thực sự bắt đầu áp dụng, ' +
-    'hãy báo đúng chương đó. Người dùng phải duyệt trước.',
+    'rồi viết lại; hoặc "term" đổi bản dịch một thuật ngữ từ chương đó (source là dạng gốc như trong ' +
+    'list_glossary, target là bản dịch mới), các chương trước giữ bản dịch cũ. Chương đang dịch hoặc đã dịch ' +
+    'giữ bản cũ; kết quả trả về chương thực sự bắt đầu áp dụng, hãy báo đúng chương đó. Người dùng phải duyệt trước.',
   kind: 'external',
-  schema: v.object({
-    taskId: v.pipe(v.string(), v.minLength(1)),
-    fromChapter: v.pipe(v.number(), v.integer(), v.minValue(1)),
-    instruction: v.pipe(v.string(), v.trim(), v.minLength(1), v.maxLength(STEERING_INSTRUCTION_MAX))
-  }),
+  schema: v.pipe(
+    v.object({
+      taskId: v.pipe(v.string(), v.minLength(1)),
+      fromChapter: v.pipe(v.number(), v.integer(), v.minValue(1)),
+      instruction: v.optional(
+        v.pipe(v.string(), v.trim(), v.minLength(1), v.maxLength(STEERING_INSTRUCTION_MAX))
+      ),
+      term: v.optional(
+        v.object({
+          source: v.pipe(v.string(), v.trim(), v.minLength(1)),
+          target: v.pipe(v.string(), v.trim(), v.minLength(1)),
+          notes: v.optional(v.string())
+        })
+      )
+    }),
+    v.check(
+      (args) => (args.instruction === undefined) !== (args.term === undefined),
+      'Cần đúng một: "instruction" hoặc "term".'
+    )
+  ),
   parameters: {
     type: 'object',
     properties: {
       taskId: { type: 'string' },
       fromChapter: { type: 'integer', minimum: 1 },
-      instruction: { type: 'string', maxLength: STEERING_INSTRUCTION_MAX }
+      instruction: { type: 'string', maxLength: STEERING_INSTRUCTION_MAX },
+      term: {
+        type: 'object',
+        properties: {
+          source: { type: 'string' },
+          target: { type: 'string' },
+          notes: { type: 'string' }
+        },
+        required: ['source', 'target']
+      }
     },
-    required: ['taskId', 'fromChapter', 'instruction']
+    required: ['taskId', 'fromChapter']
   },
   targetPolicy: 'no_target',
   handler: async () => ({

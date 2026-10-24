@@ -87,3 +87,17 @@ describe('ContextQuestionService', () => {
     expect(changes[0]).toMatchObject({ actor: 'code', oldValue: 'Ryōta', newValue: 'Ryota' })
   })
 })
+
+describe('ContextQuestionService.countForRuns', () => {
+  it('counts the open questions the given runs left', () => {
+    const kit = setup([{ source: 'ミリィ' }])
+    kit.library.withWork(kit.work.id, (db) => {
+      const a = createContextEntry(db, { source: 'ミリィ', target: 'Milly' })
+      const b = createContextEntry(db, { source: 'リオン', target: 'Rion' })
+      attachQuestion(db, a.id, { ...question(null), runId: 'run-task' })
+      attachQuestion(db, b.id, { ...question(null), runId: 'run-other' })
+    })
+    expect(kit.service.countForRuns(kit.work.id, ['run-task'])).toBe(1)
+    expect(kit.service.countForRuns(kit.work.id, [])).toBe(0)
+  })
+})

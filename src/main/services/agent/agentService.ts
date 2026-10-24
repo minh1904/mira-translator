@@ -4,6 +4,7 @@ import {
   setWorkConventionsCapability
 } from './capabilities/contextQuestionCapabilities'
 import { contextQuestionNote } from '../context/contextQuestionService'
+import { termSteeringChange } from './steeringTerm'
 import { createHash, randomUUID } from 'node:crypto'
 import * as v from 'valibot'
 import type {
@@ -1485,7 +1486,14 @@ export class AgentService {
               taskId: String(args.taskId),
               clientCommandId: row.id,
               chapterNumber: fromChapter,
-              change: { kind: 'instruction', text: String(args.instruction) }
+              change: args.term
+                ? termSteeringChange(
+                    this.library,
+                    this.tasks.get(String(args.taskId)).task.workId,
+                    fromChapter,
+                    args.term as { source: string; target: string; notes?: string }
+                  )
+                : { kind: 'instruction', text: String(args.instruction ?? '') }
             })
             finish('completed', { steeringId: steering.id })
             return {

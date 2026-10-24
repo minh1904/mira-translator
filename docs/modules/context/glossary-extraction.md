@@ -190,7 +190,8 @@ Không còn bước duyệt (2026-10-23), nên mọi thay đổi đều áp ngay
 - **Hai loại thay đổi.**
   - `correction`: mục sai từ đầu, sửa tại chỗ cho cả truyện.
   - `progression`: mục đóng ở chương N−1, và một mục mới nối với mục cũ (`supersedes_id`) bắt đầu từ chương N.
-    Thuật ngữ đổi được từ chương N như xưng hô (`changeTermFrom`), kể cả qua steering của task (IPC).
+    Thuật ngữ đổi được từ chương N như xưng hô (`changeTermFrom`), kể cả qua steering của task: từ IPC, hoặc
+    từ chat bằng `steer_translation_task` với `term`.
 - **Dạng viết** chỉ còn duy nhất trong cùng phạm vi chương. Migration 19 của file tác phẩm dựng lại
   `context_alias` với `UNIQUE (entry_id, form)`. Code từ chối hai mục có phạm vi chồng nhau cùng một dạng.
 - **Một hàm áp: `reviseEntry`.** Thay đổi do AI đề xuất chỉ áp khi qua đủ ba chốt:
@@ -322,7 +323,8 @@ chọn ứng với một hành động code, không gọi model.
     có cách đọc, chưa được sửa tay, và bản dịch đúng cách phiên cũ. Mỗi mục phiên lại có lịch sử với nguồn
     `code`. Mira trả số mục đã đổi và số mục bị bỏ qua.
 
-Chưa làm: số câu hỏi trong chi tiết task ở màn Hoạt động. Màn đó đang được làm ở phần việc khác.
+Chi tiết task ở màn Hoạt động hiện "N câu hỏi ngữ cảnh" (câu hỏi do bước trích của task để lại), bấm vào thì mở
+màn Từ điển ở bộ lọc "Cần xem". Phần hiển thị này đi cùng phần việc `unify-activity-screen`.
 
 ## 7. Câu hỏi còn mở
 

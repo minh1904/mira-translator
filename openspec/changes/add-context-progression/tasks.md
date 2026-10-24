@@ -35,8 +35,7 @@
 
 - [x] 4.1 Thêm `change.kind = 'term'` vào `agentTaskSteerInputSchema` và nhánh trong `taskService.steer`; capability
       chat steering mô tả loại mới; test ca đổi 記憶遡行 từ chương 8 và ca gửi lại sau lỗi
-      (Đã làm qua IPC steering. Capability steering của chat vẫn chỉ nhận chỉ dẫn, như với xưng hô; mở rộng nó
-      cần đổi luồng duyệt trong `agentService`, nên để lại.)
+      (Chat: `steer_translation_task` nhận `term` với dạng gốc và bản dịch mới, qua bước duyệt như chỉ dẫn.)
 
 ## 5. Màn Từ điển
 

@@ -43,4 +43,4 @@
       13/51), số họ lệch khuôn, số mục `term`, số alias; ghi kết quả vào `docs/modules/context/glossary-extraction.md`
 - [x] 4.2 Cập nhật `docs/modules/context/glossary-extraction.md`: các bước đã đổi, trạng thái đã triển khai; thêm
       phần nghiên cứu công cụ khác (KeywordGacha, AiNiee, LinguaGacha) làm quan sát
-- [ ] 4.3 Chạy `node scripts/check.mjs` và xác nhận typecheck, test, lint đều chạy và qua
+- [x] 4.3 Chạy `node scripts/check.mjs` và xác nhận typecheck, test, lint đều chạy và qua

@@ -1,5 +1,6 @@
 export { AddressingScreen } from './addressing/AddressingScreen'
 export { AppliedContext } from './glossary/AppliedContext'
 export { GlossaryScreen } from './glossary/GlossaryScreen'
+export { requestGlossaryView } from './glossary/glossaryView'
 export { SharedGlossaryMock } from './shared-glossary/SharedGlossaryMock'
 export { StyleProfilesMock } from './style-profiles/StyleProfilesMock'
