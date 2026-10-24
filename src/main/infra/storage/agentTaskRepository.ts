@@ -250,16 +250,22 @@ export class AgentTaskRepository {
       .map(itemFrom)
   }
 
-  /** The item the scheduler runs next: `(task.created_at, task.id, item.ordinal)`. */
-  nextQueuedItem(): AgentTaskItemView | null {
-    const row = this.db
+  /**
+   * Every item the scheduler may start, with its task's model, by `(task.created_at, task.id, item.ordinal)`;
+   * the scheduler picks among them (`pickNextItem`).
+   */
+  queuedItems(): Array<AgentTaskItemView & ModelRef> {
+    return this.db
       .prepare(
-        `SELECT i.* FROM agent_task_item i JOIN agent_task t ON t.id = i.task_id
+        `SELECT i.*, t.model_ref_json FROM agent_task_item i JOIN agent_task t ON t.id = i.task_id
          WHERE t.state IN ('queued', 'running') AND i.state = 'queued'
-         ORDER BY t.created_at, t.id, i.ordinal LIMIT 1`
+         ORDER BY t.created_at, t.id, i.ordinal`
       )
-      .get<ItemRow>()
-    return row ? itemFrom(row) : null
+      .all<ItemRow & { model_ref_json: string }>()
+      .map((row) => {
+        const { connectionId, entryId } = JSON.parse(row.model_ref_json) as ModelRef
+        return { ...itemFrom(row), connectionId, entryId }
+      })
   }
 
   runningItems(): AgentTaskItemView[] {

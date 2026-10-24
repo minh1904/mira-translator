@@ -180,3 +180,50 @@ describe('Limiter.setLimit', () => {
     expect(limiter.current).toBe(2)
   })
 })
+
+describe('Limiter priority', () => {
+  /** Xếp một lượt chờ và ghi tên nó khi được cấp; trả hàm giải phóng của lượt đó. */
+  const queue = (
+    limiter: Limiter,
+    order: string[],
+    name: string,
+    priority: 'interactive' | 'background',
+    signal?: AbortSignal
+  ): Promise<() => void> =>
+    limiter.acquire(signal, priority).then((release) => {
+      order.push(name)
+      return release
+    })
+
+  it('lets a chat call go before background calls already waiting', async () => {
+    const limiter = new Limiter(1)
+    const release = await limiter.acquire(undefined, 'background')
+    const order: string[] = []
+    const waits = [
+      queue(limiter, order, 'task1', 'background'),
+      queue(limiter, order, 'task2', 'background'),
+      queue(limiter, order, 'task3', 'background'),
+      queue(limiter, order, 'chat', 'interactive')
+    ]
+    release()
+    for (const wait of [waits[3]!, waits[0]!, waits[1]!, waits[2]!]) (await wait)()
+    expect(order).toEqual(['chat', 'task1', 'task2', 'task3'])
+  })
+
+  it('takes a cancelled background call out of its own line', async () => {
+    const limiter = new Limiter(1)
+    const release = await limiter.acquire()
+    const order: string[] = []
+    const controller = new AbortController()
+    const cancelled = queue(limiter, order, 'gone', 'background', controller.signal).catch(
+      (e: unknown) => e
+    )
+    const kept = queue(limiter, order, 'kept', 'background')
+    controller.abort()
+    expect(await cancelled).toBeInstanceOf(ProviderError)
+    expect(limiter.queued).toBe(1)
+    release()
+    ;(await kept)()
+    expect(order).toEqual(['kept'])
+  })
+})

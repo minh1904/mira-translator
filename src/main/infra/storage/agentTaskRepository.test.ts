@@ -156,13 +156,13 @@ describe('AgentTaskRepository', () => {
     db.close()
   })
 
-  it('picks the next item by task age then ordinal and numbers attempts', () => {
+  it('lists startable items by task age then ordinal and numbers attempts', () => {
     const { repo, db } = setup()
     const older = create(repo, 'older', ['o1', 'o2']).task
     create(repo, 'newer', ['n1'])
-    expect(repo.nextQueuedItem()?.chapterId).toBe('o1')
+    expect(repo.queuedItems().map((item) => item.chapterId)).toEqual(['o1', 'o2', 'n1'])
     repo.transitionTask(older.id, 'paused', { now: 2, reason: 'user' })
-    expect(repo.nextQueuedItem()?.chapterId).toBe('n1')
+    expect(repo.queuedItems().map((item) => item.chapterId)).toEqual(['n1'])
 
     const [item] = repo.listItems(older.id)
     db.exec(`INSERT INTO agent_operation (id, task_item_id, command_id, capability, target_json, state,

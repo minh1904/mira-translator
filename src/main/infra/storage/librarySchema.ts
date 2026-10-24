@@ -565,6 +565,49 @@ CREATE TABLE agent_session_summary (
 );
 `
 
+// Change add-agent-turn-steering D1: messages typed while a turn runs wait in agent_turn_steer and
+// become a 'steer' part once delivered. SQLite cannot widen a CHECK in place, so the part table is
+// rebuilt; nothing references it.
+const version19 = `
+CREATE TABLE agent_turn_steer (
+  id TEXT PRIMARY KEY,
+  turn_id TEXT NOT NULL REFERENCES agent_turn (id) ON DELETE CASCADE,
+  seq INTEGER NOT NULL CHECK (seq > 0),
+  text TEXT NOT NULL,
+  state TEXT NOT NULL CHECK (state IN ('pending', 'delivered', 'withdrawn', 'returned', 'forwarded')),
+  delivered_round INTEGER,
+  forwarded_turn_id TEXT REFERENCES agent_turn (id) ON DELETE SET NULL,
+  client_command_id TEXT,
+  created_at INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL,
+  UNIQUE (turn_id, seq),
+  UNIQUE (turn_id, client_command_id)
+);
+CREATE TABLE agent_turn_part_new (
+  id TEXT PRIMARY KEY,
+  turn_id TEXT NOT NULL REFERENCES agent_turn (id) ON DELETE CASCADE,
+  seq INTEGER NOT NULL CHECK (seq > 0),
+  round INTEGER NOT NULL CHECK (round >= 0),
+  kind TEXT NOT NULL CHECK (kind IN ('text', 'reasoning', 'tool_call', 'progress', 'steer')),
+  text TEXT NOT NULL DEFAULT '',
+  tool_call_id TEXT,
+  duration_ms INTEGER,
+  created_at INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL,
+  UNIQUE (turn_id, seq),
+  CHECK ((kind = 'tool_call') = (tool_call_id IS NOT NULL))
+);
+INSERT INTO agent_turn_part_new SELECT * FROM agent_turn_part;
+DROP TABLE agent_turn_part;
+ALTER TABLE agent_turn_part_new RENAME TO agent_turn_part;
+`
+
+const version21 = `
+ALTER TABLE work_index ADD COLUMN setting TEXT;
+ALTER TABLE work_index ADD COLUMN settings_extra TEXT;
+ALTER TABLE work_index ADD COLUMN culture TEXT;
+`
+
 export const librarySchema: SchemaSpec = {
   applicationId: LIBRARY_APPLICATION_ID,
   migrations: [
@@ -675,6 +718,26 @@ export const librarySchema: SchemaSpec = {
       version: 18,
       up(db) {
         db.exec(version18)
+      }
+    },
+    {
+      version: 19,
+      up(db) {
+        db.exec(version19)
+      }
+    },
+    {
+      // Change `parallelize-task-chapters`: several task items run at once, bounded by the scheduler.
+      version: 20,
+      up(db) {
+        db.exec('DROP INDEX agent_task_item_one_running')
+      }
+    },
+    {
+      // Change `add-multilingual-addressing-presets`: the index mirrors the work file's story profile.
+      version: 21,
+      up(db) {
+        db.exec(version21)
       }
     }
   ]

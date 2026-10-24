@@ -9,6 +9,7 @@ import type {
   AgentPermissionLevel,
   AgentProgress,
   AgentResponsePart,
+  AgentSteer,
   AgentToolApproval,
   AgentTurnState,
   ResolvedTarget
@@ -18,6 +19,7 @@ import {
   canTransitionOperation,
   canTransitionTurn
 } from '../../../shared/contracts/agent'
+import { AGENT_STEER_LIMIT } from '../../../shared/contracts/agent'
 import type { ModelRef } from '../../../shared/contracts/aiPreferences'
 import type { TokenUsage } from '../../../shared/contracts/usage'
 import { StorageError } from './errors'
@@ -183,6 +185,33 @@ interface PartRow {
   created_at: number
   updated_at: number
 }
+
+interface SteerRow {
+  id: string
+  turn_id: string
+  seq: number
+  text: string
+  state: AgentSteer['state']
+  delivered_round: number | null
+  forwarded_turn_id: string | null
+  created_at: number
+  updated_at: number
+}
+
+const STEER_COLUMNS =
+  'id, turn_id, seq, text, state, delivered_round, forwarded_turn_id, created_at, updated_at'
+
+const steerFrom = (row: SteerRow): AgentSteer => ({
+  id: row.id,
+  turnId: row.turn_id,
+  seq: row.seq,
+  text: row.text,
+  state: row.state,
+  deliveredRound: row.delivered_round,
+  forwardedTurnId: row.forwarded_turn_id,
+  createdAt: row.created_at,
+  updatedAt: row.updated_at
+})
 
 const PART_COLUMNS =
   'id, turn_id, seq, round, kind, text, tool_call_id, duration_ms, created_at, updated_at'
@@ -517,6 +546,12 @@ export class AgentRepository {
       .prepare('UPDATE agent_session SET updated_at = ? WHERE id = ?')
       .run(now, current.sessionId)
 
+    // Messages still waiting go back to the user on every end but `completed`, which forwards them
+    // as a new turn (change add-agent-turn-steering D3); that includes a restart's `interrupted`.
+    if (status !== 'completed' && status !== 'running' && status !== 'queued') {
+      this.settleSteers(id, { state: 'returned' }, now)
+    }
+
     return this.getTurn(id)!
   }
 
@@ -591,6 +626,19 @@ export class AgentRepository {
          FROM agent_operation ORDER BY updated_at DESC, id DESC LIMIT ?`
       )
       .all<OperationRow>(limit)
+      .map(operationFrom)
+  }
+
+  /** Every operation of a task's items in one query, oldest first: the runs behind a task's detail. */
+  listTaskOperations(taskId: string): AgentOperation[] {
+    return this.db
+      .prepare(
+        `SELECT o.id, o.turn_id, o.task_item_id, o.command_id, o.capability, o.target_json, o.state, o.progress_json,
+                o.model_ref_json, o.usage_json, o.result_json, o.error_json, o.created_at, o.updated_at
+         FROM agent_operation o JOIN agent_task_item i ON i.id = o.task_item_id
+         WHERE i.task_id = ? ORDER BY o.created_at ASC, o.id ASC`
+      )
+      .all<OperationRow>(taskId)
       .map(operationFrom)
   }
 
@@ -987,6 +1035,166 @@ export class AgentRepository {
   }
 
   /** The session's summary; one that covers a reverted (or missing) turn is deleted and reads as `null`. */
+  /**
+   * Queues a message typed while the turn runs. Sending the same `clientCommandId` again returns the
+   * first one; a turn that is not running, or one with `AGENT_STEER_LIMIT` messages waiting, refuses.
+   */
+  addSteer(input: {
+    turnId: string
+    text: string
+    clientCommandId: string | null
+    now: number
+  }): AgentSteer {
+    return this.db.transaction(() => {
+      if (input.clientCommandId) {
+        const same = this.db
+          .prepare(`SELECT ${STEER_COLUMNS} FROM agent_turn_steer
+            WHERE turn_id = ? AND client_command_id = ?`)
+          .get<SteerRow>(input.turnId, input.clientCommandId)
+        if (same) return steerFrom(same)
+      }
+      const turn = this.getTurn(input.turnId)
+      if (!turn) throw new StorageError('not_found', 'Không tìm thấy lượt agent.')
+      if (turn.status !== 'queued' && turn.status !== 'running') {
+        throw new StorageError('conflict', 'Lượt đã kết thúc; hãy gửi thành lệnh mới.')
+      }
+      const waiting = this.listSteers(input.turnId).filter((steer) => steer.state === 'pending')
+      if (waiting.length >= AGENT_STEER_LIMIT) {
+        throw new StorageError(
+          'conflict',
+          `Đã có ${AGENT_STEER_LIMIT} tin đang chờ; đợi agent nhận rồi gửi thêm.`
+        )
+      }
+      const seq =
+        this.db
+          .prepare('SELECT MAX(seq) AS seq FROM agent_turn_steer WHERE turn_id = ?')
+          .get<{ seq: number | null }>(input.turnId)?.seq ?? 0
+      const row: SteerRow = {
+        id: randomUUID(),
+        turn_id: input.turnId,
+        seq: seq + 1,
+        text: input.text,
+        state: 'pending',
+        delivered_round: null,
+        forwarded_turn_id: null,
+        created_at: input.now,
+        updated_at: input.now
+      }
+      this.db
+        .prepare(`INSERT INTO agent_turn_steer (${STEER_COLUMNS}, client_command_id)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+        .run(
+          row.id,
+          row.turn_id,
+          row.seq,
+          row.text,
+          row.state,
+          row.delivered_round,
+          row.forwarded_turn_id,
+          row.created_at,
+          row.updated_at,
+          input.clientCommandId
+        )
+      return steerFrom(row)
+    })
+  }
+
+  getSteer(id: string): AgentSteer | null {
+    const row = this.db
+      .prepare(`SELECT ${STEER_COLUMNS} FROM agent_turn_steer WHERE id = ?`)
+      .get<SteerRow>(id)
+    return row ? steerFrom(row) : null
+  }
+
+  listSteers(turnId: string): AgentSteer[] {
+    return this.db
+      .prepare(`SELECT ${STEER_COLUMNS} FROM agent_turn_steer WHERE turn_id = ? ORDER BY seq`)
+      .all<SteerRow>(turnId)
+      .map(steerFrom)
+  }
+
+  /** Messages of the session still waiting or handed back to the user, oldest first. */
+  listSessionSteers(sessionId: string): AgentSteer[] {
+    return this.db
+      .prepare(
+        `SELECT ${STEER_COLUMNS.replace(/(\w+)/g, 's.$1')} FROM agent_turn_steer s
+         JOIN agent_turn t ON t.id = s.turn_id
+         WHERE t.session_id = ? AND s.state IN ('pending', 'returned')
+         ORDER BY t.created_at ASC, s.seq ASC`
+      )
+      .all<SteerRow>(sessionId)
+      .map(steerFrom)
+  }
+
+  /** Withdraws a waiting or returned message; one already in a turn cannot be taken back. */
+  withdrawSteer(id: string, now: number): AgentSteer {
+    return this.db.transaction(() => {
+      const steer = this.getSteer(id)
+      if (!steer) throw new StorageError('not_found', 'Không tìm thấy tin đã gửi.')
+      if (steer.state === 'withdrawn') return steer
+      if (steer.state !== 'pending' && steer.state !== 'returned') {
+        throw new StorageError('conflict', 'Tin đã được gửi cho agent nên không rút lại được.')
+      }
+      return this.setSteerState(id, 'withdrawn', now)
+    })
+  }
+
+  /**
+   * Delivers every waiting message of the turn at `round`: each becomes `delivered` and a `steer` part,
+   * in one transaction so a message is never both waiting and in the turn.
+   */
+  deliverSteers(turnId: string, round: number, now: number): AgentSteer[] {
+    return this.db.transaction(() => {
+      const waiting = this.listSteers(turnId).filter((steer) => steer.state === 'pending')
+      if (waiting.length === 0) return []
+      this.insertParts(
+        turnId,
+        waiting.map((steer) => ({
+          round,
+          kind: 'steer' as const,
+          text: steer.text,
+          toolCallId: null,
+          durationMs: null,
+          createdAt: steer.createdAt
+        })),
+        now
+      )
+      return waiting.map((steer) => {
+        this.db
+          .prepare('UPDATE agent_turn_steer SET delivered_round = ? WHERE id = ?')
+          .run(round, steer.id)
+        return this.setSteerState(steer.id, 'delivered', now)
+      })
+    })
+  }
+
+  /** Hands the turn's waiting messages back (`returned`) or on to a new turn (`forwarded`). */
+  settleSteers(
+    turnId: string,
+    outcome: { state: 'returned' } | { state: 'forwarded'; turnId: string },
+    now: number
+  ): AgentSteer[] {
+    return this.db.transaction(() =>
+      this.listSteers(turnId)
+        .filter((steer) => steer.state === 'pending')
+        .map((steer) => {
+          if (outcome.state === 'forwarded') {
+            this.db
+              .prepare('UPDATE agent_turn_steer SET forwarded_turn_id = ? WHERE id = ?')
+              .run(outcome.turnId, steer.id)
+          }
+          return this.setSteerState(steer.id, outcome.state, now)
+        })
+    )
+  }
+
+  private setSteerState(id: string, state: AgentSteer['state'], now: number): AgentSteer {
+    this.db
+      .prepare('UPDATE agent_turn_steer SET state = ?, updated_at = ? WHERE id = ?')
+      .run(state, now, id)
+    return this.getSteer(id)!
+  }
+
   getSessionSummary(sessionId: string): AgentSessionSummary | null {
     const row = this.db
       .prepare(

@@ -35,7 +35,7 @@ describe('library agent schema', () => {
 
     migrate(db, librarySchema)
 
-    expect(readPragmas(db).userVersion).toBe(18)
+    expect(readPragmas(db).userVersion).toBe(21)
     expect(db.prepare("SELECT title FROM work_index WHERE id = 'work'").get()).toEqual({
       title: 'A'
     })
@@ -62,7 +62,8 @@ describe('library agent schema', () => {
       'agent_task_steering',
       'agent_tool_call',
       'agent_turn',
-      'agent_turn_part'
+      'agent_turn_part',
+      'agent_turn_steer'
     ])
     db.close()
   })
@@ -133,7 +134,7 @@ describe('library agent schema', () => {
     db.close()
   })
 
-  it('v12 keeps task states in the vocabulary, one running item and one operation owner', () => {
+  it('keeps task states in the vocabulary, several running items (v20) and one operation owner', () => {
     const db = openDatabase(join(tempDir(), 'v12.db'))
     migrate(db, librarySchema)
     db.exec(`
@@ -158,9 +159,8 @@ describe('library agent schema', () => {
       db.exec(`INSERT INTO agent_task_item (id, task_id, ordinal, chapter_id, state, created_at, updated_at)
         VALUES ('${id}', 'k', ${ordinal}, 'c${ordinal}', '${state}', 1, 1)`)
     item('i1', 1, 'running')
-    expect(throws(() => item('i2', 2, 'running'))).toBe(true)
+    item('i2', 2, 'running')
     expect(throws(() => item('i3', 1, 'queued'))).toBe(true)
-    item('i2', 2, 'queued')
 
     const operation = (id: string, turn: string, taskItem: string) =>
       db.exec(`INSERT INTO agent_operation (id, turn_id, task_item_id, command_id, capability,

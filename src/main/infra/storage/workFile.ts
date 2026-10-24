@@ -1,4 +1,15 @@
-import type { CreateWorkInput, WorkPatch, WorkSummary } from '../../../shared/contracts/library'
+import {
+  CULTURE_IDS,
+  SETTING_IDS,
+  type CultureId,
+  type SettingId
+} from '../../../shared/contracts/addressing/types'
+import type {
+  CreateWorkInput,
+  WorkPatch,
+  WorkSetting,
+  WorkSummary
+} from '../../../shared/contracts/library'
 import type { ImageMime } from '../../../shared/contracts/images'
 import type { CoverImage } from './cover'
 import { StorageError } from './errors'
@@ -23,6 +34,9 @@ export interface WorkRow {
   description: string | null
   author: string | null
   genre: string | null
+  setting: string | null
+  settings_extra: string | null
+  culture: string | null
   source_lang: WorkSummary['sourceLang']
   status: WorkSummary['status']
   archived: number
@@ -35,7 +49,26 @@ export interface WorkRow {
   updated_at: number
 }
 
+const isSetting = (value: string): value is SettingId =>
+  (SETTING_IDS as readonly string[]).includes(value)
+const isCulture = (value: string): value is CultureId =>
+  (CULTURE_IDS as readonly string[]).includes(value)
+
+/** A value another version wrote that this one does not know reads as "not chosen", never as an error. */
+function readSetting(value: string | null): WorkSetting | null {
+  return value === 'none' || (value !== null && isSetting(value)) ? (value as WorkSetting) : null
+}
+
+function readExtra(setting: WorkSetting | null, value: string | null): SettingId[] {
+  if (setting === null || setting === 'none' || !value) return []
+  return value
+    .split(',')
+    .filter(isSetting)
+    .filter((id) => id !== setting)
+}
+
 export function rowToSummary(row: WorkRow): WorkSummary {
+  const setting = readSetting(row.setting)
   return {
     id: row.id,
     title: row.title,
@@ -43,6 +76,9 @@ export function rowToSummary(row: WorkRow): WorkSummary {
     description: row.description,
     author: row.author,
     genre: row.genre,
+    setting,
+    settingsExtra: readExtra(setting, row.settings_extra),
+    culture: row.culture !== null && isCulture(row.culture) ? row.culture : null,
     coverVersion: row.cover_version,
     sourceLang: row.source_lang,
     status: row.status,
@@ -62,7 +98,7 @@ export function rowToSummary(row: WorkRow): WorkSummary {
 }
 
 const SELECT_WORK = `
-  SELECT w.id, w.title, w.original_title, w.description, w.author, w.genre, w.source_lang, w.status, w.archived,
+  SELECT w.id, w.title, w.original_title, w.description, w.author, w.genre, w.setting, w.settings_extra, w.culture, w.source_lang, w.status, w.archived,
          (SELECT count(*) FROM chapter) AS chapter_count,
          lc.id AS last_chapter_id,
          (SELECT count(*) FROM chapter c WHERE c.position < lc.position) + 1 AS last_chapter_number,
@@ -92,8 +128,9 @@ export function readWork(db: Db): WorkSummary {
 export function insertWork(db: Db, id: string, input: CreateWorkInput, now: number): void {
   db.prepare(
     `INSERT INTO work (
-       id, title, original_title, description, author, genre, source_lang, created_at, updated_at
-     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
+       id, title, original_title, description, author, genre, setting, settings_extra, culture,
+       source_lang, created_at, updated_at
+     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
   ).run(
     id,
     input.title,
@@ -101,6 +138,9 @@ export function insertWork(db: Db, id: string, input: CreateWorkInput, now: numb
     emptyToNull(input.description),
     emptyToNull(input.author),
     emptyToNull(input.genre),
+    input.setting ?? null,
+    normalizeExtra(input.setting ?? null, input.settingsExtra ?? []),
+    input.culture ?? null,
     input.sourceLang,
     now,
     now
@@ -121,6 +161,24 @@ export function patchWork(db: Db, patch: WorkPatch, now: number): boolean {
   if (patch.description !== undefined) set('description', emptyToNull(patch.description))
   if (patch.author !== undefined) set('author', emptyToNull(patch.author))
   if (patch.genre !== undefined) set('genre', emptyToNull(patch.genre))
+  if (patch.setting !== undefined) set('setting', patch.setting)
+  if (patch.culture !== undefined) set('culture', patch.culture)
+  if (patch.setting !== undefined || patch.settingsExtra !== undefined) {
+    // Extra settings follow the primary one: they stay only while it is a real setting, and never repeat it.
+    const current = db
+      .prepare('SELECT setting, settings_extra FROM work')
+      .get<{ setting: string | null; settings_extra: string | null }>()
+    const setting =
+      patch.setting !== undefined ? patch.setting : readSetting(current?.setting ?? null)
+    const extra =
+      patch.settingsExtra ??
+      readExtra(readSetting(current?.setting ?? null), current?.settings_extra ?? null)
+    const hasPrimary = setting !== null && setting !== 'none'
+    if (patch.settingsExtra && patch.settingsExtra.length > 0 && !hasPrimary) {
+      throw new StorageError('validation', 'Chọn bối cảnh chính trước khi thêm bối cảnh phụ.')
+    }
+    set('settings_extra', normalizeExtra(setting, extra))
+  }
   if (patch.status !== undefined) set('status', patch.status)
   if (patch.archived !== undefined) set('archived', patch.archived ? 1 : 0)
 
@@ -128,6 +186,13 @@ export function patchWork(db: Db, patch: WorkPatch, now: number): boolean {
   set('updated_at', now)
   db.prepare('UPDATE work SET ' + sets.join(', ')).run(...params)
   return true
+}
+
+/** Comma-joined extra settings without repeats and without the primary one; null when none are left. */
+function normalizeExtra(setting: WorkSetting | null, extra: readonly SettingId[]): string | null {
+  if (setting === null || setting === 'none') return null
+  const kept = extra.filter((id, index) => id !== setting && extra.indexOf(id) === index)
+  return kept.length === 0 ? null : kept.join(',')
 }
 
 /** Storage does not rely on callers having trimmed: blank optional text is stored as null. */

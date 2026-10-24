@@ -59,6 +59,86 @@ describe('AgentRepository', () => {
     close()
   })
 
+  describe('steer messages', () => {
+    const running = () => {
+      const { repo, close } = repository()
+      repo.createSession({ id: id(1), now: 1 })
+      repo.createTurn({
+        id: id(2),
+        sessionId: id(1),
+        instruction: 'rà chương 1–5',
+        context: {},
+        now: 2
+      })
+      repo.transitionTurn(id(2), 'running', 3)
+      return { repo, close }
+    }
+
+    it('queues once per command id, delivers as steer parts and never twice', () => {
+      const { repo, close } = running()
+      const first = repo.addSteer({
+        turnId: id(2),
+        text: 'chỉ chương 3',
+        clientCommandId: 'c1',
+        now: 4
+      })
+      expect(repo.addSteer({ turnId: id(2), text: 'khác', clientCommandId: 'c1', now: 5 }).id).toBe(
+        first.id
+      )
+      repo.addSteer({ turnId: id(2), text: 'bỏ chương 4', clientCommandId: 'c2', now: 6 })
+      expect(repo.listSessionSteers(id(1)).map((steer) => steer.text)).toEqual([
+        'chỉ chương 3',
+        'bỏ chương 4'
+      ])
+      const delivered = repo.deliverSteers(id(2), 2, 7)
+      expect(delivered.map((steer) => [steer.state, steer.deliveredRound])).toEqual([
+        ['delivered', 2],
+        ['delivered', 2]
+      ])
+      expect(repo.listParts(id(2)).map((part) => [part.kind, part.round, part.text])).toEqual([
+        ['steer', 2, 'chỉ chương 3'],
+        ['steer', 2, 'bỏ chương 4']
+      ])
+      expect(repo.deliverSteers(id(2), 3, 8)).toEqual([])
+      expect(repo.listSessionSteers(id(1))).toEqual([])
+      expect(() => repo.withdrawSteer(first.id, 9)).toThrow(StorageError)
+      close()
+    })
+
+    it('refuses a sixth waiting message and any message once the turn ended', () => {
+      const { repo, close } = running()
+      for (let i = 0; i < 5; i++) {
+        repo.addSteer({ turnId: id(2), text: 'tin ' + i, clientCommandId: null, now: 4 })
+      }
+      expect(() =>
+        repo.addSteer({ turnId: id(2), text: 'tin 5', clientCommandId: null, now: 5 })
+      ).toThrow(/5 tin/)
+      repo.transitionTurn(id(2), 'completed', 6)
+      expect(() =>
+        repo.addSteer({ turnId: id(2), text: 'muộn', clientCommandId: null, now: 7 })
+      ).toThrow(/kết thúc/)
+      close()
+    })
+
+    it('withdraws a waiting or returned message and hands the rest back or on', () => {
+      const { repo, close } = running()
+      const a = repo.addSteer({ turnId: id(2), text: 'a', clientCommandId: null, now: 4 })
+      const b = repo.addSteer({ turnId: id(2), text: 'b', clientCommandId: null, now: 5 })
+      expect(repo.withdrawSteer(a.id, 6).state).toBe('withdrawn')
+      expect(repo.settleSteers(id(2), { state: 'returned' }, 7).map((s) => s.id)).toEqual([b.id])
+      expect(repo.listSessionSteers(id(1)).map((s) => s.state)).toEqual(['returned'])
+      expect(repo.withdrawSteer(b.id, 8).state).toBe('withdrawn')
+
+      const c = repo.addSteer({ turnId: id(2), text: 'c', clientCommandId: null, now: 9 })
+      repo.transitionTurn(id(2), 'completed', 10)
+      repo.createTurn({ id: id(5), sessionId: id(1), instruction: 'c', context: {}, now: 10 })
+      expect(repo.settleSteers(id(2), { state: 'forwarded', turnId: id(5) }, 10)).toMatchObject([
+        { id: c.id, state: 'forwarded', forwardedTurnId: id(5) }
+      ])
+      close()
+    })
+  })
+
   it('rejects a second active turn and permits another after a terminal transition', () => {
     const { repo, close } = repository()
     repo.createSession({ id: id(1), title: '', now: 1 })

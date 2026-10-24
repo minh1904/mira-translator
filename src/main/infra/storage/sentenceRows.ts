@@ -38,25 +38,31 @@ export interface RowAuthor {
 
 const BY_HAND: RowAuthor = { origin: 'human', provider: null, model: null }
 
-/** Between two translated sentences: a line break when their source sentences are on different lines. */
+/**
+ * Between two translated sentences: a line break when their source sentences are on different lines,
+ * and one blank line where the source leaves blank lines between them (pacing, scene breaks).
+ */
 function separatorBetween(source: TextRecord, before: number, after: number): string {
   const gap = source.content.slice(source.segments[before].end, source.segments[after].start)
-  return gap.includes('\n') ? '\n' : ' '
+  const breaks = gap.split('\n').length - 1
+  return breaks === 0 ? ' ' : breaks === 1 ? '\n' : '\n\n'
 }
 
 /**
  * Deleting a stretch of text should not leave a stray space or an empty line where it was: take the
- * one separator that touches it.
+ * one separator that touches it. Between two line breaks the longer one stays, so a blank line
+ * on either side survives.
  */
 function withSeparator(content: string, from: number, to: number): [number, number] {
-  const before = content[from - 1]
-  const after = content[to]
-  if (before === ' ') return [from - 1, to]
-  if (after === ' ') return [from, to + 1]
-  if (before === '\n' && after === '\n') return [from, to + 1]
-  if (before === '\n' && after === undefined) return [from - 1, to]
-  if (before === undefined && after === '\n') return [from, to + 1]
-  return [from, to]
+  if (content[from - 1] === ' ') return [from - 1, to]
+  if (content[to] === ' ') return [from, to + 1]
+  let start = from
+  while (content[start - 1] === '\n') start--
+  let end = to
+  while (content[end] === '\n') end++
+  if (start === 0) return [from, end]
+  if (end === content.length) return [start, to]
+  return from - start < end - to ? [start, to] : [from, end]
 }
 
 function rowOf(source: TextRecord, sourceId: string): number {
@@ -136,6 +142,19 @@ export function saveRow(
       const end = target.segments.find((segment) => segment.id === lastId)!.end
       lead = separatorBetween(source, before, index)
       edit = { from: end, to: end, insert: lead + text }
+      // Between two translated rows the old separator was for the pair; write both new ones instead.
+      if (after !== -1) {
+        const next = target.segments.find(
+          (segment) => segment.id === view.rows[after].targetIds[0]
+        )!
+        if (content.slice(end, next.start).trim() === '') {
+          edit = {
+            from: end,
+            to: next.start,
+            insert: lead + text + separatorBetween(source, index, after)
+          }
+        }
+      }
     } else if (after !== -1) {
       const firstId = view.rows[after].targetIds[0]
       const start = target.segments.find((segment) => segment.id === firstId)!.start
@@ -157,7 +176,7 @@ export function saveRow(
   } else {
     // A new row's text is its own segment. The rule for typing at the edge of a segment would
     // stretch a neighbour over it and could take the neighbour's ID, so the neighbours only move.
-    const shift = edit.insert.length
+    const shift = edit.insert.length - (edit.to - edit.from)
     moved = current
       .map((seg) =>
         seg.from >= edit.from ? { ...seg, from: seg.from + shift, to: seg.to + shift } : seg

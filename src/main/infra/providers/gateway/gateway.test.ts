@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { ProviderError, type ProviderErrorKind } from '../types'
 import { Gateway, GatewayRegistry, outcomeFor } from './gateway'
+import { AdaptiveLimit } from './adaptiveLimit'
 import type { KeyExhausted, KeyLease, KeyOutcome, KeySource } from './keys'
 import { KeyScheduler, type KeyRecord, type Lease } from './keyScheduler'
 import { Limiter } from './limiter'
@@ -411,6 +412,63 @@ describe('call: several at once (measured: six 429s froze a key for 30 minutes)'
   })
 })
 
+describe('call: slowing the entry down on a rate limit', () => {
+  function adaptiveRig() {
+    const keys = memoryKeys(['a', 'b'])
+    const limiter = new Limiter(4)
+    const sleeps: number[] = []
+    const sleep = async (ms: number): Promise<void> => {
+      sleeps.push(ms)
+      keys.clock.now += ms
+    }
+    const adaptive = new AdaptiveLimit(
+      limiter,
+      4,
+      () => keys.clock.now,
+      () => 0.5,
+      sleep
+    )
+    const gateway = new Gateway({
+      keys: keys.source,
+      limiter,
+      adaptive,
+      now: () => keys.clock.now,
+      random: () => 0.5,
+      sleep
+    })
+    return { gateway, keys, adaptive, sleeps }
+  }
+
+  it('still moves the failing call to the next key at once, and makes the next call wait', async () => {
+    const { gateway, keys, adaptive, sleeps } = adaptiveRig()
+    while (adaptive.current < 4) adaptive.succeeded()
+    const used: string[] = []
+    const first = await gateway.call(async (lease) => {
+      used.push(lease.id as string)
+      if (lease.id === 'a') throw fail('rate_limited', { status: 429, retryAfterMs: 20_000 })
+      return 'done'
+    })
+    expect(first).toBe('done')
+    expect(used).toEqual(['a', 'b'])
+    expect(sleeps).toEqual([])
+    expect(adaptive.current).toBe(2)
+
+    const pausedAt = keys.clock.now
+    let sentAt = 0
+    await gateway.call(async () => {
+      sentAt = keys.clock.now
+      return 'next'
+    })
+    expect(sentAt - pausedAt).toBe(20_000)
+  })
+
+  it('opens one more place after every two calls that succeed', async () => {
+    const { gateway, adaptive } = adaptiveRig()
+    for (let i = 0; i < 4; i++) await gateway.call(async () => 'ok')
+    expect(adaptive.current).toBe(3)
+  })
+})
+
 describe('the connection limit', () => {
   it('lets the next call start only when a place is free', async () => {
     const { gateway, limiter } = rig(['a'], { limit: 1 })
@@ -708,25 +766,26 @@ describe('GatewayRegistry, per entry', () => {
   it('applies the limits an entry has now, on every call, without being rebuilt', () => {
     const registry = new GatewayRegistry(() => NOW)
     const first = registry.entryRuntimeFor('conn', 'a', { concurrency: 2, rpm: 6 })
-    expect(first.limiter.current).toBe(2)
+    expect(first.adaptive.maximum).toBe(2)
     expect(first.pacer.current).toBe(6)
 
     const again = registry.entryRuntimeFor('conn', 'a', { concurrency: 8, rpm: 0 })
     expect(again).toBe(first)
-    expect(first.limiter.current).toBe(8)
+    expect(first.adaptive.maximum).toBe(8)
     expect(first.pacer.current).toBe(0)
   })
 
   it('uses the default concurrency for 0 or absent, and no pacing for an absent RPM', () => {
     const registry = new GatewayRegistry(() => NOW, 4)
-    expect(registry.entryRuntimeFor('c', 'a').limiter.current).toBe(4)
-    expect(registry.entryRuntimeFor('c', 'b', { concurrency: 0 }).limiter.current).toBe(4)
+    expect(registry.entryRuntimeFor('c', 'a').adaptive.maximum).toBe(4)
+    expect(registry.entryRuntimeFor('c', 'b', { concurrency: 0 }).adaptive.maximum).toBe(4)
     expect(registry.entryRuntimeFor('c', 'c').pacer.current).toBe(0)
   })
 
   it('lets a lower concurrency take hold without cutting a call that is running', async () => {
     const registry = new GatewayRegistry(() => NOW)
     const runtime = registry.entryRuntimeFor('c', 'a', { concurrency: 3 })
+    while (runtime.adaptive.current < 3) runtime.adaptive.succeeded()
     const releases = await Promise.all([1, 2].map(() => runtime.limiter.acquire()))
     registry.entryRuntimeFor('c', 'a', { concurrency: 1 })
     expect(runtime.limiter.inFlight).toBe(2)

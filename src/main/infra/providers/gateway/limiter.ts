@@ -1,5 +1,13 @@
 import { ProviderError } from '../types'
 
+/** Ai đang chờ suất: lượt chat của người dùng (`interactive`) được cấp trước lời gọi của tác vụ nền. */
+export type CallPriority = 'interactive' | 'background'
+
+interface Waiter {
+  grant: () => void
+  onAbort: () => void
+}
+
 /**
  * Giới hạn số lượng yêu cầu tối đa thực thi đồng thời (`limit`), các yêu cầu vượt quá sẽ xếp hàng chờ.
  *
@@ -9,10 +17,7 @@ import { ProviderError } from '../types'
 export class Limiter {
   private active = 0
   private limit: number
-  private readonly waiting: Array<{
-    grant: () => void
-    onAbort: () => void
-  }> = []
+  private readonly waiting: Record<CallPriority, Waiter[]> = { interactive: [], background: [] }
 
   constructor(limit: number) {
     Limiter.check(limit)
@@ -28,7 +33,7 @@ export class Limiter {
   /**
    * Thay đổi giới hạn đồng thời khi đang có yêu cầu chạy hoặc chờ.
    * Giảm giới hạn sẽ không ngắt các yêu cầu đang chạy mà chỉ chặn yêu cầu mới cho đến khi số lượng giảm xuống.
-   * Tăng giới hạn sẽ giải phóng ngay các yêu cầu đang xếp hàng theo thứ tự đến trước.
+   * Tăng giới hạn sẽ giải phóng ngay các yêu cầu đang xếp hàng (hàng `interactive` trước, trong hàng theo thứ tự đến).
    */
   setLimit(limit: number): void {
     Limiter.check(limit)
@@ -42,7 +47,11 @@ export class Limiter {
   }
 
   private drain(): void {
-    while (this.active < this.limit && this.waiting.length > 0) this.waiting.shift()?.grant()
+    while (this.active < this.limit) {
+      const next = this.waiting.interactive.shift() ?? this.waiting.background.shift()
+      if (next === undefined) return
+      next.grant()
+    }
   }
 
   /** Số lượng yêu cầu đang thực thi hiện tại. */
@@ -52,34 +61,35 @@ export class Limiter {
 
   /** Số lượng yêu cầu đang chờ trong hàng đợi. */
   get queued(): number {
-    return this.waiting.length
+    return this.waiting.interactive.length + this.waiting.background.length
   }
 
   /**
    * Xin cấp phát một slot thực thi, trả về hàm giải phóng slot khi hoàn tất.
    * Ném lỗi `cancelled` nếu tín hiệu bị hủy trong lúc đang chờ.
    */
-  acquire(signal?: AbortSignal): Promise<() => void> {
+  acquire(signal?: AbortSignal, priority: CallPriority = 'interactive'): Promise<() => void> {
     if (signal?.aborted) return Promise.reject(new ProviderError('cancelled', 'Yêu cầu đã bị hủy.'))
     if (this.active < this.limit) {
       this.active++
       return Promise.resolve(this.releaser())
     }
     return new Promise((resolve, reject) => {
-      const entry = {
+      const queue = this.waiting[priority]
+      const entry: Waiter = {
         grant: () => {
           signal?.removeEventListener('abort', entry.onAbort)
           this.active++
           resolve(this.releaser())
         },
         onAbort: () => {
-          const at = this.waiting.indexOf(entry)
-          if (at >= 0) this.waiting.splice(at, 1)
+          const at = queue.indexOf(entry)
+          if (at >= 0) queue.splice(at, 1)
           reject(new ProviderError('cancelled', 'Yêu cầu đã bị hủy.'))
         }
       }
       signal?.addEventListener('abort', entry.onAbort, { once: true })
-      this.waiting.push(entry)
+      queue.push(entry)
     })
   }
 

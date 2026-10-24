@@ -1,8 +1,9 @@
 import type { ClassifiedError } from '../classifyError'
 import { ProviderError } from '../types'
+import { AdaptiveLimit } from './adaptiveLimit'
 import type { KeyLease, KeyOutcome, KeySource } from './keys'
 import { KeyScheduler } from './keyScheduler'
-import { Limiter } from './limiter'
+import { type CallPriority, Limiter } from './limiter'
 import { RatePacer } from './ratePacer'
 import { DEFAULT_RETRY, abortableSleep, decideRetry, type RetryOptions } from './retryPolicy'
 
@@ -11,7 +12,7 @@ import { DEFAULT_RETRY, abortableSleep, decideRetry, type RetryOptions } from '.
  * giãn cách tốc độ (RPM), thử lại khi gặp lỗi và cập nhật trạng thái khóa.
  *
  * Trình tự xử lý yêu cầu:
- *  1. Xin slot từ bộ giới hạn đồng thời (limiter).
+ *  1. Xin slot từ bộ giới hạn đồng thời (limiter), rồi chờ hết khoảng tạm ngừng của mục nếu đang bị giới hạn tốc độ.
  *  2. Chờ theo tốc độ giới hạn (RPM pacer) trước mỗi lần gọi nếu được cấu hình.
  *  3. Mượn khóa hợp lệ (hoặc chờ/báo lỗi nếu tất cả khóa đang bị đóng băng).
  *  4. Thực thi yêu cầu và ghi nhận kết quả cho khóa chính xác một lần.
@@ -29,6 +30,10 @@ const MAX_KEY_SWITCHES = 16
 export interface GatewayOptions {
   keys: KeySource
   limiter: Limiter
+  /** Mức đồng thời tự điều chỉnh của mục (đặt lên `limiter`); thiếu thì mức cố định bằng trần của `limiter`. */
+  adaptive?: AdaptiveLimit
+  /** Hàng chờ suất của lời gọi; mặc định `interactive`. */
+  priority?: CallPriority
   /** Điều phối giãn cách các yêu cầu theo giới hạn RPM của cấu hình mô hình. */
   pacer?: RatePacer
   now: () => number
@@ -110,8 +115,9 @@ export class Gateway {
     signal?: AbortSignal,
     onAttempt?: () => void
   ): Promise<T> {
-    const release = await this.options.limiter.acquire(signal)
+    const release = await this.options.limiter.acquire(signal, this.options.priority)
     try {
+      await this.options.adaptive?.waitForPause(signal)
       let lease = await this.acquireKey(signal)
       const progress: Progress = { retries: 0, switches: 0 }
       for (;;) {
@@ -119,9 +125,11 @@ export class Gateway {
         try {
           onAttempt?.()
           const result = await attempt(lease)
+          this.options.adaptive?.succeeded()
           await guard.settle('ok')
           return result
         } catch (error) {
+          this.reportFailure(error)
           await guard.settleFailure(error)
           lease = await this.next(error, lease, progress, signal)
         } finally {
@@ -143,8 +151,9 @@ export class Gateway {
     signal?: AbortSignal,
     isFinal?: (event: E) => boolean
   ): AsyncGenerator<E> {
-    const release = await this.options.limiter.acquire(signal)
+    const release = await this.options.limiter.acquire(signal, this.options.priority)
     try {
+      await this.options.adaptive?.waitForPause(signal)
       let lease = await this.acquireKey(signal)
       const progress: Progress = { retries: 0, switches: 0 }
       for (;;) {
@@ -156,9 +165,11 @@ export class Gateway {
             if (isFinal?.(event) === true) await guard.settle('ok')
             yield event
           }
+          this.options.adaptive?.succeeded()
           await guard.settle('ok')
           return
         } catch (error) {
+          this.reportFailure(error)
           await guard.settleFailure(error)
           // Dữ liệu đã bắt đầu được gửi đi, không thể thử lại để tránh lặp nội dung.
           if (started) throw error
@@ -170,6 +181,10 @@ export class Gateway {
     } finally {
       release()
     }
+  }
+
+  private reportFailure(error: unknown): void {
+    if (error instanceof ProviderError) this.options.adaptive?.failed(error)
   }
 
   /**
@@ -237,11 +252,12 @@ export class ConnectionRuntime {
 }
 
 /**
- * Trạng thái runtime lưu trữ của một mục cấu hình mô hình (giới hạn đồng thời và giãn cách tốc độ).
+ * Trạng thái runtime lưu trữ của một mục cấu hình mô hình (giới hạn đồng thời, mức tự điều chỉnh và giãn cách tốc độ).
  */
 export class EntryRuntime {
   constructor(
     readonly limiter: Limiter,
+    readonly adaptive: AdaptiveLimit,
     readonly pacer: RatePacer
   ) {}
 }
@@ -263,7 +279,8 @@ export class GatewayRegistry {
   constructor(
     private readonly now: () => number,
     private readonly concurrency: number = DEFAULT_CONCURRENCY,
-    private readonly sleep?: (ms: number, signal?: AbortSignal) => Promise<void>
+    private readonly sleep?: (ms: number, signal?: AbortSignal) => Promise<void>,
+    private readonly random?: () => number
   ) {}
 
   runtimeFor(connectionId: string): ConnectionRuntime {
@@ -276,7 +293,8 @@ export class GatewayRegistry {
   }
 
   /**
-   * Lấy runtime (limiter và pacer) của một mục cấu hình mô hình và cập nhật giới hạn mới nhất.
+   * Lấy runtime (limiter, mức tự điều chỉnh và pacer) của một mục cấu hình mô hình và cập nhật giới hạn mới nhất.
+   * `concurrency` là **trần**; mức hiện hành do `AdaptiveLimit` điều chỉnh bên dưới trần đó.
    */
   entryRuntimeFor(connectionId: string, entryId: string, limits: EntryLimits = {}): EntryRuntime {
     const concurrency =
@@ -287,16 +305,18 @@ export class GatewayRegistry {
 
     let held = this.entries.get(entryId)
     if (held === undefined) {
+      const limiter = new Limiter(concurrency)
       held = {
         connectionId,
         runtime: new EntryRuntime(
-          new Limiter(concurrency),
+          limiter,
+          new AdaptiveLimit(limiter, concurrency, this.now, this.random, this.sleep),
           new RatePacer(rpm, this.now, this.sleep)
         )
       }
       this.entries.set(entryId, held)
     }
-    held.runtime.limiter.setLimit(concurrency)
+    held.runtime.adaptive.setCeiling(concurrency)
     held.runtime.pacer.setRpm(rpm)
     return held.runtime
   }

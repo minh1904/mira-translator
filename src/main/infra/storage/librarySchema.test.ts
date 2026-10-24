@@ -169,7 +169,7 @@ describe('library.db v4 → v5', () => {
       frozen_scope: 'day',
       freeze_strikes: 2
     })
-    expect(readPragmas(db).userVersion).toBe(18)
+    expect(readPragmas(db).userVersion).toBe(21)
     db.close()
   })
 
@@ -197,7 +197,7 @@ describe('library.db v4 → v5', () => {
   it('is complete from nothing: a new file has the latest tables and no rows', () => {
     const db = openDatabase(join(tempDir(), 'fresh.db'))
     migrate(db, librarySchema)
-    expect(readPragmas(db).userVersion).toBe(18)
+    expect(readPragmas(db).userVersion).toBe(21)
     expect(db.prepare('SELECT COUNT(*) AS n FROM ai_model').get<{ n: number }>()!.n).toBe(0)
     db.close()
   })
@@ -241,7 +241,7 @@ describe('library.db v4 → v5', () => {
     }
     expect(error).toBeInstanceOf(StorageError)
     expect((error as StorageError).code).toBe('unsupported_version')
-    expect(readPragmas(db).userVersion).toBe(18)
+    expect(readPragmas(db).userVersion).toBe(21)
     db.close()
   })
 })
@@ -291,7 +291,7 @@ describe('library schema v8', () => {
   it('creates adapter, auth, job and rebuildable schedule storage with constrained states', () => {
     const db = openDatabase(join(tempDir(), 'v8.db'))
     migrate(db, librarySchema)
-    expect(readPragmas(db).userVersion).toBe(18)
+    expect(readPragmas(db).userVersion).toBe(21)
     db.exec(`
       INSERT INTO source_adapter_install (adapter_id, version, manifest_json, artifact_sha256,
         trust_level, state, installed_at, updated_at)
@@ -338,11 +338,55 @@ describe('library schema v8', () => {
       (id, file_name, title, source_lang, status, archived, chapter_count, created_at, updated_at)
       VALUES ('w', 'w.mira', 'Tác phẩm', 'ja', 'not-started', 0, 0, 1, 2)`)
       migrate(db, librarySchema)
-      expect(readPragmas(db).userVersion).toBe(18)
+      expect(readPragmas(db).userVersion).toBe(21)
       expect(db.prepare("SELECT title FROM work_index WHERE id = 'w'").get()).toEqual({
         title: 'Tác phẩm'
       })
       db.close()
     }
   )
+})
+
+describe('library v20 (several running task items)', () => {
+  it('lets two items of a v19 file run at once', () => {
+    const db = openDatabase(join(tempDir(), 'library-from-v19.db'))
+    migrate(db, upTo(19))
+    migrate(db, librarySchema)
+    expect(readPragmas(db).userVersion).toBe(21)
+    db.exec(`INSERT INTO agent_task (id, kind, work_id, client_command_id, payload_digest, state,
+        model_ref_json, overwrite_policy, created_at, updated_at)
+      VALUES ('k', 'translate_chapters', 'w', 'cmd', 'd', 'running', '{}', 'fill_untranslated', 1, 1);
+      INSERT INTO agent_task_item (id, task_id, ordinal, chapter_id, state, created_at, updated_at)
+      VALUES ('i1', 'k', 1, 'c1', 'running', 1, 1), ('i2', 'k', 2, 'c2', 'running', 1, 1)`)
+    expect(
+      db.prepare("SELECT count(*) AS n FROM agent_task_item WHERE state = 'running'").get()
+    ).toEqual({
+      n: 2
+    })
+    db.close()
+  })
+})
+
+describe('library v19 (agent_turn_steer)', () => {
+  it('keeps every response part of a v18 file and accepts steer parts', () => {
+    const db = openDatabase(join(tempDir(), 'library-from-v18.db'))
+    migrate(db, upTo(18))
+    db.exec(`INSERT INTO agent_session (id, title, created_at, updated_at) VALUES ('s', '', 1, 1);
+      INSERT INTO agent_turn (id, session_id, instruction, status, created_at, updated_at)
+        VALUES ('t', 's', 'dịch', 'completed', 1, 1);
+      INSERT INTO agent_turn_part (id, turn_id, seq, round, kind, text, created_at, updated_at)
+        VALUES ('p1', 't', 1, 1, 'text', 'Đã dịch.', 1, 1)`)
+    migrate(db, librarySchema)
+    expect(readPragmas(db).userVersion).toBe(21)
+    expect(db.prepare('SELECT id, kind, text FROM agent_turn_part').all()).toEqual([
+      { id: 'p1', kind: 'text', text: 'Đã dịch.' }
+    ])
+    db.exec(`INSERT INTO agent_turn_part (id, turn_id, seq, round, kind, text, created_at, updated_at)
+      VALUES ('p2', 't', 2, 1, 'steer', 'chỉ chương 3', 1, 1)`)
+    expect(() =>
+      db.exec(`INSERT INTO agent_turn_steer (id, turn_id, seq, text, state, created_at, updated_at)
+        VALUES ('x', 't', 1, 'a', 'lost', 1, 1)`)
+    ).toThrow()
+    db.close()
+  })
 })

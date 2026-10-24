@@ -713,6 +713,14 @@ CREATE TABLE context_edit_signal (
 `
 
 /**
+ * Story profile (change add-multilingual-addressing-presets): the setting and culture that pick the
+ * addressing table. NULL means "not chosen"; 'none' in `setting` means the user turned the table off.
+ * `settings_extra` is a comma-separated list. Values are validated at the boundary, not by CHECK, so a
+ * new setting or culture is data and needs no migration.
+ */
+const version21Columns = ['setting', 'settings_extra', 'culture']
+
+/**
  * Translation conventions of the work (change `add-context-questions`): one row per convention the person
  * set; no row means the default, not settled yet.
  */
@@ -848,6 +856,22 @@ export const workSchema: SchemaSpec = {
       version: 20,
       up(db) {
         db.exec(version20)
+      }
+    },
+    {
+      version: 21,
+      up(db) {
+        // Work files made while this profile was still part of version 20 already have the columns;
+        // adding them again fails and the app drops the work from its index.
+        const have = new Set(
+          db
+            .prepare('PRAGMA table_info(work)')
+            .all<{ name: string }>()
+            .map((column) => column.name)
+        )
+        for (const name of version21Columns) {
+          if (!have.has(name)) db.exec(`ALTER TABLE work ADD COLUMN ${name} TEXT`)
+        }
       }
     }
   ]

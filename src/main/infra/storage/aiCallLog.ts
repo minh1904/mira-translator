@@ -35,6 +35,27 @@ export function appendAiCall(workId: string, record: Record<string, unknown>): v
   }
 }
 
+/** Every record of a work's log, oldest first; unreadable lines are skipped, a missing log is empty. */
+export function readAiCalls(workId: string): Record<string, unknown>[] {
+  if (logDir === null || !SAFE_ID.test(workId)) return []
+  let text: string
+  try {
+    text = readFileSync(join(logDir, workId + '.jsonl'), 'utf8')
+  } catch {
+    return []
+  }
+  return text
+    .split('\n')
+    .filter(Boolean)
+    .flatMap((line) => {
+      try {
+        return [JSON.parse(line) as Record<string, unknown>]
+      } catch {
+        return []
+      }
+    })
+}
+
 /** Rewrites each log without the records written before `cutoff`; unreadable lines are dropped too. */
 export function pruneAiCallLogs(dir: string, cutoff: number): void {
   for (const name of readdirSync(dir)) {

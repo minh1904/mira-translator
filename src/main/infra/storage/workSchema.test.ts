@@ -30,7 +30,7 @@ describe('work schema', () => {
   it('stamps the Mira application id and the latest schema version', () => {
     const db = openDatabase(join(tempDir(), 'work.mira'))
     migrate(db, workSchema)
-    expect(readPragmas(db)).toEqual({ userVersion: 20, applicationId: WORK_APPLICATION_ID })
+    expect(readPragmas(db)).toEqual({ userVersion: 21, applicationId: WORK_APPLICATION_ID })
     db.close()
   })
 
@@ -278,7 +278,7 @@ describe('work schema', () => {
 
     // Upgrade through the current schema.
     migrate(db, workSchema)
-    expect(readPragmas(db).userVersion).toBe(20)
+    expect(readPragmas(db).userVersion).toBe(21)
 
     // Data preserved
     const row = db.prepare('SELECT title FROM work WHERE id = ?').get<{ title: string }>('w1')
@@ -320,7 +320,7 @@ describe('work schema', () => {
       INSERT INTO provenance (segment_id, origin, at) VALUES ('s', 'human', 1);
     `)
     migrate(db, workSchema)
-    expect(readPragmas(db).userVersion).toBe(20)
+    expect(readPragmas(db).userVersion).toBe(21)
     expect(
       db
         .prepare("SELECT content, rev FROM chapter_text WHERE chapter_id = 'c' AND side = 'target'")
@@ -387,7 +387,7 @@ describe('work schema', () => {
 
     migrate(db, workSchema)
 
-    expect(readPragmas(db).userVersion).toBe(20)
+    expect(readPragmas(db).userVersion).toBe(21)
     expect(db.prepare('SELECT id, action, answer FROM ai_turn ORDER BY created_at').all()).toEqual([
       { id: 't-ask', action: 'ask', answer: 'Đáp' },
       { id: 't-edit', action: 'edit', answer: 'Bản sửa' },
@@ -487,6 +487,37 @@ describe('work schema', () => {
     db.close()
   })
 
+  it.each([
+    ['without the story profile columns', ''],
+    [
+      'that already have the story profile columns (made while it was part of v20)',
+      `ALTER TABLE work ADD COLUMN setting TEXT;
+       ALTER TABLE work ADD COLUMN settings_extra TEXT;
+       ALTER TABLE work ADD COLUMN culture TEXT;
+       UPDATE work SET setting = 'modern', culture = 'jp'`
+    ]
+  ])('upgrades a v20 file %s to v21 and keeps its data', (_name, before) => {
+    const db = openDatabase(join(tempDir(), 'v20_to_v21.mira'))
+    migrate(db, {
+      applicationId: WORK_APPLICATION_ID,
+      migrations: workSchema.migrations.filter((m) => m.version <= 20)
+    })
+    db.exec(
+      `INSERT INTO work (id, title, source_lang, created_at, updated_at) VALUES ('w', 'T', 'ja', 1, 1)`
+    )
+    if (before) db.exec(before)
+    migrate(db, workSchema)
+    expect(readPragmas(db).userVersion).toBe(21)
+    const row = db.prepare('SELECT title, setting, settings_extra, culture FROM work').get()
+    expect(row).toEqual({
+      title: 'T',
+      setting: before ? 'modern' : null,
+      settings_extra: null,
+      culture: before ? 'jp' : null
+    })
+    db.close()
+  })
+
   it('upgrades v9 to v10: chat turns without a mode keep old turns and their proposals', () => {
     const db = openDatabase(join(tempDir(), 'v9_to_v10.mira'))
     migrate(db, {
@@ -510,7 +541,7 @@ describe('work schema', () => {
 
     migrate(db, workSchema)
 
-    expect(readPragmas(db).userVersion).toBe(20)
+    expect(readPragmas(db).userVersion).toBe(21)
     expect(
       db.prepare('SELECT id, action, answer, target_range_json, location_json FROM ai_turn').all()
     ).toEqual([
@@ -559,7 +590,7 @@ describe('work schema', () => {
 
     migrate(db, workSchema)
 
-    expect(readPragmas(db).userVersion).toBe(20)
+    expect(readPragmas(db).userVersion).toBe(21)
     db.exec(`
       INSERT INTO translate_run_context (run_key, chapter_id, snapshot_json, snapshot_hash, created_at)
       VALUES ('translate:r', 'c', '{}', 'h', 1);
@@ -580,7 +611,7 @@ describe('work schema', () => {
       INSERT INTO chapter (id, position, created_at, updated_at) VALUES ('c', 0, 1, 1);
     `)
     migrate(db, workSchema)
-    expect(readPragmas(db).userVersion).toBe(20)
+    expect(readPragmas(db).userVersion).toBe(21)
     const insert = () =>
       db.exec(`INSERT INTO qa_dismissal (rule_code, rule_version, chapter_id, segment_id, target_hash, created_at)
         VALUES ('text.length_ratio', 1, 'c', 's1', 'h', 1)`)
@@ -671,7 +702,7 @@ describe('work schema', () => {
 
     migrate(db, workSchema)
 
-    expect(readPragmas(db).userVersion).toBe(20)
+    expect(readPragmas(db).userVersion).toBe(21)
     expect(
       db
         .prepare("SELECT source, status, term_type, review_flags FROM context_entry WHERE id = 'e'")
@@ -722,7 +753,7 @@ describe('work schema', () => {
         `)
       }
       migrate(db, workSchema)
-      expect(readPragmas(db).userVersion).toBe(20)
+      expect(readPragmas(db).userVersion).toBe(21)
       expect(db.prepare("SELECT title FROM work WHERE id = 'w'").get()).toEqual({
         title: 'Tác phẩm cũ'
       })

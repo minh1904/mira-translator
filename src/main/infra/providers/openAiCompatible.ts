@@ -2,7 +2,8 @@ import { taskLimit } from '../../../shared/contracts/modelSettings'
 import { resolveCompat, type Compat } from './compat'
 import type { Generation } from './generation'
 import { Gateway, DEFAULT_CONCURRENCY, type GatewayOptions } from './gateway/gateway'
-import { Limiter } from './gateway/limiter'
+import type { AdaptiveLimit } from './gateway/adaptiveLimit'
+import { type CallPriority, Limiter } from './gateway/limiter'
 import type { RatePacer } from './gateway/ratePacer'
 import type { RetryOptions } from './gateway/retryPolicy'
 import type { KeyLease, KeySource } from './gateway/keys'
@@ -88,6 +89,10 @@ export interface OpenAiCompatibleOptions {
    * có nghĩa; thiếu thì dựng riêng cho provider này (đúng cho test và một lời gọi lẻ).
    */
   limiter?: Limiter
+  /** Mức đồng thời tự điều chỉnh của mục model, đặt lên `limiter`; thiếu thì mức cố định. */
+  adaptive?: AdaptiveLimit
+  /** Hàng chờ suất: lượt chat (`interactive`, mặc định) được cấp trước tác vụ nền (`background`). */
+  priority?: CallPriority
   /**
    * Bộ giãn nhịp RPM của mục model. Cũng phải là **cùng một cái** giữa các lời gọi của một mục để nhịp có nghĩa;
    * thiếu thì không giãn nhịp.
@@ -216,6 +221,8 @@ export class OpenAiCompatibleProvider implements TranslationProvider, Translatio
     this.gateway = new Gateway({
       keys: options.keys,
       limiter: options.limiter ?? new Limiter(DEFAULT_CONCURRENCY),
+      adaptive: options.adaptive,
+      priority: options.priority,
       pacer: options.pacer,
       now: this.now,
       retry: options.retry,

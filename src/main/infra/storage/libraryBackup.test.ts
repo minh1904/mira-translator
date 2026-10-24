@@ -198,7 +198,7 @@ describe('WorkFiles library.db lifecycle', () => {
 
     // Open via WorkFiles — should detect userVersion 8 < 10, create backup, then migrate to 10
     const files = WorkFiles.open({ dataDir: dir, now: () => 1500 })
-    expect(readPragmas(files.index).userVersion).toBe(18)
+    expect(readPragmas(files.index).userVersion).toBe(21)
 
     // Verify backup exists in backups/
     const backups = readdirSync(backupsDir).filter((f) => f.endsWith('.db'))
@@ -244,7 +244,7 @@ describe('WorkFiles library.db lifecycle', () => {
              (SELECT count(*) FROM agent_activity WHERE operation_id = 'o') AS activities`
         )
         .get()
-    expect(readPragmas(files.index).userVersion).toBe(18)
+    expect(readPragmas(files.index).userVersion).toBe(21)
     expect(counts(files.index)).toEqual({ turns: 1, operations: 1, activities: 1 })
     expect(
       files.index.prepare('SELECT client_command_id, payload_digest FROM agent_turn').get()
@@ -299,7 +299,7 @@ describe('WorkFiles library.db lifecycle', () => {
     db.close()
 
     const files = openWorkFiles(dir, () => 1500)
-    expect(readPragmas(files.index).userVersion).toBe(18)
+    expect(readPragmas(files.index).userVersion).toBe(21)
     expect(files.index.prepare("SELECT state FROM agent_task WHERE id = 'k'").get()).toEqual({
       state: 'paused'
     })

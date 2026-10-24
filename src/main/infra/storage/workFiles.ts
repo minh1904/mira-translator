@@ -306,14 +306,15 @@ export class WorkFiles {
     this.index
       .prepare(
         `INSERT INTO work_index (
-           id, file_name, title, original_title, description, author, genre, source_lang, status,
-           archived, chapter_count, last_chapter_id, last_chapter_number, last_chapter_title,
-           cover_version, created_at, updated_at
-         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+           id, file_name, title, original_title, description, author, genre, setting, settings_extra,
+           culture, source_lang, status, archived, chapter_count, last_chapter_id, last_chapter_number,
+           last_chapter_title, cover_version, created_at, updated_at
+         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
          ON CONFLICT (id) DO UPDATE SET
            file_name = excluded.file_name, title = excluded.title,
            original_title = excluded.original_title, description = excluded.description,
-           author = excluded.author, genre = excluded.genre,
+           author = excluded.author, genre = excluded.genre, setting = excluded.setting,
+           settings_extra = excluded.settings_extra, culture = excluded.culture,
            source_lang = excluded.source_lang, status = excluded.status,
            archived = excluded.archived, chapter_count = excluded.chapter_count,
            last_chapter_id = excluded.last_chapter_id,
@@ -330,6 +331,9 @@ export class WorkFiles {
         summary.description,
         summary.author,
         summary.genre,
+        summary.setting,
+        summary.settingsExtra.length > 0 ? summary.settingsExtra.join(',') : null,
+        summary.culture,
         summary.sourceLang,
         summary.status,
         summary.archived ? 1 : 0,

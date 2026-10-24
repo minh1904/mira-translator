@@ -90,7 +90,7 @@ describe('writing a row', () => {
     rig.write(2, 'Ba.')
     rig.write(3, 'Bốn.')
     rig.write(4, 'Năm.')
-    expect(rig.text()).toBe('Một. Hai. Ba.\nBốn. Năm.')
+    expect(rig.text()).toBe('Một. Hai. Ba.\n\nBốn. Năm.')
     expect(rig.rows().rows.map((row) => row.targetText)).toEqual([
       'Một.',
       'Hai.',
@@ -124,6 +124,29 @@ describe('writing a row', () => {
     rig.write(2, 'Ba.')
     rig.write(1, 'Hai.')
     expect(rig.text()).toBe('Một. Hai. Ba.')
+  })
+
+  it('writes a row between rows on different lines with the separators of its own source', () => {
+    const rig = setup()
+    rig.write(2, 'Ba.')
+    rig.write(4, 'Năm.')
+    expect(rig.text()).toBe('Ba.\n\nNăm.')
+    rig.write(3, 'Bốn.')
+    expect(rig.text()).toBe('Ba.\n\nBốn. Năm.')
+    expect(
+      rig
+        .rows()
+        .rows.slice(2)
+        .map((row) => row.targetText)
+    ).toEqual(['Ba.', 'Bốn.', 'Năm.'])
+  })
+
+  it('keeps the blank line when the row next to it is removed', () => {
+    const rig = setup()
+    for (const [i, text] of ['Một.', 'Hai.', 'Ba.', 'Bốn.'].entries()) rig.write(i, text)
+    rig.write(3, '')
+    rig.write(4, 'Năm.')
+    expect(rig.text()).toBe('Một. Hai. Ba.\n\nNăm.')
   })
 
   it('replaces the text of a row that has one and keeps the others as they were', () => {
@@ -169,7 +192,7 @@ describe('writing a row', () => {
     rig.write(2, 'Ba.')
     rig.write(3, 'Bốn.')
     rig.write(4, 'Năm.')
-    expect(rig.text()).toBe('Ba.\nBốn. Năm.')
+    expect(rig.text()).toBe('Ba.\n\nBốn. Năm.')
     rig.write(2, '')
     expect(rig.text()).toBe('Bốn. Năm.')
   })
