@@ -4,7 +4,11 @@ import { StorageError } from '../../../infra/storage/errors'
 import type { CapabilityDefinition } from '../types'
 import { runChapterTranslation } from '../chapterTranslationRunner'
 import type { ConnectionService } from '../../ai/connectionService'
-import { TARGET_PARAM } from './readCapabilities'
+import { chapterTitleSchema } from '../../../../shared/contracts/chapters'
+import { CULTURE_IDS, SETTING_IDS } from '../../../../shared/contracts/addressing/types'
+import { WORK_STATUSES, workPatchSchema } from '../../../../shared/contracts/library'
+import { UPDATE_WORK } from '../policy'
+import { TARGET_NEEDED, TARGET_PARAM } from './readCapabilities'
 
 export interface WriteCapabilitiesOptions {
   connections: ConnectionService
@@ -289,4 +293,144 @@ export function createWriteCapabilities(options: WriteCapabilitiesOptions) {
     editTranslationCapability,
     undoOperationCapability
   }
+}
+
+/** Work fields the agent may change; cover and archiving stay with the user. */
+const WORK_FIELDS = [
+  'title',
+  'originalTitle',
+  'author',
+  'genre',
+  'setting',
+  'settingsExtra',
+  'culture',
+  'description',
+  'status'
+] as const
+const agentWorkPatchSchema = v.pick(workPatchSchema, WORK_FIELDS)
+type AgentWorkPatch = v.InferOutput<typeof agentWorkPatchSchema>
+
+/**
+ * Updates the work's details and/or renames chapters by number, e.g. to translate titles. None of it
+ * is under operation undo, so policy always asks the user first and the result keeps the old values.
+ */
+export const updateWorkCapability: CapabilityDefinition<{
+  work?: AgentWorkPatch
+  chapters?: Array<{ number: number; title: string }>
+}> = {
+  name: UPDATE_WORK,
+  description:
+    'Sửa thông tin tác phẩm (tên, tên gốc, tác giả, thể loại, bối cảnh, văn hóa, mô tả, trạng thái) và/hoặc ' +
+    'đổi tên các chương theo số chương, ví dụ khi người dùng muốn dịch tên truyện và tên chương. Chỉ gửi ' +
+    'trường cần đổi; null xóa trường tùy chọn. Gửi đủ các chương cần đổi trong một lần gọi; đọc giá trị hiện ' +
+    'tại bằng get_work_overview và list_chapters trước. Đổi tên mà không gửi originalTitle thì tên cũ được ' +
+    'giữ ở tên gốc nếu trường đó còn trống. Người dùng phải duyệt trước.',
+  kind: 'external',
+  schema: v.object({
+    work: v.optional(agentWorkPatchSchema),
+    chapters: v.optional(
+      v.pipe(
+        v.array(
+          v.object({
+            number: v.pipe(v.number(), v.integer(), v.minValue(1)),
+            title: v.pipe(chapterTitleSchema, v.minLength(1, 'Nhập tên chương.'))
+          })
+        ),
+        v.minLength(1),
+        v.maxLength(500)
+      )
+    )
+  }),
+  parameters: {
+    type: 'object',
+    properties: {
+      target: TARGET_PARAM,
+      work: {
+        type: 'object',
+        description: 'Các trường cần đổi; bỏ trường không đổi.',
+        properties: {
+          title: { type: 'string' },
+          originalTitle: { type: ['string', 'null'] },
+          author: { type: ['string', 'null'] },
+          genre: { type: ['string', 'null'] },
+          setting: { type: ['string', 'null'], enum: [...SETTING_IDS, 'none', null] },
+          settingsExtra: { type: 'array', items: { type: 'string', enum: [...SETTING_IDS] } },
+          culture: { type: ['string', 'null'], enum: [...CULTURE_IDS, null] },
+          description: { type: ['string', 'null'] },
+          status: { type: 'string', enum: [...WORK_STATUSES] }
+        }
+      },
+      chapters: {
+        type: 'array',
+        minItems: 1,
+        maxItems: 500,
+        items: {
+          type: 'object',
+          properties: { number: { type: 'integer', minimum: 1 }, title: { type: 'string' } },
+          required: ['number', 'title']
+        }
+      }
+    },
+    required: ['target']
+  },
+  targetPolicy: 'requires_target',
+  handler: async ({ library, target, args }) => {
+    if (!target) return { ok: false, error: { code: 'validation', message: TARGET_NEEDED } }
+    const patch = args.work ?? {}
+    const renames = args.chapters ?? []
+    if (Object.keys(patch).length === 0 && renames.length === 0) {
+      return {
+        ok: false,
+        error: { code: 'validation', message: 'Cần ít nhất một trường của work hoặc một chương.' }
+      }
+    }
+    try {
+      const byNumber = new Map(library.listChapters(target.workId).map((c) => [c.number, c]))
+      const missing = renames.filter((r) => !byNumber.has(r.number)).map((r) => r.number)
+      // Checked before any write, so a bad number never leaves the work half updated.
+      if (missing.length > 0) {
+        return {
+          ok: false,
+          error: { code: 'not_found', message: `Không có chương số ${missing.join(', ')}.` }
+        }
+      }
+      let work: Record<string, { from: unknown; to: unknown }> | null = null
+      if (Object.keys(patch).length > 0) {
+        const before = library.get(target.workId)
+        const keepOriginal =
+          patch.title !== undefined && patch.originalTitle === undefined && !before.originalTitle
+        const full = keepOriginal ? { ...patch, originalTitle: before.title } : patch
+        library.update(target.workId, full)
+        work = Object.fromEntries(
+          Object.entries(full).map(([key, to]) => [
+            key,
+            { from: before[key as keyof typeof before] ?? null, to }
+          ])
+        )
+      }
+      const chapters = renames.map((r) => {
+        const from = byNumber.get(r.number)!.title
+        library.renameChapter(target.workId, byNumber.get(r.number)!.id, r.title)
+        return { number: r.number, from, to: r.title }
+      })
+      return { ok: true, value: { work, chapters }, hasChanges: true }
+    } catch (error) {
+      if (error instanceof StorageError) {
+        return { ok: false, error: { code: error.code, message: error.message } }
+      }
+      throw error
+    }
+  },
+  describe: ({ target, args }) =>
+    [
+      args.work?.title !== undefined
+        ? `đổi tên tác phẩm thành "${args.work.title}"`
+        : args.work
+          ? 'sửa thông tin tác phẩm'
+          : null,
+      args.chapters ? `đổi tên ${args.chapters.length} chương` : null
+    ]
+      .filter(Boolean)
+      .join(', ')
+      .replace(/^./, (c) => c.toUpperCase()) + ` (${target?.workLabel ?? 'tác phẩm'})`
 }

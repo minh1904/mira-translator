@@ -115,4 +115,15 @@ describe('glossaryCompliance', () => {
     expect(report.issues[0].type).toBe('missing_target')
     expect(report.issues[0].source).toBe('韩立')
   })
+
+  it('accepts the short form of the target when only an alias matched', () => {
+    const entries = [
+      makeEntry({ source: 'ノエル・アーデン', target: 'Noel Arden', aliases: ['ノエル'] })
+    ]
+
+    expect(evaluateGlossaryCompliance('「ノエル。', '“Noel.', entries, 'ja').hasIssues).toBe(false)
+    // The full name in the source still needs the full target.
+    const full = evaluateGlossaryCompliance('ノエル・アーデンです。', 'Tôi là Noel.', entries, 'ja')
+    expect(full.issues).toMatchObject([{ type: 'missing_target', term: 'Noel Arden' }])
+  })
 })

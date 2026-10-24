@@ -8,20 +8,21 @@ import type {
 export interface TurnBudgetLimits {
   maxModelRounds?: number
   maxReadChars?: number
-  maxWriteOperations?: number
+  /** Distinct chapters a turn may write; writing again to one already written is free. */
+  maxWriteChapters?: number
   maxCapabilityCalls?: number
 }
 
 export class TurnBudgetTracker {
   private modelRounds = 0
   private readChars = 0
-  private writeOperations = 0
+  private readonly writtenChapters = new Set<string>()
   private capabilityCalls = 0
 
   constructor(private readonly limits: TurnBudgetLimits = {}) {}
 
   recordModelRound(): { allowed: boolean; isFinalRound: boolean; reason?: string } {
-    const max = this.limits.maxModelRounds ?? 5
+    const max = this.limits.maxModelRounds ?? 15
     this.modelRounds++
     if (this.modelRounds > max) {
       return {
@@ -37,7 +38,7 @@ export class TurnBudgetTracker {
   }
 
   recordRead(chars: number): { allowed: boolean; reason?: string } {
-    const max = this.limits.maxReadChars ?? 100_000
+    const max = this.limits.maxReadChars ?? 200_000
     if (this.readChars + chars > max) {
       return { allowed: false, reason: `Đã vượt quá hạn mức dữ liệu đọc (${max} ký tự).` }
     }
@@ -45,17 +46,18 @@ export class TurnBudgetTracker {
     return { allowed: true }
   }
 
-  recordWriteOperation(): { allowed: boolean; reason?: string } {
-    const max = this.limits.maxWriteOperations ?? 3
-    if (this.writeOperations >= max) {
-      return { allowed: false, reason: `Đã vượt quá số lượng operation ghi tối đa (${max}).` }
+  recordWrite(chapterKey: string): { allowed: boolean; reason?: string } {
+    const max = this.limits.maxWriteChapters ?? 3
+    if (this.writtenChapters.has(chapterKey)) return { allowed: true }
+    if (this.writtenChapters.size >= max) {
+      return { allowed: false, reason: `Đã ghi vào số chương tối đa của một lượt (${max}).` }
     }
-    this.writeOperations++
+    this.writtenChapters.add(chapterKey)
     return { allowed: true }
   }
 
   recordCapabilityCall(_capName?: string): { allowed: boolean; reason?: string } {
-    const max = this.limits.maxCapabilityCalls ?? 20
+    const max = this.limits.maxCapabilityCalls ?? 40
     if (this.capabilityCalls >= max) {
       return { allowed: false, reason: `Đã vượt quá hạn mức gọi công cụ (${max} lượt).` }
     }
@@ -68,8 +70,8 @@ export class TurnBudgetTracker {
       (this.limits.maxModelRounds !== undefined &&
         this.modelRounds >= this.limits.maxModelRounds) ||
       (this.limits.maxReadChars !== undefined && this.readChars >= this.limits.maxReadChars) ||
-      (this.limits.maxWriteOperations !== undefined &&
-        this.writeOperations >= this.limits.maxWriteOperations) ||
+      (this.limits.maxWriteChapters !== undefined &&
+        this.writtenChapters.size >= this.limits.maxWriteChapters) ||
       (this.limits.maxCapabilityCalls !== undefined &&
         this.capabilityCalls >= this.limits.maxCapabilityCalls)
     )
@@ -78,13 +80,13 @@ export class TurnBudgetTracker {
   getSnapshot(): {
     modelRounds: number
     readChars: number
-    writeOperations: number
+    writeChapters: number
     capabilityCalls: number
   } {
     return {
       modelRounds: this.modelRounds,
       readChars: this.readChars,
-      writeOperations: this.writeOperations,
+      writeChapters: this.writtenChapters.size,
       capabilityCalls: this.capabilityCalls
     }
   }

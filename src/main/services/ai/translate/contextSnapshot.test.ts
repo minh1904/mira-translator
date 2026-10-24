@@ -167,3 +167,83 @@ describe('steering instruction in the snapshot', () => {
     expect(rebuilt.matches).toBe(true)
   })
 })
+
+describe('bối cảnh và văn hóa trong bản chụp', () => {
+  it('bản chụp mới ghi bối cảnh chính, bối cảnh phụ và văn hóa đã quyết cho tác phẩm', () => {
+    const { library, workId, chapterId } = setup()
+    library.update(workId, { setting: 'court', settingsExtra: ['cultivation'], culture: 'zh' })
+    const record = takeContextSnapshot(library, workId, chapterId, SOURCE)
+    expect(record.snapshot.version).toBe(2)
+    expect(record.snapshot.register).toEqual({
+      setting: 'court',
+      extra: ['cultivation'],
+      culture: 'zh'
+    })
+    expect(promptFromSnapshot(record.snapshot, SOURCE, []).register).toEqual(
+      record.snapshot.register
+    )
+  })
+
+  it('đổi bối cảnh, bối cảnh phụ hoặc văn hóa đổi hash; cùng giá trị thì cùng hash', () => {
+    const { library, workId, chapterId } = setup()
+    const hashOf = (): string => takeContextSnapshot(library, workId, chapterId, SOURCE).hash
+    const base = hashOf()
+    library.update(workId, { setting: 'court' })
+    const court = hashOf()
+    expect(court).not.toBe(base)
+    library.update(workId, { settingsExtra: ['cultivation'] })
+    const extra = hashOf()
+    expect(extra).not.toBe(court)
+    library.update(workId, { culture: 'ja' })
+    expect(hashOf()).not.toBe(extra)
+    library.update(workId, { culture: null, settingsExtra: [], setting: null })
+    expect(hashOf()).toBe(base)
+  })
+
+  it('thể loại của tác phẩm cho một bối cảnh thì bản chụp lấy bối cảnh đó và văn hóa theo ngôn ngữ nguồn', () => {
+    const { library, workId, chapterId } = setup()
+    // setup() tạo tác phẩm tiếng Nhật với thể loại "Tiên hiệp".
+    expect(takeContextSnapshot(library, workId, chapterId, SOURCE).snapshot.register).toEqual({
+      setting: 'cultivation',
+      extra: [],
+      culture: 'zh'
+    })
+  })
+
+  it('bản chụp cũ có mã bảng phẳng đọc ra đúng bối cảnh và văn hóa, hash đã lưu không bị ghi lại', () => {
+    const { library, workId, chapterId } = setup()
+    populate(library, workId)
+    const record = takeContextSnapshot(library, workId, chapterId, SOURCE)
+    const legacy = { ...record.snapshot, version: 1, register: 'ja-fantasy' }
+    const json = canonicalJson(legacy)
+    const parsed = parseSnapshot(json)
+    expect(parsed.register).toEqual({ setting: 'fantasy', extra: [], culture: 'ja' })
+    // Đọc lại không đụng tới chuỗi đã lưu: hash của nó vẫn là hash của chính chuỗi đó.
+    expect(json).toContain('"register":"ja-fantasy"')
+    expect(parseSnapshot(canonicalJson({ ...legacy, register: null })).register).toEqual({
+      setting: null,
+      extra: [],
+      culture: null
+    })
+    expect(parseSnapshot(canonicalJson({ ...legacy, register: 'ja-không-có' })).register).toEqual({
+      setting: null,
+      extra: [],
+      culture: null
+    })
+  })
+
+  it('dựng lại được request từ bản chụp cũ có mã bảng phẳng', () => {
+    const { library, workId, chapterId } = setup()
+    populate(library, workId)
+    const record = takeContextSnapshot(library, workId, chapterId, SOURCE)
+    const legacy = canonicalJson({ ...record.snapshot, version: 1, register: 'ja-modern' })
+    const units = [{ id: 'u2', text: '霊剣を抜いた。' }]
+    const rebuilt = rebuildTranslateRequest(
+      { previous: [], contextHash: 'đã lưu' },
+      parseSnapshot(legacy),
+      units
+    )
+    expect(rebuilt.messages[0].content).toContain('<addressing_defaults>')
+    expect(rebuilt.matches).toBe(false)
+  })
+})

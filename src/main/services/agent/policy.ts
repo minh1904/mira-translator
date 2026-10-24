@@ -10,6 +10,8 @@ import type { CapabilityKind } from './types'
 export const CREATE_TRANSLATION_TASK = 'create_translation_task'
 /** The capability that steers a running task from a chapter on (`add-agent-steering`). */
 export const STEER_TRANSLATION_TASK = 'steer_translation_task'
+/** The capability that edits a work's details and chapter titles; neither has operation undo. */
+export const UPDATE_WORK = 'update_work'
 export const RESOLVE_TARGET = 'resolve_target'
 export const UNDO_OPERATION = 'undo_operation'
 export const ASK_QUESTIONS = 'ask_questions'
@@ -122,6 +124,12 @@ export function decideToolCall(input: PolicyInput): PolicyDecision {
     return {
       decision: 'needs_user',
       reason: 'Điều chỉnh tác vụ đổi cách dịch các chương sau, cần duyệt.'
+    }
+  }
+  if (input.name === UPDATE_WORK) {
+    return {
+      decision: 'needs_user',
+      reason: 'Sửa thông tin tác phẩm hoặc tên chương không hoàn tác được, cần duyệt.'
     }
   }
   if (input.kind === 'reversible-write') {

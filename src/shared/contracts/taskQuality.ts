@@ -8,13 +8,13 @@ import { idSchema } from './library'
  */
 export const QA_RULE_VERSIONS = {
   'glossary.forbidden_used': 1,
-  'glossary.missing_target': 1,
+  'glossary.missing_target': 2,
   'addressing.unexpected_pronoun': 1,
   'addressing.inconsistent_pair': 1,
   'text.residual_source': 1,
   'text.length_ratio': 1,
   'text.repetition': 1,
-  'text.unbalanced_quotes': 1
+  'text.unbalanced_quotes': 2
 } as const
 export type QaRuleCode = keyof typeof QA_RULE_VERSIONS
 export const QA_RULE_CODES = Object.keys(QA_RULE_VERSIONS) as QaRuleCode[]

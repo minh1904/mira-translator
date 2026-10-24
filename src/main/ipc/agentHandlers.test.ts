@@ -11,6 +11,8 @@ import type {
   AgentSendResult,
   AgentSessionDetailView,
   AgentSessionView,
+  AgentSteer,
+  AgentSteerEvent,
   AgentUndoInput,
   AgentUndoResult,
   AgentWriteIntentAck
@@ -90,6 +92,9 @@ describe('agent IPC handlers', () => {
     )
     expect(listed.sessions).toHaveLength(1)
     expect(listed.sessions[0].id).toBe(created.id)
+    // The renderer calls `sessions.list()` with no options; IPC carries that as undefined.
+    const all = value<{ sessions: AgentSessionView[] }>(call(CHANNELS.agentSessionsList))
+    expect(all.sessions).toHaveLength(1)
 
     const detail = value<AgentSessionDetailView>(
       call(CHANNELS.agentSessionsGet, { sessionId: created.id })
@@ -269,8 +274,12 @@ describe('agent IPC handlers', () => {
       const done = new Promise<void>((resolve) => {
         finished = resolve
       })
+      const steerEvents: AgentSteerEvent[] = []
       const windows: WindowBroadcast = {
         send(channel, payload) {
+          if (channel === EVENT_CHANNELS.agentSteerChanged) {
+            steerEvents.push(payload as AgentSteerEvent)
+          }
           if (channel !== EVENT_CHANNELS.agentStreamEvent) return [...received.keys()]
           const event = payload as AgentStreamEvent
           for (const events of received.values()) events.push(event)
@@ -304,8 +313,49 @@ describe('agent IPC handlers', () => {
       )
       const send = (raw: AgentSendInput) =>
         value(handlers[CHANNELS.agentTurnSend](raw, sink) as Result<AgentSendResult>)
-      return { ...kit, received, done, send, destroyWindow: () => destroy(), handlers }
+      return {
+        ...kit,
+        received,
+        steerEvents,
+        sink,
+        done,
+        send,
+        destroyWindow: () => destroy(),
+        handlers
+      }
     }
+
+    it('queues a steer message once per command id, tells every window and refuses bad input', async () => {
+      const { model, modelSelection, steerEvents, sink, done, send, handlers } = windowed()
+      // The turn starts on the next tick, so it is still queued while the test types.
+      model.script(callTools({ name: 'list_works', args: {} }), say('Xong.'))
+      const sent = send({ clientCommandId: randomUUID(), instruction: 'rà', modelSelection })
+      const steer = (raw: unknown) =>
+        handlers[CHANNELS.agentTurnSteer](raw, sink) as Result<AgentSteer>
+      const input = {
+        sessionId: sent.sessionId,
+        turnId: sent.turnId,
+        clientCommandId: randomUUID(),
+        text: '  chỉ chương 3  '
+      }
+      const first = value(steer(input))
+      expect(first).toMatchObject({ text: 'chỉ chương 3', state: 'pending' })
+      expect(value(steer(input)).id).toBe(first.id)
+      expect(steer({ ...input, clientCommandId: randomUUID(), text: '   ' })).toMatchObject({
+        ok: false,
+        error: { code: 'validation' }
+      })
+      expect(steerEvents.map((event) => event.steer.id)).toContain(first.id)
+      await done
+
+      const withdraw = (steerId: string) =>
+        handlers[CHANNELS.agentTurnWithdrawSteer]({ steerId }, sink) as Result<AgentSteer>
+      expect(withdraw(randomUUID())).toMatchObject({ ok: false, error: { code: 'not_found' } })
+      expect(steer({ ...input, clientCommandId: randomUUID() })).toMatchObject({
+        ok: false,
+        error: { code: 'conflict' }
+      })
+    })
 
     it('sends the same events to every open window', async () => {
       const { model, modelSelection, received, done, send, handlers } = windowed()

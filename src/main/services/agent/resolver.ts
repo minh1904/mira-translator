@@ -415,18 +415,21 @@ export class TargetResolver {
         selector.relative = 'current_chapter'
       }
 
+      // A title written in full wins over the prefix rule, which would cut "Truyện" off "Truyện test";
+      // the longest one, so "Truyện test 2" is not also "Truyện test".
+      const lower = instructionOrInput.toLowerCase()
+      const named = this.options.library
+        .list()
+        .works.filter((w) => w.title && lower.includes(w.title.toLowerCase()))
+      const longest = Math.max(0, ...named.map((w) => w.title.length))
+      const fullTitles = named.filter((w) => w.title.length === longest)
       const workPrefixMatch = /(?:tác phẩm|truyện|bộ)\s+([^\n,.!?]+?)(?:\s+chương|\s*$)/i.exec(
         instructionOrInput
       )
-      if (workPrefixMatch) {
+      if (fullTitles.length === 1) {
+        selector.workTitle = fullTitles[0].title
+      } else if (workPrefixMatch) {
         selector.workTitle = workPrefixMatch[1].trim()
-      } else {
-        const allWorks = this.options.library.list().works
-        const lower = instructionOrInput.toLowerCase()
-        const matched = allWorks.filter((w) => lower.includes(w.title.toLowerCase()))
-        if (matched.length === 1) {
-          selector.workTitle = matched[0].title
-        }
       }
 
       return resolveTarget(this.options.library, { selector, context })

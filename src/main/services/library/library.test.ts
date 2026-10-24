@@ -435,3 +435,37 @@ describe('LibraryStore upgrade from schema v1', () => {
     expect(dyadsC2[0].recipientPronoun).toBe('nàng')
   })
 })
+
+describe('LibraryStore story profile', () => {
+  it('lưu bối cảnh và văn hóa, hiện ở danh sách, và dựng lại được từ tệp tác phẩm khi mất chỉ mục', () => {
+    const dir = tempDir()
+    let store = open(dir)
+    const work = store.create({
+      title: 'A',
+      sourceLang: 'en',
+      setting: 'court',
+      settingsExtra: ['cultivation'],
+      culture: 'zh'
+    })
+    expect(store.list().works[0]).toMatchObject({
+      setting: 'court',
+      settingsExtra: ['cultivation'],
+      culture: 'zh'
+    })
+
+    store.update(work.id, { culture: 'ja', setting: 'none' })
+    expect(store.get(work.id)).toMatchObject({ setting: 'none', settingsExtra: [], culture: 'ja' })
+    expect(store.list().works[0]).toMatchObject({ setting: 'none', culture: 'ja' })
+
+    store.close()
+    stores.length = 0
+    for (const suffix of ['', '-wal', '-shm'])
+      rmSync(join(dir, 'library.db' + suffix), { force: true })
+    store = open(dir)
+    expect(store.list().works[0]).toMatchObject({
+      setting: 'none',
+      settingsExtra: [],
+      culture: 'ja'
+    })
+  })
+})

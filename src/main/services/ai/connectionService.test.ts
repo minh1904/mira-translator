@@ -286,36 +286,56 @@ describe('the concurrency of an entry', () => {
     await Promise.all([busy, other])
   })
 
-  it('lets a waiting call in when the limit is raised, without anything being restarted', async () => {
+  /** Chạy xong `count` lượt nối tiếp nhau (đánh số từ `from`): mức đồng thời của mục tăng sau lượt thành công. */
+  async function warm(
+    gate: ReturnType<typeof gated>,
+    call: () => Promise<unknown>,
+    from: number,
+    count: number
+  ): Promise<void> {
+    for (let index = from; index < from + count; index++) {
+      const pending = call()
+      await tick()
+      gate.release(index)
+      await pending
+    }
+  }
+
+  it('grows into a raised limit as calls succeed, without anything being restarted', async () => {
     const gate = gated()
     const { service, connectionId, entryIds } = setup(gate.handle)
     service.updateEntry(entryIds[0]!, { settings: { concurrencyLimit: 1 } })
+    const probe = () => service.translator(connectionId, entryIds[0]!).provider.probe()
+    await warm(gate, probe, 0, 2)
 
-    const first = service.translator(connectionId, entryIds[0]!).provider.probe()
-    const second = service.translator(connectionId, entryIds[0]!).provider.probe()
-    await tick()
-    expect(gate.started()).toBe(1)
-
-    // Người dùng tăng giới hạn; provider dựng tiếp theo cho mục này sẽ mang giới hạn mới.
+    // Người dùng tăng giới hạn; provider dựng tiếp theo cho mục này mang trần mới, mức tăng dần tới trần.
     service.updateEntry(entryIds[0]!, { settings: { concurrencyLimit: 2 } })
-    service.translator(connectionId, entryIds[0]!)
+    await warm(gate, probe, 2, 2)
+    const both = [probe(), probe()]
     await tick()
-    expect(gate.started()).toBe(2)
-
-    gate.release(0)
-    gate.release(1)
-    await Promise.all([first, second])
+    expect(gate.started()).toBe(6)
+    gate.release(4)
+    gate.release(5)
+    await Promise.all(both)
   })
 
-  it('uses the default of 4 for an entry that has no limit', async () => {
+  it('starts an entry at one call and opens up to the default of 4 as calls succeed', async () => {
     const gate = gated()
     const { service, connectionId, entryIds } = setup(gate.handle)
-    const calls = Array.from({ length: 6 }, () =>
-      service.translator(connectionId, entryIds[0]!).provider.probe()
-    )
+    const probe = () => service.translator(connectionId, entryIds[0]!).provider.probe()
+    const first = [probe(), probe()]
     await tick()
-    expect(gate.started()).toBe(4)
-    for (let index = 0; index < 6; index++) {
+    expect(gate.started()).toBe(1)
+    gate.release(0)
+    await tick()
+    gate.release(1)
+    await Promise.all(first)
+
+    await warm(gate, probe, 2, 4)
+    const calls = Array.from({ length: 6 }, probe)
+    await tick()
+    expect(gate.started()).toBe(6 + 4)
+    for (let index = 6; index < 12; index++) {
       gate.release(index)
       await tick()
     }

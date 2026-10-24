@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it } from 'vitest'
 import { createTempDirs } from '../../testing/testing'
 import { LibraryStore } from '../library/library'
-import { resolveTarget } from './resolver'
+import { resolveTarget, TargetResolver } from './resolver'
 import type { ResolvedTarget } from '../../../shared/contracts/agent'
 
 const tempDir = createTempDirs()
@@ -238,6 +238,22 @@ describe('target resolver', () => {
         status: 'resolved',
         target: { kind: 'work', workId: works[0]!.id, workLabel: 'Kiếm Đạo' }
       })
+    })
+
+    it('giữ chữ "Truyện" khi nó là một phần tên tác phẩm', () => {
+      const { library, works } = openWorks(['Truyện test', 'TRuyện test 2', 'Truyện test 3'])
+      const resolver = new TargetResolver({ library })
+
+      for (const [description, work] of [
+        ['Truyện test', works[0]],
+        ['chương 1 của Truyện test', works[0]],
+        ['Truyện test chương 1', works[0]],
+        ['truyện test 2', works[1]]
+      ] as const) {
+        const res = resolver.resolve(description, {})
+        expect(res.status, description).toBe('resolved')
+        if (res.status === 'resolved') expect(res.target.workId, description).toBe(work!.id)
+      }
     })
   })
 })

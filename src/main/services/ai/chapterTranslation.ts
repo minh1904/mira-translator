@@ -27,7 +27,7 @@ import {
   PREVIOUS_PARAGRAPHS,
   type TranslatePromptContext
 } from './translate/translatePrompt'
-import { suggestRegister } from './translate/languageProfiles'
+import { resolveRegister } from '../../../shared/contracts/addressing/resolve'
 import { matchContextEntries } from '../../../shared/context/contextMatching'
 import { originFor } from './provenance'
 import { ProviderError, type SegmentText } from '../../infra/providers/types'
@@ -171,7 +171,7 @@ export class ChapterTranslator {
         const prompt: TranslatePromptContext = {
           sourceLang: work.sourceLang,
           genre: work.genre,
-          register: suggestRegister(work.sourceLang, work.genre)
+          register: resolveRegister(work)
         }
         try {
           const glossaryEntries = library.getEffectiveGlossary(workId, chapterId, {

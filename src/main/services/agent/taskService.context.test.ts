@@ -128,6 +128,22 @@ describe('AgentTaskService: context before translating', () => {
     expect(kit.tasks.get(task.id).task.extracting).toBeUndefined()
   })
 
+  it('starts no item of the task while it extracts terms, even with free places', async () => {
+    const seen: Array<{ running: number; requests: number }> = []
+    let probe = (): void => {}
+    const kit = contextKit([HAN_LAP], () => probe())
+    const task = kit.create('extract_then_review')
+    probe = () =>
+      seen.push({
+        running: kit.tasks.get(task.id).items.filter((item) => item.state === 'running').length,
+        requests: kit.translations.requests.length
+      })
+    await kit.tasks.idle()
+    expect(seen.length).toBeGreaterThan(0)
+    expect(seen.every((each) => each.running === 0 && each.requests === 0)).toBe(true)
+    expect(kit.tasks.get(task.id).task.state).toBe('completed')
+  })
+
   it('extracts terms and translates without stopping for review', async () => {
     const kit = contextKit([HAN_LAP])
     const task = kit.create('extract_then_review')

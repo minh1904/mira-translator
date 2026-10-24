@@ -5,6 +5,7 @@ import { taskLimit } from '../../../shared/contracts/modelSettings'
 import { buildRows, normalizeRowText, type Row } from '../../../shared/contracts/rows'
 import { planBatches } from '../../../shared/translation/translatePlanner'
 import { StorageError } from '../../infra/storage/errors'
+import type { CallPriority } from '../../infra/providers/gateway/limiter'
 import type { SegmentText } from '../../infra/providers/types'
 import { addUsage, toWireUsage, type Usage } from '../../infra/providers/usage'
 import type { RowAuthor } from '../../infra/storage/sentenceRows'
@@ -12,6 +13,7 @@ import { createRunContext, getRunContext } from '../../infra/storage/translateRu
 import type { LibraryStore } from '../library/library'
 import type { ConnectionService } from '../ai/connectionService'
 import { executeTranslateBatch } from '../ai/translate/translationCore'
+import { collectFailures, MissingSourceError, RunFailedError, type RunFailure } from './taskError'
 import { CallBudget, defaultExtra } from '../ai/translate/callBudget'
 import {
   parseSnapshot,
@@ -21,6 +23,8 @@ import {
 import { PREVIOUS_PARAGRAPHS } from '../ai/translate/translatePrompt'
 import { originFor } from '../ai/provenance'
 import { isProtectedRow } from '../ai/chapterTranslation'
+import { polishChapterRows } from '../ai/chapterPolish'
+import { POLISH_PROMPT_VERSION } from '../ai/polish'
 import type { TokenUsage } from '../../../shared/contracts/usage'
 
 /** Why a run stopped at a safe point between batches; the item goes back to the queue. */
@@ -44,12 +48,20 @@ export interface ChapterTranslationRunInput {
     entryId: string
     settingsKey?: string
   }
+  /** Queue for the entry's call slots; a task runs as `background` so chat goes first. */
+  priority?: CallPriority
   /**
    * Key of the run's context snapshot in `translate_run_context`. Created from the live store when
    * missing; a task item pins `task:<itemId>` before its first run and every later run reuses it.
    */
   runKey?: string
   policy?: OverwritePolicy
+  /**
+   * Polish the rows this run translated once every batch is in (change `add-auto-polish`), on the
+   * auxiliary model when one is set, else on the run's own. Best effort: it never fails the run, and it
+   * writes inside the same operation, so one undo takes back the translation and the polish together.
+   */
+  polish?: boolean
   /** Source rows the user chose to skip (refused by the provider); never sent again. */
   skipIds?: readonly string[]
   /** Prefix of content batch keys; a task uses `item:<itemId>:` so keys hold across its runs. */
@@ -73,24 +85,23 @@ export interface ChapterTranslationRunResult {
   state: 'completed' | 'partially_completed' | 'conflict' | 'cancelled' | 'failed' | 'stopped'
   stopReason?: RunStopReason
   appliedUnits: number
+  /** Rows the polish step rewrote after they were translated; absent when polish did not run. */
+  polishedUnits?: number
   totalUnits: number
   /** Rows left alone because they already had a translation. */
   protectedCount: number
   failedIds: string[]
   refusedIds: string[]
   budgetIds: string[]
+  /** Why the paragraphs in `failedIds` failed, grouped by cause (change `unify-activity-screen`). */
+  failures: RunFailure[]
   lastAppliedRev: number | null
   summary: string
   usage?: TokenUsage | null
   contextHash?: string
 }
 
-/** The chapter has no source to translate; a task item waits for the user instead of failing. */
-export class MissingSourceError extends StorageError {
-  constructor(message: string) {
-    super('validation', message)
-  }
-}
+export { MissingSourceError }
 
 function toSegmentText(row: Row): SegmentText {
   return { id: row.sourceId, text: row.sourceText }
@@ -114,7 +125,11 @@ export async function runChapterTranslation(
   const now = input.now ?? Date.now
   const policy = input.policy ?? 'protect'
 
-  const translator = connections.translator(modelSelection.connectionId, modelSelection.entryId)
+  const translator = connections.translator(
+    modelSelection.connectionId,
+    modelSelection.entryId,
+    input.priority
+  )
   if (modelSelection.settingsKey && translator.settingsKey !== modelSelection.settingsKey) {
     throw new StorageError(
       'conflict',
@@ -174,6 +189,7 @@ export async function runChapterTranslation(
     failedIds: [] as string[],
     refusedIds: [] as string[],
     budgetIds: [] as string[],
+    failures: [] as RunFailure[],
     contextHash: stored.snapshotHash
   }
 
@@ -212,6 +228,8 @@ export async function runChapterTranslation(
 
   let currentRev = targetInit.rev
   let appliedUnits = 0
+  /** What this run committed, for the polish step; rows an earlier run of the item wrote are not in it. */
+  const translatedRows: Array<{ sourceId: string; text: string }> = []
   const rowMap = new Map(rows.map((r) => [r.sourceId, r]))
   let usage: Usage | null = null
   let calledWithoutUsage = false
@@ -252,6 +270,87 @@ export async function runChapterTranslation(
     return result
   }
 
+  /** Polishes what this run translated and commits the accepted edits; returns how many rows changed. */
+  const polishApplied = async (): Promise<number> => {
+    let polisher = translator
+    const auxiliary = connections.preferences().auxiliary
+    if (auxiliary) {
+      try {
+        polisher = connections.translator(auxiliary.connectionId, auxiliary.entryId, input.priority)
+      } catch {
+        // The auxiliary model is gone or unusable: polish on the run's own model.
+      }
+    }
+    const caller = polisher.provider as unknown as TranslationModelCaller
+    if (typeof caller.complete !== 'function') return 0
+    const rowsToPolish = translatedRows.flatMap((done) => {
+      const row = rowMap.get(done.sourceId)
+      return row ? [{ sourceId: done.sourceId, src: row.sourceText, dst: done.text }] : []
+    })
+    let polished
+    try {
+      polished = await polishChapterRows({
+        caller,
+        snapshot,
+        rows: rowsToPolish,
+        budget,
+        signal,
+        log: { workId, chapterId, runKey, model: polisher.entry.model }
+      })
+    } catch {
+      return 0
+    }
+    if (polished.usage) usage = addUsage(usage, polished.usage)
+    else if (polished.calls > 0) calledWithoutUsage = true
+    reportUsage()
+    const edits = polished.edits
+      .map((edit) => ({ sourceId: edit.sourceId, text: normalizeRowText(edit.text) }))
+      .filter((edit) => edit.text !== '')
+    if (edits.length === 0 || signal?.aborted) return 0
+    try {
+      await input.beforeCommit?.()
+    } catch {
+      return 0
+    }
+    const releaseLease = library.acquireTargetWriteLease(
+      { workId, chapterId, side: 'target' },
+      operationId
+    )
+    try {
+      if (signal?.aborted) return 0
+      const applied = library.applyAgentTranslationBatch(workId, {
+        operationId,
+        batchKey:
+          (input.batchKeyPrefix ?? 'op:') +
+          'polish:' +
+          sha256(
+            JSON.stringify([
+              edits.map((edit) => edit.sourceId),
+              stored.snapshotHash,
+              polisher.settingsKey,
+              POLISH_PROMPT_VERSION
+            ])
+          ),
+        expectedRev: currentRev,
+        checksum: 'sha256:' + sha256(JSON.stringify(edits)),
+        rows: edits,
+        by: {
+          origin: originFor(polisher.provider.id),
+          provider: polisher.provider.id,
+          model: polisher.entry.model
+        }
+      })
+      currentRev = applied.afterRev
+      return edits.length
+    } catch (error) {
+      // Someone edited the chapter since the batches were written: leave the translation as it is.
+      if (error instanceof StorageError && error.code === 'conflict') return 0
+      throw error
+    } finally {
+      releaseLease()
+    }
+  }
+
   try {
     for (let batchIdx = 0; batchIdx < planned.batches.length; batchIdx++) {
       if (signal?.aborted) break
@@ -288,6 +387,7 @@ export async function runChapterTranslation(
         base.failedIds.push(...outcome.failedIds)
         base.refusedIds.push(...outcome.refusedIds)
         base.budgetIds.push(...outcome.budgetIds)
+        collectFailures(base.failures, outcome)
         if (outcome.usage) usage = addUsage(usage, outcome.usage)
         else if (outcome.request) calledWithoutUsage = true
         if (
@@ -297,7 +397,7 @@ export async function runChapterTranslation(
           !budget.gateClosed
         ) {
           reportUsage()
-          throw new StorageError('io', outcome.error.message)
+          throw new RunFailedError(outcome.error.message, base.failures)
         }
       } else {
         const res = await translator.provider.translate(
@@ -357,6 +457,7 @@ export async function runChapterTranslation(
           })
           currentRev = applied.afterRev
           appliedUnits += safeBatchRows.length
+          translatedRows.push(...safeBatchRows)
         } finally {
           releaseLease()
         }
@@ -379,15 +480,19 @@ export async function runChapterTranslation(
         `Đã dừng dịch. Đã hoàn thành ${appliedUnits}/${sendable.length} câu trước khi hủy.`
       )
     }
+    const polishedUnits =
+      input.polish && translatedRows.length > 0 && !budget.gateClosed ? await polishApplied() : 0
+    const polishNote = polishedUnits > 0 ? ` Trau chuốt sửa ${polishedUnits} câu.` : ''
     const failed = base.failedIds.length > 0
     const state = failed || keptRows.length > 0 ? 'partially_completed' : 'completed'
     return finish(
       state,
-      failed
+      (failed
         ? `Đã dịch ${appliedUnits} câu; ${base.failedIds.length} câu chưa dịch được.`
         : keptRows.length > 0
           ? `Đã dịch ${appliedUnits} câu mới; giữ nguyên ${keptRows.length} câu đã có bản dịch.`
-          : `Đã dịch hoàn tất ${appliedUnits}/${sendable.length} câu.`
+          : `Đã dịch hoàn tất ${appliedUnits}/${sendable.length} câu.`) + polishNote,
+      input.polish ? { polishedUnits } : {}
     )
   } catch (error) {
     if (signal?.aborted) {

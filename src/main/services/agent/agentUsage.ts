@@ -93,3 +93,31 @@ export function calculateTurnCost(
   )
   return { costUsd: cost, label: ESTIMATE_LABEL }
 }
+
+/** Usage of one provider call of a turn, with the model that made it when that is not the turn's. */
+export interface PricedUsage {
+  usage: TokenUsage | null
+  model?: ModelInfo
+}
+
+/**
+ * Cost of a turn whose calls ran on several models (turn, auxiliary): each model's usage, summed first
+ * because a single call's cost is rounded, at that model's price. `null` when nothing reported usage or
+ * a model that did has no price, never a partial sum.
+ */
+export function sumTurnCost(parts: PricedUsage[], turnModel?: ModelInfo): number | null {
+  const byModel = new Map<ModelInfo | undefined, Array<TokenUsage | null>>()
+  for (const part of parts) {
+    const model = part.model ?? turnModel
+    byModel.set(model, [...(byModel.get(model) ?? []), part.usage])
+  }
+  let total: number | null = null
+  for (const [model, usages] of byModel) {
+    const usage = aggregateTokenUsage(usages)
+    if (!usage) continue
+    const cost = calculateTurnCost(usage, model).costUsd
+    if (cost === null) return null
+    total = (total ?? 0) + cost
+  }
+  return total
+}

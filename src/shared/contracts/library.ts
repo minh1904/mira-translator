@@ -1,4 +1,5 @@
 import * as v from 'valibot'
+import { CULTURE_IDS, SETTING_IDS, type CultureId, type SettingId } from './addressing/types'
 import type { ErrorCode } from './result'
 
 export const BUILTIN_SOURCE_LANGUAGES = ['en', 'zh-Hans', 'zh-Hant', 'ja', 'ko'] as const
@@ -90,6 +91,9 @@ export interface ChapterSummary {
   title: string
 }
 
+/** Lựa chọn bối cảnh chính của người dùng, gồm cả "không dùng bảng". */
+export type WorkSetting = SettingId | 'none'
+
 export interface WorkSummary {
   id: string
   title: string
@@ -98,6 +102,12 @@ export interface WorkSummary {
   author: string | null
   /** Thể loại văn bản (ví dụ "Tiên hiệp, cổ đại"), dùng làm ngữ cảnh cho model dịch. */
   genre: string | null
+  /** Bối cảnh chính của truyện; `'none'` là người dùng chọn không dùng bảng xưng hô; null là chưa chọn. */
+  setting: WorkSetting | null
+  /** Bối cảnh phụ theo thứ tự ghép; luôn rỗng khi `setting` là null hoặc `'none'`. */
+  settingsExtra: SettingId[]
+  /** Văn hóa gốc của câu chuyện (không phải ngôn ngữ văn bản); null là chưa chọn. */
+  culture: CultureId | null
   /** Thay đổi mỗi khi ảnh bìa được cập nhật; null khi không có ảnh bìa. Dùng làm cache key. */
   coverVersion: number | null
   sourceLang: SourceLanguage
@@ -147,6 +157,13 @@ const genre = v.pipe(
   v.maxLength(TITLE_MAX, 'Thể loại tối đa ' + TITLE_MAX + ' ký tự.')
 )
 
+const setting = v.picklist([...SETTING_IDS, 'none'], 'Bối cảnh không hợp lệ.')
+const settingsExtra = v.pipe(
+  v.array(v.picklist(SETTING_IDS, 'Bối cảnh phụ không hợp lệ.')),
+  v.maxLength(SETTING_IDS.length, 'Quá nhiều bối cảnh phụ.')
+)
+const culture = v.picklist(CULTURE_IDS, 'Văn hóa không hợp lệ.')
+
 const description = v.pipe(
   v.string('Mô tả phải là chữ.'),
   v.trim(),
@@ -173,6 +190,9 @@ export const createWorkSchema = v.strictObject({
   originalTitle: v.optional(optionalTitle),
   author: v.optional(author),
   genre: v.optional(genre),
+  setting: v.optional(setting),
+  settingsExtra: v.optional(settingsExtra),
+  culture: v.optional(culture),
   description: v.optional(description),
   cover: v.optional(cover)
 })
@@ -187,6 +207,9 @@ export const workPatchSchema = v.strictObject({
   originalTitle: v.optional(v.nullable(optionalTitle)),
   author: v.optional(v.nullable(author)),
   genre: v.optional(v.nullable(genre)),
+  setting: v.optional(v.nullable(setting)),
+  settingsExtra: v.optional(settingsExtra),
+  culture: v.optional(v.nullable(culture)),
   description: v.optional(v.nullable(description)),
   status: v.optional(status),
   archived: v.optional(v.boolean('Giá trị lưu trữ phải là đúng/sai.')),

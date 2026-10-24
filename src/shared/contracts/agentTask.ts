@@ -1,6 +1,7 @@
 import * as v from 'valibot'
 import { idSchema } from './library'
 import type { ModelRef } from './aiPreferences'
+import type { AgentOperationState } from './agent'
 import { TERM_NOTES_MAX, TERM_TEXT_MAX } from './glossary'
 import type { TokenUsage } from './usage'
 
@@ -153,6 +154,39 @@ export interface AgentTaskSummary extends AgentTaskView {
   usage: TokenUsage | null
   /** Term extraction is running before the first item; `calls` counts the model calls started. */
   extracting?: { calls: number }
+  /** Estimated from the model's price table; absent when the model has no price, never 0 then. */
+  costUsd?: number
+}
+
+/** The latest model run of an item: when it ran, what it cost and how it ended. */
+export interface AgentTaskLastRun {
+  operationId: string
+  startedAt: number
+  /** `null` while the run is going. */
+  endedAt: number | null
+  state: AgentOperationState
+  /** `null` when the provider reported nothing: shown as unknown, never as 0. */
+  usage: TokenUsage | null
+  /** Without `detail`; the run list carries that. */
+  error: OperationError | null
+  /** Estimated like the task's; absent without a price or without reported usage. */
+  costUsd?: number
+}
+
+/** One run of a chapter, as the run list shows it. */
+export interface AgentTaskRunView extends AgentTaskLastRun {
+  /** The runner's own summary line, when it left one. */
+  summary: string | null
+  /** Batches committed so far; `null` when the work file holds no evidence of the run. */
+  batchesDone: number | null
+}
+
+export interface AgentTaskRunsView {
+  itemId: string
+  chapterLabel: string
+  modelLabel: string
+  /** Oldest first. */
+  runs: AgentTaskRunView[]
 }
 
 export interface AgentTaskDetailView {
@@ -160,6 +194,8 @@ export interface AgentTaskDetailView {
   items: Array<
     AgentTaskItemView & {
       chapterLabel: string
+      /** Absent for an item no run has started. */
+      lastRun?: AgentTaskLastRun
       /** The steering instruction the item pinned; `null` none, `undefined` not pinned yet. */
       instruction?: string | null
     }
@@ -167,6 +203,8 @@ export interface AgentTaskDetailView {
   steerings: Array<AgentTaskSteeringView & { requestedLabel: string; effectiveLabel: string }>
   /** The instruction in effect for the chapters not started yet; `null` when there is none. */
   currentInstruction: string | null
+  /** Context questions the task's term extraction left open (change `add-context-questions`). */
+  contextQuestions: number
 }
 
 export const TASK_COMMANDS = [
@@ -344,6 +382,8 @@ export const agentTaskListInputSchema = v.nullable(v.strictObject({ workId: v.op
 
 export const agentTaskGetInputSchema = v.strictObject({ taskId: idSchema })
 
+export const agentTaskRunsInputSchema = v.strictObject({ taskId: idSchema, itemId: idSchema })
+
 /** Pushed to every window after each task state or progress change. */
 export interface AgentTaskChanged {
   taskId: string
@@ -351,3 +391,117 @@ export interface AgentTaskChanged {
   state: AgentTaskState
   stateVersion: number
 }
+
+// ---------------------------------------------------------------------------------------------------
+// Task errors (change `unify-activity-screen`)
+
+/**
+ * Why a run failed, finer than `AgentTaskReason` (which stays the transition-table class). The provider
+ * kinds pass through as they are; `missing_raw`, `conflict` and `budget` are Mira's own. `unknown` is for
+ * an error nothing classified: it is never guessed into one of the others.
+ */
+export const TASK_ERROR_CODES = [
+  'rate_limited',
+  'network',
+  'timeout',
+  'invalid_response',
+  'auth',
+  'quota',
+  'refused',
+  'invalid_request',
+  'cancelled',
+  'missing_raw',
+  'conflict',
+  'budget',
+  'unknown'
+] as const
+export type TaskErrorCode = (typeof TASK_ERROR_CODES)[number]
+
+export const TASK_ERROR_SCOPES = ['task', 'chapter', 'call'] as const
+export type TaskErrorScope = (typeof TASK_ERROR_SCOPES)[number]
+
+/** Action codes only; the labels and buttons are the renderer's, the agent sees the codes. */
+export const TASK_ERROR_OPTIONS = [
+  'retry_now',
+  'open_connections',
+  'switch_model',
+  'skip_refused',
+  'reduce_batch',
+  'open_chapter',
+  'ask_assistant'
+] as const
+export type TaskErrorOption = (typeof TASK_ERROR_OPTIONS)[number]
+
+/** One cause among several in a chapter (3 paragraphs blocked, 2 lost to the network). */
+export interface TaskErrorGroup {
+  code: TaskErrorCode
+  segmentCount: number
+  cause?: string
+}
+
+/**
+ * The one record of a failed run that the screen and the Assistant both read. `cause` and `retryAfterMs`
+ * exist only when the provider gave evidence; `tried` only when the provider layer reports it. `detail`
+ * is the provider's own message and a scrubbed piece of the body: for the screen, never for the agent.
+ */
+export interface TaskError {
+  code: TaskErrorCode
+  scope: TaskErrorScope
+  what: string
+  cause?: string
+  retryable: boolean
+  retryAfterMs?: number
+  tried?: { attempts?: number; keySwitched?: boolean }
+  options: TaskErrorOption[]
+  detail?: string
+  groups?: TaskErrorGroup[]
+}
+
+export const taskErrorSchema = v.object({
+  code: v.picklist(TASK_ERROR_CODES),
+  scope: v.picklist(TASK_ERROR_SCOPES),
+  what: v.string(),
+  cause: v.optional(v.string()),
+  retryable: v.boolean(),
+  retryAfterMs: v.optional(v.pipe(v.number(), v.minValue(0))),
+  tried: v.optional(
+    v.object({
+      attempts: v.optional(v.number()),
+      keySwitched: v.optional(v.boolean())
+    })
+  ),
+  options: v.array(v.picklist(TASK_ERROR_OPTIONS)),
+  detail: v.optional(v.string()),
+  groups: v.optional(
+    v.array(
+      v.object({
+        code: v.picklist(TASK_ERROR_CODES),
+        segmentCount: v.number(),
+        cause: v.optional(v.string())
+      })
+    )
+  )
+})
+
+/** What runs stored before this change hold: a code and the provider's raw message, no scope. */
+export interface LegacyOperationError {
+  code: string
+  message: string
+}
+
+const legacyErrorSchema = v.object({ code: v.string(), message: v.string() })
+
+export type OperationError = TaskError | LegacyOperationError
+
+/**
+ * Reads `AgentOperation.error` (stored as JSON of unknown shape). A record without `scope` is the old
+ * shape and is returned as it is, never re-classified from its message.
+ */
+export function parseOperationError(value: unknown): OperationError | null {
+  const record = v.safeParse(taskErrorSchema, value)
+  if (record.success) return record.output
+  const legacy = v.safeParse(legacyErrorSchema, value)
+  return legacy.success ? legacy.output : null
+}
+
+export const isTaskError = (error: OperationError): error is TaskError => 'scope' in error

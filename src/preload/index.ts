@@ -21,6 +21,8 @@ import type {
   AgentContextSearchGroup,
   AgentEditsResult,
   AgentRevertResult,
+  AgentSteer,
+  AgentSteerEvent,
   AgentStreamEvent,
   AgentTargetChanged,
   AgentUndoResult,
@@ -29,6 +31,7 @@ import type {
 import type {
   AgentTaskChanged,
   AgentTaskDetailView,
+  AgentTaskRunsView,
   AgentTaskSummary,
   AgentTaskView,
   AgentTaskSteerResult
@@ -566,6 +569,12 @@ const desktopApi: DesktopApi = {
       send: (input) =>
         ipcRenderer.invoke(CHANNELS.agentTurnSend, input) as Promise<Result<AgentSendResult>>,
       cancel: (input) => ipcRenderer.invoke(CHANNELS.agentTurnCancel, input),
+      steer: (input) =>
+        ipcRenderer.invoke(CHANNELS.agentTurnSteer, input) as Promise<Result<AgentSteer>>,
+      withdrawSteer: (steerId) =>
+        ipcRenderer.invoke(CHANNELS.agentTurnWithdrawSteer, { steerId }) as Promise<
+          Result<AgentSteer>
+        >,
       revert: (turnId) =>
         ipcRenderer.invoke(CHANNELS.agentTurnRevert, { turnId }) as Promise<
           Result<AgentRevertResult>
@@ -626,6 +635,11 @@ const desktopApi: DesktopApi = {
       ipcRenderer.on(EVENT_CHANNELS.agentStreamEvent, handler)
       return () => ipcRenderer.off(EVENT_CHANNELS.agentStreamEvent, handler)
     },
+    onSteerChanged: (listener) => {
+      const handler = (_event: IpcRendererEvent, event: AgentSteerEvent): void => listener(event)
+      ipcRenderer.on(EVENT_CHANNELS.agentSteerChanged, handler)
+      return () => ipcRenderer.off(EVENT_CHANNELS.agentSteerChanged, handler)
+    },
     tasks: {
       list: (filter) =>
         ipcRenderer.invoke(CHANNELS.agentTaskList, filter ?? null) as Promise<
@@ -634,6 +648,10 @@ const desktopApi: DesktopApi = {
       get: (taskId) =>
         ipcRenderer.invoke(CHANNELS.agentTaskGet, { taskId }) as Promise<
           Result<AgentTaskDetailView>
+        >,
+      runs: (taskId, itemId) =>
+        ipcRenderer.invoke(CHANNELS.agentTaskRuns, { taskId, itemId }) as Promise<
+          Result<AgentTaskRunsView>
         >,
       create: (input) =>
         ipcRenderer.invoke(CHANNELS.agentTaskCreate, input) as Promise<Result<AgentTaskView>>,

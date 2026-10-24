@@ -1,9 +1,7 @@
 import type { SourceLanguage } from '../../../shared/contracts/library'
-import {
-  ADDRESSING_RULES,
-  REGISTER_PRESETS,
-  type RegisterPresetId
-} from '../../../shared/contracts/addressingPresets'
+import { ADDRESSING_RULES } from '../../../shared/contracts/addressingPresets'
+import { composePreset } from '../../../shared/contracts/addressing/compose'
+import type { RegisterSelection } from '../../../shared/contracts/addressing/types'
 import { presetSection } from './translate/translatePrompt'
 import { languageName } from './translate/languageProfiles'
 
@@ -203,13 +201,13 @@ export function addressChanges(
 
 export function buildAnalysisMessages(input: {
   sourceLang: SourceLanguage | string
-  register: RegisterPresetId | null
+  register: RegisterSelection | null
   characters: AnalysisCharacter[]
   evidence: CharacterEvidence[]
   /** Gợi ý từ `addressChanges`. */
   possibleChanges?: AddressChange[]
 }): Array<{ role: 'system' | 'user'; content: string }> {
-  const preset = input.register ? REGISTER_PRESETS[input.register] : undefined
+  const preset = input.register ? composePreset(input.register) : null
   const system = [
     `Bạn là biên tập viên dịch truyện ${languageName(input.sourceLang)} sang tiếng Việt, đang lập bảng xưng hô cho một bộ truyện TRƯỚC khi dịch.`,
     'Nhiệm vụ: từ các câu thoại bằng chứng, đề xuất cho mỗi nhân vật giới tính và đại từ người kể dùng (ngôi ba), và cho mỗi cặp người nói → người nghe có bằng chứng: tự xưng, cách gọi người nghe, đại từ ngôi hai dự phòng.',

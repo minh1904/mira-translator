@@ -28,6 +28,9 @@ import type {
   AgentRevertResult,
   AgentContextSearchInput,
   AgentSetPermissionLevelInput,
+  AgentSteer,
+  AgentSteerEvent,
+  AgentSteerInput,
   AgentStreamEvent,
   AgentTargetChanged,
   AgentUndoInput,
@@ -40,6 +43,7 @@ import type {
   AgentTaskControlInput,
   AgentTaskCreateInput,
   AgentTaskDetailView,
+  AgentTaskRunsView,
   AgentTaskSummary,
   AgentTaskView,
   AgentTaskSteerInput,
@@ -485,6 +489,10 @@ export interface AgentApi {
   turn: {
     send(input: AgentSendInput): Promise<Result<AgentSendResult>>
     cancel(input: AgentCancelInput): Promise<Result<AgentCancelResult>>
+    /** Queues a message for the running turn; it goes in after the next round's tool results. */
+    steer(input: AgentSteerInput): Promise<Result<AgentSteer>>
+    /** Withdraws a waiting message, or drops one handed back to the user. */
+    withdrawSteer(steerId: string): Promise<Result<AgentSteer>>
     /** Restores the checkpoint before a turn: undoes its writes and the later turns', hides them. */
     revert(turnId: string): Promise<Result<AgentRevertResult>>
     /** Restores the checkpoint before a turn, then sends the edited command as a new turn. */
@@ -516,9 +524,12 @@ export interface AgentApi {
     onTargetChanged(listener: (event: AgentTargetChanged) => void): () => void
   }
   onStreamEvent(listener: (event: AgentStreamEvent) => void): () => void
+  onSteerChanged(listener: (event: AgentSteerEvent) => void): () => void
   tasks: {
     list(filter?: { workId?: string }): Promise<Result<{ tasks: AgentTaskSummary[] }>>
     get(taskId: string): Promise<Result<AgentTaskDetailView>>
+    /** The runs of one chapter of a task, oldest first. */
+    runs(taskId: string, itemId: string): Promise<Result<AgentTaskRunsView>>
     create(input: AgentTaskCreateInput): Promise<Result<AgentTaskView>>
     control(input: AgentTaskControlInput): Promise<Result<AgentTaskView>>
     steer(input: AgentTaskSteerInput): Promise<Result<AgentTaskSteerResult>>

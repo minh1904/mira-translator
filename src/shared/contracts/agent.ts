@@ -221,7 +221,7 @@ export interface AgentActivity {
   turnId: string
   operationId: string | null
   stepSeq: number
-  kind: 'thinking' | 'resolve' | 'read' | 'write' | 'progress' | 'result' | 'compaction'
+  kind: 'thinking' | 'resolve' | 'read' | 'write' | 'progress' | 'result' | 'compaction' | 'retry'
   state: AgentActivityState
   label: string
   detail: unknown | null
@@ -230,8 +230,41 @@ export interface AgentActivity {
 }
 
 /** One element of a turn's answer, in the order it happened (`add-agent-response-parts`). */
-export const RESPONSE_PART_KINDS = ['text', 'reasoning', 'tool_call', 'progress'] as const
+export const RESPONSE_PART_KINDS = [
+  'text',
+  'reasoning',
+  'tool_call',
+  'progress',
+  // A message the user typed while the turn ran, at the round it was delivered.
+  'steer'
+] as const
 export type AgentResponsePartKind = (typeof RESPONSE_PART_KINDS)[number]
+
+/** At most this many messages typed while a turn runs wait at once (change `add-agent-turn-steering`). */
+export const AGENT_STEER_LIMIT = 5
+
+/**
+ * A message the user typed while a turn ran. `pending` waits for the next point after tool results;
+ * `delivered` went into the turn at `deliveredRound`; when the turn ended first it was `forwarded` as a
+ * new turn (after `completed`) or `returned` to the user (any other end); the user can withdraw it.
+ */
+export interface AgentSteer {
+  id: string
+  turnId: string
+  seq: number
+  text: string
+  state: 'pending' | 'delivered' | 'withdrawn' | 'returned' | 'forwarded'
+  deliveredRound: number | null
+  forwardedTurnId: string | null
+  createdAt: number
+  updatedAt: number
+}
+
+/** Sent to every window when a steer message is added, delivered, withdrawn or forwarded. */
+export interface AgentSteerEvent {
+  sessionId: string
+  steer: AgentSteer
+}
 
 export interface AgentResponsePart {
   id: string
@@ -598,6 +631,8 @@ export interface AgentSessionDetailView {
   sessionApprovals: string[]
   /** Chương agent đã sửa trong phiên mà người dùng chưa giữ hay hoàn tác. */
   editedChapters: AgentEditedChapter[]
+  /** Tin gửi thêm khi lượt đang chạy còn chờ, hoặc đã trả lại cho người dùng. */
+  steers: AgentSteer[]
 }
 
 /**
@@ -687,6 +722,22 @@ export interface AgentCancelInput {
 export interface AgentCancelResult {
   status: AgentTurnState
 }
+
+/** A message typed while the turn runs; the same `clientCommandId` sent again stores it once. */
+export const agentSteerInputSchema = v.strictObject({
+  sessionId: idSchema,
+  turnId: idSchema,
+  clientCommandId: idSchema,
+  text: v.pipe(
+    v.string('Tin gửi thêm phải là chuỗi ký tự.'),
+    v.trim(),
+    v.minLength(1, 'Tin gửi thêm không được để trống.'),
+    v.maxLength(4000, 'Tin gửi thêm tối đa 4.000 ký tự.')
+  )
+})
+export type AgentSteerInput = v.InferOutput<typeof agentSteerInputSchema>
+
+export const agentWithdrawSteerInputSchema = v.strictObject({ steerId: idSchema })
 
 export const agentCancelInputSchema = v.strictObject({
   turnId: idSchema

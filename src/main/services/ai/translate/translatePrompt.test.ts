@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest'
 import type { ContextEntryItem } from '../../../../shared/contracts/glossary'
 import type { AddressingDyadResolved, CharacterItem } from '../../../../shared/contracts/addressing'
 import type { TempMappedUnit } from '../../../../shared/contracts/translateCore'
+import type { RegisterSelection } from '../../../../shared/contracts/addressing/types'
 import {
   TRANSLATE_PROMPT_VERSION,
   buildRepairRequest,
@@ -75,6 +76,10 @@ function dyad(
 
 const han = character({ id: 'c1' })
 const nam = character({ id: 'c2', source: '南宫婉', target: 'Nam Cung Uyển' })
+const JA_MODERN: RegisterSelection = { setting: 'modern', extra: [], culture: 'ja' }
+const ZH_MODERN: RegisterSelection = { setting: 'modern', extra: [], culture: 'zh' }
+const ZH_COURT: RegisterSelection = { setting: 'court', extra: [], culture: 'zh' }
+
 const units: TempMappedUnit[] = [
   { tempId: '[1]', originalId: 'a', text: '韩立看着南宫婉。' },
   { tempId: '[2]', originalId: 'b', text: '她笑了。' }
@@ -104,7 +109,7 @@ describe('translatePrompt — chọn cặp trước khi dịch', () => {
     const request = buildTranslateRequest(
       {
         sourceLang: 'ja',
-        register: 'ja-modern',
+        register: JA_MODERN,
         glossary: [term({ aliases: ['韩老魔'], forbidden: false })],
         dyads: [dyad(han, nam)],
         characters: [han, nam],
@@ -310,21 +315,22 @@ describe('translatePrompt — nhân vật và bộ mặc định', () => {
     const plain = buildTranslateRequest(base, units).messages[0].content
     expect(plain).toContain('<addressing_general>')
     expect(plain).not.toContain('<addressing_defaults>')
-    const one = buildTranslateRequest({ ...base, register: 'ja-modern' }, units).messages[0].content
-    const two = buildTranslateRequest({ ...base, register: 'ja-modern', characters: [unya] }, [
+    const one = buildTranslateRequest({ ...base, register: JA_MODERN }, units).messages[0].content
+    const two = buildTranslateRequest({ ...base, register: JA_MODERN, characters: [unya] }, [
       units[1]
     ]).messages[0].content
-    expect(one).toContain('Bối cảnh: Nhật hiện đại, học đường.')
-    expect(one).toContain('- Thầy cô → học trò, thô [私 + お前/テメェ]: cô / thầy – cậu.')
+    expect(one).toContain('Bối cảnh: Hiện đại, đô thị; văn hóa: Nhật.')
+    expect(one).toContain('- Thầy cô ↔ học trò [')
+    expect(one).toContain(']: thầy/cô – em;')
     expect(one).not.toContain('Luật riêng của bối cảnh này')
     expect(one).toBe(two)
   })
 
   it('không bộ nào mang luật thầy trò, cũng không có luật hạn chế "mày – tao"', () => {
-    const registers = [undefined, 'ja-modern', 'zh-modern', 'zh-ancient'] as const
+    const registers = [undefined, JA_MODERN, ZH_MODERN, ZH_COURT] as const
     for (const register of registers) {
       const prompt = buildTranslateRequest(
-        { ...base, sourceLang: register?.startsWith('zh') ? 'zh-Hans' : 'ja', register },
+        { ...base, sourceLang: register?.culture === 'zh' ? 'zh-Hans' : 'ja', register },
         units
       ).messages[0].content
       expect(prompt).not.toContain('hạn chế "mày/tao"')
@@ -343,7 +349,7 @@ describe('translatePrompt — nhân vật và bộ mặc định', () => {
           : 'Giữ cô – cậu cả khi giận; gọi theo họ khi bản gốc gọi họ.'
       const context: TranslatePromptContext = {
         ...base,
-        register: 'ja-modern',
+        register: JA_MODERN,
         dyads: [dyad(unya, han, { speakerPronoun: 'cô', recipientPronoun, notes })]
       }
       for (const build of [buildTranslateRequest, buildRepairRequest]) {
@@ -356,7 +362,7 @@ describe('translatePrompt — nhân vật và bộ mặc định', () => {
   })
 
   it('bảng của bộ nằm ở system, không trở thành đoạn nguồn kể cả lượt hỏi lại', () => {
-    const context: TranslatePromptContext = { ...base, register: 'ja-modern' }
+    const context: TranslatePromptContext = { ...base, register: JA_MODERN }
     const request = buildTranslateRequest(context, units)
     const repair = buildRepairRequest(context, [units[1]])
     expect(request.messages[0].content).not.toContain('Ví dụ minh họa')
@@ -402,23 +408,24 @@ describe('output mode', () => {
   const hash = (text: string): string => createHash('sha256').update(text).digest('hex')
 
   it('leaves the system prompt byte for byte as it was before the mode existed', () => {
-    // Pinned system prompts. Re-pinned for translate-v10 (2026-10-15): "ạ" only for a junior speaker or
+    // Pinned system prompts. Re-pinned for translate-v11 (2026-10-24: bảng theo bối cảnh và văn hóa, luật suy cặp
+    // khi chưa có dòng phù hợp). Before that, for translate-v10 (2026-10-15): "ạ" only for a junior speaker or
     // a servant, approved pair forms win over the honorific suffix, one self-reference per listener per
     // chapter, and exclusive 私たち. Array mode must still not change a byte.
-    const school = { sourceLang: 'ja', genre: 'Học đường', register: 'ja-modern' as const }
+    const school = { sourceLang: 'ja', genre: 'Học đường', register: JA_MODERN }
     expect(hash(systemPrompt(school))).toBe(
-      '203bf40a7b402a2d157acd3a4ba1ade9bf364153f9c06bc16e8ba389d795f29f'
+      'ddfa9b7f080a885b2d9e8df72db7c1b3a6a2102dcbc94f502a1e8a5d89325d62'
     )
     expect(hash(systemPrompt({ ...school, outputMode: 'array' }))).toBe(hash(systemPrompt(school)))
     expect(hash(systemPrompt({ sourceLang: 'zh' }))).toBe(
-      '388c66d2d791b7e51cfa883511912bfb147360eaf987c1ccabf19f66c6ad70b2'
+      'd68c80dc6096b8fe85fe407da32b4009a6e5c190d5d253dead303c0b9b2c29a2'
     )
     const request = buildTranslateRequest({ sourceLang: 'ja' }, unit)
     expect(request.systemHash).toBe(
-      'ead1b10e2f9082c4a733f015c0a153b49b2fd63bdf2caa78ec75bdf9e32002a6'
+      '46a149954082988971b4c1ce98779f399eb55a899adf137ff132bb07545058d6'
     )
     expect(request.requestHash).toBe(
-      '2804188cd71203885fc4698b032f909258efe4525c5fbfabe2e9911d76253ee2'
+      '6f81fdcf5c578eae225aaf2fa8b0c4319a6febab43dda948f5fe838eed851baf'
     )
   })
 

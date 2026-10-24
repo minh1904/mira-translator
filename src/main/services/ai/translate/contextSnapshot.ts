@@ -1,12 +1,13 @@
 import { readConventions } from '../../../infra/storage/workConventions'
 import { createHash } from 'node:crypto'
 import type { AddressingDyadResolved, CharacterItem } from '../../../../shared/contracts/addressing'
-import type { RegisterPresetId } from '../../../../shared/contracts/addressingPresets'
+import { LEGACY_PRESET_ALIASES } from '../../../../shared/contracts/addressing/compose'
+import { resolveRegister } from '../../../../shared/contracts/addressing/resolve'
+import type { RegisterSelection } from '../../../../shared/contracts/addressing/types'
 import type { ContextEntryItem } from '../../../../shared/contracts/glossary'
 import { listCharacters } from '../../../infra/storage/addressingEntries'
 import type { LibraryStore } from '../../library/library'
 import { matchContextEntries } from '../../../../shared/context/contextMatching'
-import { suggestRegister } from './languageProfiles'
 import {
   buildTranslateRequest,
   charactersMentionedIn,
@@ -25,10 +26,11 @@ import {
  * not in the chapter does not count as a change.
  */
 export interface ContextSnapshot {
-  version: 1
+  /** 1: `register` là mã bảng phẳng cũ (hoặc null); 2: `register` là bối cảnh và văn hóa. Bản 1 chỉ còn được đọc. */
+  version: 1 | 2
   sourceLang: string
   genre: string | null
-  register: RegisterPresetId | null
+  register: RegisterSelection
   glossary: ContextEntryItem[]
   dyads: AddressingDyadResolved[]
   characters: CharacterItem[]
@@ -68,9 +70,21 @@ export function recordOf(snapshot: ContextSnapshot): SnapshotRecord {
   return { snapshot, json, hash: createHash('sha256').update(json).digest('hex') }
 }
 
-/** Reads a stored snapshot back. Its hash is the stored one: the JSON is never rewritten. */
+/**
+ * Reads a stored snapshot back. Its hash is the stored one: the JSON is never rewritten. A version 1
+ * snapshot kept a flat register id; it reads as the setting and culture that id stands for, so its request
+ * can still be rebuilt (the table text may differ from the one it was sent with, which `matches` reports).
+ */
 export function parseSnapshot(json: string): ContextSnapshot {
-  return JSON.parse(json) as ContextSnapshot
+  const raw = JSON.parse(json) as Omit<ContextSnapshot, 'register'> & {
+    register: string | RegisterSelection | null
+  }
+  if (typeof raw.register === 'object' && raw.register !== null) return raw as ContextSnapshot
+  const legacy = raw.register === null ? undefined : LEGACY_PRESET_ALIASES[raw.register]
+  return {
+    ...raw,
+    register: { setting: legacy?.setting ?? null, extra: [], culture: legacy?.culture ?? null }
+  }
 }
 
 /**
@@ -147,10 +161,10 @@ export function takeContextSnapshot(
     chapterSource
   )
   return recordOf({
-    version: 1,
+    version: 2,
     sourceLang: work.sourceLang,
     genre: work.genre ?? null,
-    register: suggestRegister(work.sourceLang, work.genre) ?? null,
+    register: resolveRegister(work),
     glossary,
     dyads,
     characters,

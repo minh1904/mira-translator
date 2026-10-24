@@ -61,6 +61,18 @@ describe('translationCore — Điều phối Lõi dịch theo lô', () => {
     expect(result.failedIds).toEqual([])
     expect(result.items).toEqual([{ id: 'u1', text: '“Cậu về rồi à?”' }])
   })
+  it('keeps Vietnamese quotes when the model answers with corner brackets', async () => {
+    const result = await executeTranslateBatch({
+      caller: {
+        complete: async () => ({
+          text: JSON.stringify([{ id: '[1]', dst: '「Serena bảo 『chuẩn bị』 nên tới muộn.」' }]),
+          usage: null
+        })
+      },
+      units: [{ id: 'u1', text: '「セレナが『準備』って言うから遅れた」' }]
+    })
+    expect(result.items).toEqual([{ id: 'u1', text: '“Serena bảo ‘chuẩn bị’ nên tới muộn.”' }])
+  })
   it('dịch thành công lô bình thường và tính đúng usage', async () => {
     const caller: TranslationModelCaller = {
       async complete() {

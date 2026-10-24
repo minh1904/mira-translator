@@ -79,6 +79,12 @@ export interface TranslateCoreBatchOutcome {
   structure: { extraneous: number; duplicate: number; repaired: number }
 }
 
+const CJK_QUOTES: Record<string, string> = { '「': '“', '」': '”', '『': '‘', '』': '’' }
+
+/** CJK corner brackets as Vietnamese quotes, as the prompt asks (`languageProfiles.ts`). */
+export const vietnameseQuotes = (text: string): string =>
+  text.replace(/[「」『』]/g, (mark) => CJK_QUOTES[mark]!)
+
 /**
  * Dịch một lô đơn vị qua mô hình AI:
  * - Ánh xạ ID tạm [1], [2], ...
@@ -90,7 +96,13 @@ export interface TranslateCoreBatchOutcome {
 export async function executeTranslateBatch(
   options: TranslateCoreBatchOptions
 ): Promise<TranslateCoreBatchOutcome> {
-  const outcome = await runTranslateBatch(options)
+  const raw = await runTranslateBatch(options)
+  // The prompt asks for “…” and ‘…’, yet models still return 「」『』 in some batches (Truyện test,
+  // 2026-10-23: 84 paragraphs), which leaves a chapter with mixed quotes.
+  const outcome = {
+    ...raw,
+    items: raw.items.map((item) => ({ ...item, text: vietnameseQuotes(item.text) }))
+  }
   const { log, units } = options
   if (log) {
     // What the app kept, next to the raw answers above it: a lost quote or word shows which side lost it.
@@ -253,7 +265,13 @@ async function runTranslateBatch({
         budgetIds: [],
         withoutContextIds: [],
         usage: totalUsage,
-        error: { kind: error.kind, message: describeProviderError(error), recoverAt },
+        error: {
+          kind: error.kind,
+          message: describeProviderError(error),
+          recoverAt,
+          ...(error.quotaScope ? { quotaScope: error.quotaScope } : {}),
+          detail: [error.message, error.bodySnippet].filter(Boolean).join('\n')
+        },
         request,
         structure
       }

@@ -5,12 +5,16 @@ export const AGENT_WRITE_TOOLS = [
   'undo_operation',
   'create_translation_task',
   'steer_translation_task',
+  'update_work',
   'answer_context_questions',
   'set_work_conventions'
 ] as const
 
 /** Progress message Main stores at the end of a turn that gave the user nothing. */
 export const EMPTY_TURN_NOTICE = 'Lượt kết thúc mà không có phản hồi'
+
+/** Start of the progress message Main stores when a turn stopped on a budget or a repeated call. */
+export const BUDGET_STOP_NOTICE = 'Lượt dừng vì chạm giới hạn'
 
 /**
  * Whether a turn that ended `completed` gave the user nothing: no answer text and no write that
@@ -28,4 +32,12 @@ export function isEmptyTurn(turn: {
       call.state === 'completed' && (AGENT_WRITE_TOOLS as readonly string[]).includes(call.name)
   )
   return !wrote
+}
+
+/** Whether the transcript offers **Tiếp tục** after a `completed` turn: it was empty or hit a limit. */
+export function offersContinue(turn: Parameters<typeof isEmptyTurn>[0]): boolean {
+  const stopped = turn.parts.some(
+    (part) => part.kind === 'progress' && part.text.startsWith(BUDGET_STOP_NOTICE)
+  )
+  return stopped || isEmptyTurn(turn)
 }

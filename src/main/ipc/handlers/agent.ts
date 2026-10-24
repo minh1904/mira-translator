@@ -12,8 +12,10 @@ import {
   agentRevertInputSchema,
   agentSendInputSchema,
   agentSetPermissionLevelInputSchema,
+  agentSteerInputSchema,
   agentToolCallGetInputSchema,
   agentUndoInputSchema,
+  agentWithdrawSteerInputSchema,
   agentWriteIntentAckSchema,
   type AgentCancelResult,
   type AgentContextSearchGroup,
@@ -25,6 +27,7 @@ import {
   type AgentSendResult,
   type AgentSessionDetailView,
   type AgentSessionView,
+  type AgentSteer,
   type AgentToolCallDetailView,
   type AgentUndoResult
 } from '../../../shared/contracts/agent'
@@ -38,6 +41,8 @@ import {
   agentTaskControlInputSchema,
   agentTaskCreateInputSchema,
   agentTaskGetInputSchema,
+  agentTaskRunsInputSchema,
+  type AgentTaskRunsView,
   agentTaskSteerInputSchema,
   type AgentTaskSteerResult,
   agentTaskListInputSchema,
@@ -46,7 +51,7 @@ import {
   type AgentTaskView
 } from '../../../shared/contracts/agentTask'
 
-const sessionsListSchema = v.nullable(
+const sessionsListSchema = v.nullish(
   v.strictObject({
     limit: v.optional(v.number())
   })
@@ -56,7 +61,7 @@ const sessionGetSchema = v.strictObject({
   sessionId: idSchema
 })
 
-const sessionCreateSchema = v.nullable(
+const sessionCreateSchema = v.nullish(
   v.strictObject({
     title: v.optional(v.string())
   })
@@ -91,7 +96,8 @@ export function agentHandlers(deps: HandlerDeps): AreaHandlers<'agent'> {
             modelSelection: input.modelSelection,
             onStream: (event) => windows.send(EVENT_CHANNELS.agentStreamEvent, event),
             onWriteIntent: (intent) => windows.send(EVENT_CHANNELS.agentTargetWriteIntent, intent),
-            onTargetChanged: (event) => windows.send(EVENT_CHANNELS.agentTargetChanged, event)
+            onTargetChanged: (event) => windows.send(EVENT_CHANNELS.agentTargetChanged, event),
+            onSteer: (event) => windows.send(EVENT_CHANNELS.agentSteerChanged, event)
           })
           .catch((error: unknown) => {
             console.error(
@@ -204,6 +210,22 @@ export function agentHandlers(deps: HandlerDeps): AreaHandlers<'agent'> {
       ({ turnId }): AgentCancelResult => ({ status: agentOf(deps).cancelTurn(turnId) })
     ),
 
+    [CHANNELS.agentTurnSteer]: createSinkHandler(
+      agentSteerInputSchema,
+      (input, sink): AgentSteer =>
+        agentOf(deps).steer(input, (event) =>
+          (deps.windows ?? sinkBroadcast(sink)).send(EVENT_CHANNELS.agentSteerChanged, event)
+        )
+    ),
+
+    [CHANNELS.agentTurnWithdrawSteer]: createSinkHandler(
+      agentWithdrawSteerInputSchema,
+      ({ steerId }, sink): AgentSteer =>
+        agentOf(deps).withdrawSteer(steerId, (event) =>
+          (deps.windows ?? sinkBroadcast(sink)).send(EVENT_CHANNELS.agentSteerChanged, event)
+        )
+    ),
+
     [CHANNELS.agentOperationList]: createHandler(
       operationListSchema,
       ({ limit }): AgentOperation[] => agentOf(deps).listRecentOperations(limit)
@@ -250,6 +272,11 @@ export function agentHandlers(deps: HandlerDeps): AreaHandlers<'agent'> {
     [CHANNELS.agentTaskGet]: createHandler(
       agentTaskGetInputSchema,
       ({ taskId }): AgentTaskDetailView => tasksOf(deps).get(taskId)
+    ),
+
+    [CHANNELS.agentTaskRuns]: createHandler(
+      agentTaskRunsInputSchema,
+      ({ taskId, itemId }): AgentTaskRunsView => tasksOf(deps).runs(taskId, itemId)
     ),
 
     [CHANNELS.agentTaskCreate]: createHandler(

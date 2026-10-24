@@ -142,14 +142,49 @@ export interface TranslationLog {
   /** 1-based number of the request that answers HTTP 400; no fallback, no retry. */
   failOn?: number
   omitUsage: boolean
+  /** Full messages of every polish request (`add-auto-polish`), as JSON; those never enter `requests`. */
+  polishPrompts: string[]
+  /** The `model` of every polish request. */
+  polishModels: string[]
+  /** The edits the fake model answers a polish request with; none by default. */
+  polish?: (items: Array<{ id: string; src: string; dst: string }>) => unknown[]
+  /** Answer polish requests with HTTP 400, as a model that refuses the extra step would. */
+  polishFails?: boolean
 }
 
 function translationFetch(log: TranslationLog): typeof fetch {
   return (async (_input: RequestInfo | URL, init?: RequestInit) => {
     const body = JSON.parse(init?.body as string) as {
+      model?: string
       messages: Array<{ role: string; content: string }>
     }
     const userMsg = body.messages.find((m) => m.role === 'user')?.content ?? '[]'
+    if (
+      body.messages.find((m) => m.role === 'system')?.content.startsWith('Bạn là biên tập viên')
+    ) {
+      log.polishPrompts.push(JSON.stringify(body.messages))
+      log.polishModels.push(body.model ?? '')
+      if (log.polishFails) {
+        return new Response(JSON.stringify({ error: { message: 'bad request' } }), { status: 400 })
+      }
+      const items = JSON.parse(
+        /<items>\n([\s\S]*?)\n<\/items>/.exec(userMsg)?.[1] ?? '[]'
+      ) as Array<{
+        id: string
+        src: string
+        dst: string
+      }>
+      return new Response(
+        JSON.stringify({
+          id: 'mock-polish',
+          choices: [
+            { message: { role: 'assistant', content: JSON.stringify(log.polish?.(items) ?? []) } }
+          ],
+          usage: { prompt_tokens: 30, completion_tokens: 5, total_tokens: 35 }
+        }),
+        { status: 200, headers: { 'Content-Type': 'application/json' } }
+      )
+    }
     const sourceBlock = /<source>\n([\s\S]*?)\n<\/source>/.exec(userMsg)?.[1] ?? userMsg
     const inputSegments = JSON.parse(sourceBlock) as Array<{ id: string; src: string }>
     log.requests.push(inputSegments.map((s) => s.src))
@@ -179,6 +214,8 @@ export function setupAgent(options: { omitTranslationUsage?: boolean } = {}) {
   const translations: TranslationLog = {
     requests: [],
     prompts: [],
+    polishPrompts: [],
+    polishModels: [],
     omitUsage: options.omitTranslationUsage ?? false
   }
   const services = createServices({ library, crypto, fetch: translationFetch(translations) })

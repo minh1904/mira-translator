@@ -107,7 +107,7 @@ describe('task quality warnings', () => {
       itemId,
       segmentId: finding!.segmentId,
       ruleCode: finding!.ruleCode,
-      ruleVersion: 2
+      ruleVersion: finding!.ruleVersion + 1
     })
     expect(kit.tasks.quality(task.id).openCount).toBe(1)
 

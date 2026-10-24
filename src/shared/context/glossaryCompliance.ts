@@ -53,7 +53,14 @@ export function evaluateGlossaryCompliance(
 
   for (const item of matched) {
     const entry = item.entry
-    if (!containsWord(targetText, entry.target)) {
+    // Matched only through an alias (a short name such as ノエル for ノエル・アーデン): the matching
+    // short form of the target ("Noel" of "Noel Arden") is enough, so any capitalised word of it counts.
+    const shortForm =
+      item.matchedForm !== entry.source.trim() &&
+      entry.target
+        .split(/\s+/)
+        .some((word) => /^\p{Lu}/u.test(word) && containsWord(targetText, word))
+    if (!shortForm && !containsWord(targetText, entry.target)) {
       issues.push({
         type: 'missing_target',
         entryId: entry.id,

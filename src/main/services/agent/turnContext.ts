@@ -33,6 +33,11 @@ export function summaryBlock(text: string): string {
   ].join('\n')
 }
 
+/** The step list put back after the summary, so the model keeps following it. */
+export function todoBlock(text: string): string {
+  return `[Danh sách bước đang theo dõi, giữ lại sau khi lịch sử được tóm tắt]\n${text}`
+}
+
 export interface TurnContextInput {
   /** System policy; tool definitions travel beside the messages but count against the window. */
   system: string
@@ -43,6 +48,8 @@ export interface TurnContextInput {
   summary?: { text: string; coveredTurnIds: string[] } | null
   /** Summarising failed: cut the oldest turns instead. */
   noSummary?: boolean
+  /** The session's step list as lines, with the turn that wrote it (change `add-agent-todo-list`). */
+  todo?: { turnId: string; text: string } | null
   /** The current instruction with its context snapshot, verbatim. */
   current: string
   /** Tool calls and results of the current turn, in order. */
@@ -120,9 +127,17 @@ export function assembleTurnContext(input: TurnContextInput): TurnContext {
   const current: ChatMessage = { role: 'user', content: input.current }
   const fixed = input.toolChars + size(system) + size(current) + total(input.rounds)
 
+  // The step list goes back in when the turn that wrote it is no longer sent as it was.
+  const todo: ChatMessage | null = input.todo?.text
+    ? { role: 'user', content: todoBlock(input.todo.text) }
+    : null
+  const todoIndex = live.findIndex((turn) => turn.turnId === input.todo?.turnId)
+  const todoChars = todo && todoIndex < 0 ? size(todo) : 0
+
   // `sent[i]` is what turn `live[i]` is currently sent as; `first` is the oldest one still sent.
   const sent = live.map(turnMessages)
-  const historyChars = () => summaryChars + sent.reduce((sum, messages) => sum + total(messages), 0)
+  const historyChars = () =>
+    summaryChars + todoChars + sent.reduce((sum, messages) => sum + total(messages), 0)
   const olderCount = Math.max(0, live.length - KEPT_TURNS)
   const trimmed = new Set<number>()
   const trim = (index: number) => {
@@ -162,8 +177,11 @@ export function assembleTurnContext(input: TurnContextInput): TurnContext {
     }
   }
 
+  // shortcut: a list put back only because its turn was cut is not counted against the share; it is
+  // at most 20 short lines.
+  const keepTodo = todo !== null && todoIndex < first
   return {
-    messages: [system, ...sent.flat(), current, ...input.rounds],
+    messages: [system, ...(keepTodo ? [todo] : []), ...sent.flat(), current, ...input.rounds],
     compaction: {
       trimmedTurns: [...trimmed].filter((i) => i >= first).length,
       summarizedTurns: covered.size,

@@ -1,8 +1,6 @@
 import type { SourceLanguage } from '../../../../shared/contracts/library'
-import {
-  REGISTER_PRESET_IDS,
-  type RegisterPresetId
-} from '../../../../shared/contracts/addressingPresets'
+import type { CultureId, SettingId } from '../../../../shared/contracts/addressing/types'
+import { cultureOfLanguage } from '../../../../shared/contracts/addressing/resolve'
 
 /**
  * Quy ước mặc định theo ngôn ngữ nguồn và thể loại — tầng thấp nhất của chỉ dẫn dịch.
@@ -46,7 +44,6 @@ const HISTORICAL = [
   'tu chân',
   'cung đấu',
   'trạch đấu',
-  'xuyên không',
   'lịch sử',
   'xianxia',
   'wuxia',
@@ -101,7 +98,15 @@ export function genreFamily(genre: string | null | undefined): GenreFamily {
 export interface LanguageProfileInput {
   sourceLang?: SourceLanguage | string
   genre?: string | null
+  /**
+   * Chính sách kính ngữ của tác phẩm. Vắng thì tiếng Nhật giữ hậu tố (quyết định 2026-10-04) còn tiếng Hàn
+   * Việt hóa; chỉ `keep` nói rõ mới giữ hậu tố Hàn.
+   */
   honorifics?: HonorificPolicy
+  /** Văn hóa gốc của câu chuyện; vắng thì theo ngôn ngữ nguồn. */
+  culture?: CultureId | null
+  /** Bối cảnh chính; chọn lối xưng hô cổ phong hay hiện đại của truyện Trung khi thể loại không nói rõ. */
+  setting?: SettingId | null
 }
 
 const LANGUAGE_NAME: Record<string, string> = {
@@ -149,144 +154,142 @@ function japanese(policy: HonorificPolicy): string[] {
   ]
 }
 
-function chinese(family: GenreFamily): string[] {
-  const common = [
-    '- Không gán 你 hay 您 vào một cặp đại từ tiếng Việt cố định; chọn theo quan hệ giữa người nói và người nghe.',
-    '- 咱们 luôn gồm người nghe ("chúng ta"); 我们 có thể không gồm ("chúng tôi", "bọn ta"): xét theo cảnh.',
-    '- Tự xưng theo thân phận (本座, 本王, 本宫, 老夫, 贫道, 在下, 朕…) giữ dạng Hán Việt (bổn tọa, bổn vương, lão phu, tại hạ, trẫm…); chỉ 我/你 trơn mới chọn theo quan hệ.',
-    '- Giữ Hán Việt cho tên, danh xưng, thuật ngữ và từ cổ hợp bối cảnh; lời kể dùng từ thông dụng khi có (im lặng thay trầm mặc, hóa ra thay nguyên lai). Thành ngữ: ưu tiên thành ngữ tiếng Việt tương đương, rồi dạng Hán Việt đã quen, cuối cùng mới dịch nghĩa.',
-    '- Không giữ dấu vết trật tự câu tiếng Trung: 把 không thành "đem… ra", 向 không thành "hướng", 是不是 không thành "có phải… hay không", 几分 không thành "vài phần".',
-    '- Tên người nước ngoài hay tên Nhật viết bằng chữ Hán (约翰, 山本) trả về dạng gốc (John, Yamamoto).'
-  ]
+const ZH_COMMON_LANGUAGE = [
+  '- Không gán 你 hay 您 vào một cặp đại từ tiếng Việt cố định; chọn theo quan hệ giữa người nói và người nghe.',
+  '- 咱们 luôn gồm người nghe ("chúng ta"); 我们 có thể không gồm ("chúng tôi", "bọn ta"): xét theo cảnh.'
+]
+const ZH_HAN_VIET_ADDRESS =
+  '- Tự xưng theo thân phận (本座, 本王, 本宫, 老夫, 贫道, 在下, 朕…) giữ dạng Hán Việt (bổn tọa, bổn vương, lão phu, tại hạ, trẫm…); chỉ 我/你 trơn mới chọn theo quan hệ.'
+const ZH_HAN_VIET_TERMS =
+  '- Giữ Hán Việt cho tên, danh xưng, thuật ngữ và từ cổ hợp bối cảnh; lời kể dùng từ thông dụng khi có (im lặng thay trầm mặc, hóa ra thay nguyên lai). Thành ngữ: ưu tiên thành ngữ tiếng Việt tương đương, rồi dạng Hán Việt đã quen, cuối cùng mới dịch nghĩa.'
+const ZH_TAIL_LANGUAGE = [
+  '- Không giữ dấu vết trật tự câu tiếng Trung: 把 không thành "đem… ra", 向 không thành "hướng", 是不是 không thành "có phải… hay không", 几分 không thành "vài phần".',
+  '- Tên người nước ngoài hay tên Nhật viết bằng chữ Hán (约翰, 山本) trả về dạng gốc (John, Yamamoto).'
+]
+
+/** Lối xưng hô và cách viết tên của văn hóa Trung theo nhóm thể loại; không phụ thuộc văn bản là chữ Hán. */
+function chineseFamilyLines(family: GenreFamily): string[] {
   if (family === 'historical') {
     return [
       '- Tên người, địa danh, công pháp, cảnh giới dùng âm Hán Việt.',
-      '- Xưng hô theo bối cảnh cổ đại và vai vế: với bề trên, trưởng bối, đồng môn, kẻ thù mỗi cặp một khác; không ép mọi lời thoại thành "ta – ngươi".',
-      ...common
+      '- Xưng hô theo bối cảnh cổ đại và vai vế: với bề trên, trưởng bối, đồng môn, kẻ thù mỗi cặp một khác; không ép mọi lời thoại thành "ta – ngươi".'
     ]
   }
   if (family === 'modern') {
     return [
       '- Tên người dùng âm Hán Việt.',
       '- Xưng hô theo lối nói hiện đại (anh – em, tôi – cậu, mày – tao… tùy quan hệ); không dùng lối cổ phong như ta – ngươi, huynh – đệ trừ khi nhân vật cố ý nói vậy.',
-      '- Không đổi cặp xưng hô để báo trước diễn biến tình cảm sớm hơn bản gốc.',
-      ...common
+      '- Không đổi cặp xưng hô để báo trước diễn biến tình cảm sớm hơn bản gốc.'
     ]
   }
   return [
     '- Tên người, địa danh dùng âm Hán Việt.',
-    '- Chọn lối xưng hô cổ phong hay hiện đại theo bối cảnh của truyện và giữ một lối cho cả chương.',
-    ...common
+    '- Chọn lối xưng hô cổ phong hay hiện đại theo bối cảnh của truyện và giữ một lối cho cả chương.'
   ]
 }
 
-function english(): string[] {
+function chinese(family: GenreFamily): string[] {
+  return [
+    ...chineseFamilyLines(family),
+    ...ZH_COMMON_LANGUAGE,
+    ZH_HAN_VIET_ADDRESS,
+    ZH_HAN_VIET_TERMS,
+    ...ZH_TAIL_LANGUAGE
+  ]
+}
+
+/** Phần của văn hóa Trung còn đúng khi văn bản không phải tiếng Trung (bản tiếng Anh của truyện Trung). */
+function chineseCulture(family: GenreFamily): string[] {
+  return [...chineseFamilyLines(family), ZH_HAN_VIET_ADDRESS, ZH_HAN_VIET_TERMS]
+}
+
+/** Nhóm thể loại của truyện Trung: bối cảnh đã chọn thắng việc đoán từ chữ của thể loại. */
+function chineseFamily(input: LanguageProfileInput): GenreFamily {
+  if (input.setting === 'court' || input.setting === 'cultivation') return 'historical'
+  if (input.setting === 'modern') return 'modern'
+  return genreFamily(input.genre)
+}
+
+function english(latinNames = true): string[] {
   return [
     '- I/you không cho biết quan hệ: chọn cặp xưng hô tiếng Việt theo tuổi, vai vế và độ thân giữa hai người, rồi giữ nguyên cặp đó khi quan hệ chưa đổi.',
-    '- Tên riêng giữ dạng chữ Latinh của bản gốc.',
+    ...(latinNames ? ['- Tên riêng giữ dạng chữ Latinh của bản gốc.'] : []),
     '- he/she/his/her dày đặc trong bản gốc: lược khi đã rõ, gọi tên khi hai nhân vật cùng giới, không lặp "anh ta/cô ta"; bỏ đại từ sở hữu khi đã rõ của ai.',
     '- Câu bị động chuyển sang chủ động khi tự nhiên hơn. Câu dẫn "he said" được lược khi đã rõ người nói hoặc đưa lên trước lời thoại; không thay bằng động từ thêm nghĩa.',
     '- "love", "darling", "mate" kiểu Anh có thể chỉ là cách gọi thân, không mặc nhiên là tín hiệu yêu hay bạn thân.'
   ]
 }
 
-function korean(): string[] {
+/**
+ * Kính ngữ Hàn. Khác tiếng Nhật, mặc định là Việt hóa (`-ssi`, `오빠`/`형` theo vai); chỉ `keep` nói rõ mới giữ
+ * hậu tố và danh xưng thân tộc.
+ */
+function koreanHonorifics(policy?: HonorificPolicy): string[] {
+  const rules = policy?.rules?.trim() ?? ''
+  if ((policy?.mode === 'hybrid' || policy?.mode === 'custom') && rules !== '') {
+    return ['- Kính ngữ theo quy tắc của người dịch:', rules]
+  }
+  if (policy?.mode === 'keep') {
+    return [
+      '- Giữ hậu tố và danh xưng thân tộc Hàn (oppa, hyung, noona, unnie, sunbae, -nim, -ssi) đúng như bản gốc; không tự thêm hậu tố không có trong bản gốc.',
+      '- Không ghép thêm danh xưng tiếng Việt thành dạng lai như "anh Min-su-ssi".'
+    ]
+  }
   return [
+    '- Việt hóa hậu tố gắn sau tên: 씨 thành gọi tên (kèm "anh/chị" khi quan hệ đã rõ), 님 thành "ạ", "thưa" hoặc chức danh; không viết dạng lai như "anh Min-su-ssi".',
+    '- 오빠, 형, 누나, 언니 dịch theo vai và giới của người nói thành cặp em – anh/chị, không biến thành "tôi – anh". 선배 xếp theo thâm niên, không theo tuổi: gọi trống dịch "tiền bối", chỉ dịch "anh/chị" khi biết người đó lớn tuổi hơn. 형님 cần biết giới tính người nói.',
+    '- Chức danh làm cách gọi (팀장님, 사장님, 회장님) giữ chức danh thay đại từ ("trưởng nhóm Kim", "giám đốc"), không ghép "-nim".'
+  ]
+}
+
+function korean(policy?: HonorificPolicy): string[] {
+  return [
+    ...koreanHonorifics(policy),
     '- Đuôi câu lịch sự (-요, -습니다) thể hiện bằng tiểu từ và lời lẽ tiếng Việt (ạ, dạ, thưa…), không tự đổi sang một cặp đại từ khác; 너 hay 당신 không tự quyết định cặp xưng hô, quan hệ mới quyết định.',
     '- Chuyển từ kính ngữ sang nói trống (반말) là mốc quan hệ: đổi cặp đúng tại mốc đó; nói trống khi chưa được phép thì thể hiện độ lạnh hay hỗn bằng lời lẽ.',
-    '- Tên người Hàn viết Latinh (Kim Dok-ja, Sung Jin-woo) trừ khi glossary ghi khác; không tự đọc theo Hán Việt, không ghép danh xưng tiếng Việt với hậu tố Hàn ("anh Min-su-ssi").',
+    '- Tên người Hàn viết Latinh (Kim Dok-ja, Sung Jin-woo) trừ khi glossary ghi khác; không tự đọc theo Hán Việt.',
     '- Cửa sổ hệ thống trong [ ] hoặc 【 】 giữ nguyên khung và con số, văn trung tính. Từ tượng thanh dịch sang tiếng Việt (쾅 → rầm).',
     '- Tên bị nhắc lặp ở các câu liền nhau thì lược hoặc thay bằng đại từ ngôi ba đã chọn.'
   ]
 }
 
-/** Các dòng quy ước theo ngôn ngữ nguồn; mảng rỗng khi ngôn ngữ không có profile. */
-export function languageProfile(input: LanguageProfileInput): string[] {
-  switch (input.sourceLang) {
+/** Quy ước kính ngữ và xưng hô của một văn hóa gốc, không kể văn bản viết bằng ngôn ngữ nào. */
+function cultureProfile(input: LanguageProfileInput, culture: CultureId): string[] {
+  switch (culture) {
     case 'ja':
-      return japanese(input.honorifics ?? DEFAULT_HONORIFICS)
-    case 'zh-Hans':
-    case 'zh-Hant':
-      return chinese(genreFamily(input.genre))
-    case 'en':
-      return english()
+      return honorificLines(input.honorifics ?? DEFAULT_HONORIFICS)
     case 'ko':
-      return korean()
+      return koreanHonorifics(input.honorifics)
+    case 'zh':
+      return chineseCulture(chineseFamily(input))
     default:
       return []
   }
 }
 
-const COURT = ['hậu cung', 'cung đình', 'cung đấu', '後宮', '宮廷', '妃']
-
-/** Tín hiệu học đường, hiện đại của truyện Nhật: chỉ khi có một trong số này mới gợi ý `ja-modern`. */
-const JA_MODERN = [
-  'học đường',
-  'hiện đại',
-  'school',
-  'romcom',
-  'rom-com',
-  'slice of life',
-  '学園',
-  '学校',
-  '高校',
-  '現代',
-  '現実世界',
-  'ラブコメ'
-]
-
-/** Truyện Trung (bản gốc hay bản tiếng Anh) theo bối cảnh cổ đại, tu tiên. */
-const CN_ANCIENT = [
-  'tiên hiệp',
-  'kiếm hiệp',
-  'tu tiên',
-  'xianxia',
-  'wuxia',
-  'xuanhuan',
-  'cultivation'
-]
-
-const FANTASY = [
-  'dị giới',
-  'isekai',
-  'fantasy',
-  'quý tộc',
-  'tiểu thư',
-  'hoàng tử',
-  'chuyển sinh',
-  'ma pháp',
-  '異世界',
-  'ファンタジー',
-  '令嬢',
-  '貴族',
-  '転生'
-]
-
 /**
- * Gợi ý bộ mặc định xưng hô cho tác phẩm. Người dịch chốt; đây chỉ là điểm khởi đầu. Ghi thẳng mã bộ
- * vào thể loại (ví dụ "[ja-fantasy]") thì mã đó thắng, cho tới khi lựa chọn được lưu riêng theo tác phẩm.
- * Không có tín hiệu thì không đoán bộ nào (`null`): một bộ sai bối cảnh kéo model sai, tệ hơn không có bộ.
+ * Các dòng quy ước của tác phẩm; mảng rỗng khi ngôn ngữ không có profile. Văn hóa gốc quyết định kính ngữ và
+ * xưng hô, ngôn ngữ nguồn quyết định phần nói về chính ngôn ngữ đó. Hai thứ trùng nhau (truyện Nhật viết
+ * tiếng Nhật) thì ra đúng profile của ngôn ngữ đó. Văn hóa khác ngôn ngữ chỉ ghép được với văn bản tiếng Anh
+ * (bản dịch Anh của truyện Á), nên các ngôn ngữ khác quay về profile của chính chúng.
  */
-export function suggestRegister(
-  sourceLang: SourceLanguage | string | undefined,
-  genre: string | null | undefined
-): RegisterPresetId | null {
-  const text = (genre ?? '').toLowerCase()
-  const explicit = REGISTER_PRESET_IDS.find((id) => text.includes(`[${id}]`))
-  if (explicit) return explicit
-  switch (sourceLang) {
+export function languageProfile(input: LanguageProfileInput): string[] {
+  const own = cultureOfLanguage(input.sourceLang)
+  const culture = input.culture ?? own
+  if (input.sourceLang === 'en' && culture !== null && culture !== 'west') {
+    return [...cultureProfile(input, culture), ...english(culture !== 'zh')]
+  }
+  switch (input.sourceLang) {
     case 'ja':
-      if (COURT.some((word) => text.includes(word))) return 'ja-court'
-      if (FANTASY.some((word) => text.includes(word))) return 'ja-fantasy'
-      return JA_MODERN.some((word) => text.includes(word)) ? 'ja-modern' : null
+      return japanese(input.honorifics ?? DEFAULT_HONORIFICS)
     case 'zh-Hans':
-    case 'zh-Hant': {
-      const family = genreFamily(genre)
-      return family === 'historical' ? 'zh-ancient' : family === 'modern' ? 'zh-modern' : null
-    }
+    case 'zh-Hant':
+      return chinese(chineseFamily(input))
     case 'en':
-      return CN_ANCIENT.some((word) => text.includes(word)) ? 'zh-ancient' : 'en-western'
+      return english()
+    case 'ko':
+      return korean(input.honorifics)
     default:
-      return null
+      return []
   }
 }

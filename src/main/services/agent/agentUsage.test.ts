@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { aggregateTokenUsage, calculateTurnCost, ESTIMATE_LABEL } from './agentUsage'
+import { aggregateTokenUsage, calculateTurnCost, ESTIMATE_LABEL, sumTurnCost } from './agentUsage'
 import type { TokenUsage } from '../../../shared/contracts/usage'
 import type { ModelInfo } from '../../infra/providers/modelCatalog'
 
@@ -85,5 +85,38 @@ describe('agentUsage (aggregate and cost)', () => {
     // 1000 * 2.5 / 1M = 0.0025; 500 * 10 / 1M = 0.005; total = 0.0075
     expect(cost.costUsd).toBe(0.0075)
     expect(cost.label).toBe(ESTIMATE_LABEL)
+  })
+
+  it('prices each part of a turn by the model that produced it', () => {
+    const main: ModelInfo = { id: 'main', name: 'Main', cost: { input: 2.5, output: 10 } }
+    const cheap: ModelInfo = { id: 'cheap', name: 'Cheap', cost: { input: 0.1, output: 0.4 } }
+    const part = (inputTokens: number, outputTokens: number): TokenUsage => ({
+      inputTokens,
+      outputTokens,
+      source: 'provider',
+      complete: true
+    })
+    // The turn's own rounds carry no model and fall back to the turn's.
+    const parts = [{ usage: part(1000, 500) }, { usage: part(10_000, 1000), model: cheap }]
+    // 0.0075 for the turn's model, 10,000 * 0.1 / 1M + 1000 * 0.4 / 1M = 0.0014 for the cheap one.
+    expect(sumTurnCost(parts, main)).toBeCloseTo(0.0089, 10)
+    expect(aggregateTokenUsage(parts.map((p) => p.usage))).toMatchObject({
+      inputTokens: 11_000,
+      outputTokens: 1500
+    })
+  })
+
+  it('has no turn cost when a part is unpriced or nothing reported usage', () => {
+    const main: ModelInfo = { id: 'main', name: 'Main', cost: { input: 2.5, output: 10 } }
+    const free: ModelInfo = { id: 'free', name: 'Free' }
+    const usage: TokenUsage = {
+      inputTokens: 10,
+      outputTokens: 10,
+      source: 'provider',
+      complete: true
+    }
+    expect(sumTurnCost([{ usage }, { usage, model: free }], main)).toBeNull()
+    expect(sumTurnCost([{ usage: null }], main)).toBeNull()
+    expect(sumTurnCost([], main)).toBeNull()
   })
 })

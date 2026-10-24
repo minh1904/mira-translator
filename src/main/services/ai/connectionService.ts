@@ -53,6 +53,7 @@ import type { SecretStore } from '../../infra/storage/secretStore'
 import type { Db } from '../../infra/storage/sqlite'
 import { resolveCompat } from '../../infra/providers/compat'
 import { DEFAULT_CONCURRENCY, GatewayRegistry } from '../../infra/providers/gateway/gateway'
+import type { CallPriority } from '../../infra/providers/gateway/limiter'
 import { createConnectionKeySource } from '../../infra/providers/connectionKeySource'
 import { buildGeneration, settingsKey } from '../../infra/providers/generation'
 import { CATALOG_READ_AT, lookupModel, type ModelInfo } from '../../infra/providers/modelCatalog'
@@ -515,14 +516,26 @@ export class ConnectionService {
     }
   }
 
+  /** Trần đồng thời của một mục model: giá trị người dùng đặt, hoặc mặc định của gateway. */
+  concurrencyOf(connectionId: string, entryId: string): number {
+    const limit = getModelEntry(this.options.db, connectionId, entryId).settings.concurrencyLimit
+    // Để trống có thể là `undefined` hoặc `null` (Lab ghi thẳng); cả hai đều là mặc định.
+    return limit ? limit : DEFAULT_CONCURRENCY
+  }
+
   /**
    * Một kết nối đã dựng xong provider cho **một mục model**, cho tầng dịch và chat dùng. Kết nối đang tắt thì
    * từ chối ngay: người dùng tắt nó là có ý, đừng âm thầm gọi. Một mục không thuộc kết nối là `not_found`.
    *
    * Cài đặt của mục được đọc **ở đây, một lần**, rồi nằm trong provider: một lượt chat gọi công cụ nhiều vòng
    * hay một lô dịch dùng nguyên bộ đó, nên sửa cài đặt giữa chừng không trộn hai cấu hình vào một lượt.
+   * `priority` là hàng chờ suất của mục: tác vụ nền mở với `background` để lượt chat đi trước.
    */
-  translator(id: string, entryId: string): ConnectionTranslator {
+  translator(
+    id: string,
+    entryId: string,
+    priority: CallPriority = 'interactive'
+  ): ConnectionTranslator {
     const { db, now, fetchImpl } = this.options
     const stored = getConnection(db, id)
     if (!stored.enabled) {
@@ -573,6 +586,8 @@ export class ConnectionService {
         compat: resolveCompat(connection.providerId),
         transport: createTransport(stored, entry.model, this.transportDeps(id)),
         limiter: entryRuntime.limiter,
+        adaptive: entryRuntime.adaptive,
+        priority,
         pacer: entryRuntime.pacer,
         generation,
         blockedBy,

@@ -37,14 +37,36 @@ export function relabelHandles(value: unknown, labels: ReadonlyMap<string, strin
   return value
 }
 
+/** How a message typed while the turn ran is told apart from tool results (add-agent-turn-steering D2). */
+export const STEER_LABEL = '[Người dùng gửi thêm khi lượt đang chạy]'
+
+/** Every message delivered after one round's results, in the order sent, as one user message. */
+export function steerMessage(texts: readonly string[]): ChatMessage {
+  return { role: 'user', content: `${STEER_LABEL}\n${texts.join('\n\n')}` }
+}
+
+/** The texts of a turn's `steer` parts by the round they were delivered after. */
+export function steersByRound(
+  parts: ReadonlyArray<{ kind: string; round: number; text: string }>
+): Map<number, string[]> {
+  const byRound = new Map<number, string[]>()
+  for (const part of parts) {
+    if (part.kind === 'steer')
+      byRound.set(part.round, [...(byRound.get(part.round) ?? []), part.text])
+  }
+  return byRound
+}
+
 /**
- * The OpenAI-format messages of a turn's persisted rounds: call, then each result. `labels` marks an
- * earlier turn: its handles are replaced by labels and the provider's private call data (a thought
- * signature is valid only for the round that produced it) is left out.
+ * The OpenAI-format messages of a turn's persisted rounds: call, then each result, then what the user
+ * typed meanwhile (`steers`, by round). `labels` marks an earlier turn: its handles are replaced by
+ * labels and the provider's private call data (a thought signature is valid only for the round that
+ * produced it) is left out.
  */
 export function roundMessages(
   rows: AgentToolCall[],
-  labels?: ReadonlyMap<string, string>
+  labels?: ReadonlyMap<string, string>,
+  steers?: ReadonlyMap<number, string[]>
 ): ChatMessage[] {
   const relabel = (value: unknown): unknown => (labels ? relabelHandles(value, labels) : value)
   const messages: ChatMessage[] = []
@@ -72,6 +94,8 @@ export function roundMessages(
           : { ok: false, error: { code: row.state, message: 'Công cụ không chạy.' } }
       messages.push({ role: 'tool', content: JSON.stringify(content), tool_call_id: row.callId })
     }
+    const typed = steers?.get(round)
+    if (typed?.length) messages.push(steerMessage(typed))
   }
   return messages
 }
@@ -85,18 +109,24 @@ export function textRounds(rounds: ChatMessage[], resultChars = TEXT_RESULT_CHAR
     rounds.filter((m) => m.role === 'tool').map((m) => [m.tool_call_id, m.content])
   )
   return rounds
-    .filter((message) => message.role === 'assistant' && message.tool_calls)
-    .map((message) => ({
-      role: 'assistant' as const,
-      content: (message.tool_calls ?? [])
-        .map((call) => {
-          const args = parseObject(call.function.arguments)
-          const target = typeof args.target === 'string' ? ` (${args.target})` : ''
-          const result = (results.get(call.id) ?? '').slice(0, resultChars)
-          return `Đã gọi \`${call.function.name}\`${target} → ${result}`
-        })
-        .join('\n')
-    }))
+    .filter(
+      (message) => (message.role === 'assistant' && message.tool_calls) || message.role === 'user'
+    )
+    .map((message): ChatMessage => {
+      // A message the user typed meanwhile stays theirs.
+      if (message.role === 'user') return message
+      return {
+        role: 'assistant',
+        content: (message.tool_calls ?? [])
+          .map((call) => {
+            const args = parseObject(call.function.arguments)
+            const target = typeof args.target === 'string' ? ` (${args.target})` : ''
+            const result = (results.get(call.id) ?? '').slice(0, resultChars)
+            return `Đã gọi \`${call.function.name}\`${target} → ${result}`
+          })
+          .join('\n')
+      }
+    })
 }
 
 function parseObject(json: string): Record<string, unknown> {
@@ -108,15 +138,19 @@ function parseObject(json: string): Record<string, unknown> {
   }
 }
 
-/** An earlier turn, ready to resend. `labels` maps its handles to target labels. */
+/**
+ * An earlier turn, ready to resend. `labels` maps its handles to target labels; `steers` holds what the
+ * user typed while it ran, by the round it was delivered after.
+ */
 export function pastTurnOf(
   turn: { id: string; instruction: string; answer: string },
   rows: AgentToolCall[],
   contextLine: string,
   labels: ReadonlyMap<string, string>,
-  toolsEnabled: boolean
+  toolsEnabled: boolean,
+  steers?: ReadonlyMap<number, string[]>
 ): PastTurn {
-  const rounds = roundMessages(rows, labels)
+  const rounds = roundMessages(rows, labels, steers)
   return {
     turnId: turn.id,
     instruction: turn.instruction,

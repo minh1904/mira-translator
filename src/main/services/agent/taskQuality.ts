@@ -16,7 +16,11 @@ import type { LibraryStore } from '../library/library'
 const hashOf = (text: string): string => createHash('sha256').update(text).digest('hex')
 
 /** Paragraphs of a chapter that have a committed translation, matched by source segment ID. */
-function translatedSegments(library: LibraryStore, workId: string, chapterId: string): QaSegment[] {
+export function translatedSegments(
+  library: LibraryStore,
+  workId: string,
+  chapterId: string
+): QaSegment[] {
   const source = library.readText(workId, chapterId, 'source')
   const target = library.readText(workId, chapterId, 'target')
   return buildRows(source, target, library.listLinks(workId, chapterId))

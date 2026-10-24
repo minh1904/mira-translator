@@ -120,7 +120,10 @@ export function evaluateTaskItem(
       add('text.repetition', 'Bản dịch lặp bất thường.', issue.pattern ?? issue.reason)
     }
 
-    for (const issue of checkUnbalancedQuotes([segment.target])) {
+    // A source paragraph that itself opens or closes a quote split across paragraphs ("「神学校？" then
+    // "いえ……」") is followed by a faithful translation; only a quote the translation broke is a warning.
+    const sourceSplit = checkUnbalancedQuotes([segment.source]).length > 0
+    for (const issue of sourceSplit ? [] : checkUnbalancedQuotes([segment.target])) {
       add('text.unbalanced_quotes', 'Dấu ngoặc thoại không cân.', issue.reason)
     }
   }

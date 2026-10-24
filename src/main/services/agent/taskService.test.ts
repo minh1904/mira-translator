@@ -2,8 +2,10 @@ import { describe, expect, it } from 'vitest'
 import { segment } from '../../../shared/segmentation/segmenter'
 import type { AgentTargetChanged } from '../../../shared/contracts/agent'
 import type { AgentTaskChanged } from '../../../shared/contracts/agentTask'
+import { ProviderError } from '../../infra/providers/types'
 import { AgentRepository } from '../../infra/storage/agentRepository'
 import { AgentTaskRepository } from '../../infra/storage/agentTaskRepository'
+import { getRunContext } from '../../infra/storage/translateRunContext'
 import { AgentService } from './agentService'
 import { callTools, say, setupAgent } from './agentTestKit'
 import {
@@ -88,6 +90,7 @@ function scriptedRunner() {
       failedIds: [],
       refusedIds: [],
       budgetIds: [],
+      failures: [],
       lastAppliedRev: 1,
       summary: state,
       usage: null,
@@ -144,14 +147,14 @@ describe('AgentTaskService: creating', () => {
 })
 
 describe('AgentTaskService: scheduler', () => {
-  it('runs items in task order, one at a time, each run its own operation and attempt', async () => {
+  it('takes turns between tasks, older first, each run its own operation and attempt', async () => {
     const runner = scriptedRunner()
     const { create, tasks, operations, ch1_1, ch1_2, ch1_amb1 } = taskKit(runner.run)
     const older = create([ch1_1.id, ch1_2.id])
     const newer = create([ch1_amb1.id])
     await tasks.idle()
-    expect(runner.calls.map((call) => call.chapterId)).toEqual([ch1_1.id, ch1_2.id, ch1_amb1.id])
-    expect(runner.max()).toBe(1)
+    expect(runner.calls.map((call) => call.chapterId)).toEqual([ch1_1.id, ch1_amb1.id, ch1_2.id])
+    expect(runner.max()).toBe(3)
     expect(tasks.get(older.id).task.state).toBe('completed')
     expect(tasks.get(newer.id).task.state).toBe('completed')
     const [first] = tasks.get(older.id).items
@@ -161,6 +164,31 @@ describe('AgentTaskService: scheduler', () => {
       runKey: `task:${first.id}`,
       policy: 'fill_untranslated'
     })
+  })
+
+  it('opens the model as a background caller, so chat goes first in the entry queue', async () => {
+    const { create, tasks, services, ch1_1 } = taskKit()
+    const called: unknown[] = []
+    const translator = services.connections.translator.bind(services.connections)
+    // Only a provider that is actually called counts; reading the entry's settings sends nothing.
+    services.connections.translator = (id, entryId, priority) => {
+      const opened = translator(id, entryId, priority)
+      const provider = new Proxy(opened.provider, {
+        get(target, key, receiver) {
+          const value = Reflect.get(target, key, receiver)
+          if (typeof value !== 'function') return value
+          return (...args: unknown[]) => {
+            called.push(priority)
+            return value.apply(target, args)
+          }
+        }
+      })
+      return { ...opened, provider }
+    }
+    create([ch1_1.id])
+    await tasks.idle()
+    expect(called).not.toHaveLength(0)
+    expect(called.every((priority) => priority === 'background')).toBe(true)
   })
 
   it('tells every window each chapter run ended, so editors unlock and lists refetch', async () => {
@@ -217,16 +245,25 @@ describe('AgentTaskService: scheduler', () => {
   it('cancels a running item: the run is aborted and the rest of the task is cancelled', async () => {
     const runner = scriptedRunner()
     const kit = taskKit(runner.run)
+    const aborted: boolean[] = []
     runner.outcomes.set(kit.ch1_1.id, async (input) => {
       kit.control(task.id, 'cancel')
-      expect(input.signal?.aborted).toBe(true)
+      aborted.push(input.signal?.aborted === true)
       return runner.done('cancelled')
     })
-    const task = kit.create([kit.ch1_1.id, kit.ch1_2.id])
+    for (const chapter of [kit.ch1_2, kit.ch1_amb1]) {
+      runner.outcomes.set(chapter.id, async (input) => {
+        aborted.push(input.signal?.aborted === true)
+        return runner.done('cancelled')
+      })
+    }
+    const task = kit.create([kit.ch1_1.id, kit.ch1_2.id, kit.ch1_amb1.id])
     await kit.tasks.idle()
+    // Every running request is aborted; the task is cancelled once the last run ended.
+    expect(aborted).toEqual([true, true, true])
     expect(kit.tasks.get(task.id).task.state).toBe('cancelled')
-    expect(kit.states(task.id)).toEqual(['cancelled', 'cancelled'])
-    expect(runner.calls).toHaveLength(1)
+    expect(kit.states(task.id)).toEqual(['cancelled', 'cancelled', 'cancelled'])
+    expect(runner.calls).toHaveLength(3)
   })
 
   it('applies the first of two Pause commands with one version and rejects the second', async () => {
@@ -676,5 +713,245 @@ describe('AgentTaskService: context choice from chat', () => {
     expect(tool?.parameters?.required).not.toContain('contextStrategy')
     expect(tool?.description).toContain('"approved_only" khi người dùng nói rõ dịch luôn')
     await kit.tasks.idle()
+  })
+})
+
+describe('AgentTaskService: task errors', () => {
+  const failing = (runner: ReturnType<typeof scriptedRunner>, chapterId: string, error: Error) =>
+    runner.outcomes.set(chapterId, async () => {
+      throw error
+    })
+
+  it('records the provider kind, not "provider", and shows it as the last run of the item', async () => {
+    const runner = scriptedRunner()
+    const kit = taskKit(runner.run)
+    failing(
+      runner,
+      kit.ch1_2.id,
+      new ProviderError('rate_limited', 'Chờ hạn mức', { retryAfterMs: 30_000 })
+    )
+    const task = kit.create([kit.ch1_1.id, kit.ch1_2.id])
+    await kit.tasks.idle()
+    const detail = kit.tasks.get(task.id)
+    expect(detail.items[0]?.lastRun?.error).toBeNull()
+    const error = detail.items[1]?.lastRun?.error
+    expect(error).toMatchObject({
+      code: 'rate_limited',
+      scope: 'chapter',
+      retryable: true,
+      retryAfterMs: 30_000
+    })
+    expect(error).not.toHaveProperty('detail')
+    const runs = kit.tasks.runs(task.id, detail.items[1]!.id)
+    expect(runs.runs).toHaveLength(1)
+    expect(runs.runs[0]?.error).toHaveProperty('detail')
+  })
+
+  it('stops the whole task on a bad key instead of failing every chapter after it', async () => {
+    const runner = scriptedRunner()
+    const kit = taskKit(runner.run)
+    kit.services.connections.updateEntry(kit.modelSelection.entryId, {
+      settings: { concurrencyLimit: 2 }
+    })
+    failing(runner, kit.ch1_1.id, new ProviderError('auth', 'Khóa sai'))
+    const task = kit.create([kit.ch1_1.id, kit.ch1_2.id, kit.ch1_amb1.id])
+    await kit.tasks.idle()
+    // The chapter running beside the bad one ends by its own result; no new chapter starts.
+    expect(kit.tasks.get(task.id).task).toMatchObject({ state: 'waiting_user', reason: 'provider' })
+    expect(kit.states(task.id)).toEqual(['failed', 'completed', 'queued'])
+    expect(runner.calls).toHaveLength(2)
+    expect(kit.tasks.get(task.id).items[0]?.lastRun?.error).toMatchObject({
+      code: 'auth',
+      scope: 'task'
+    })
+  })
+
+  it('reads a partial failure from the run result and keeps the old shape readable', async () => {
+    const runner = scriptedRunner()
+    const kit = taskKit(runner.run)
+    runner.outcomes.set(kit.ch1_1.id, async (input) => {
+      const result = runner.done('partially_completed', {
+        failedIds: ['a', 'b'],
+        failures: [
+          { code: 'network', message: 'Mất mạng', segmentIds: ['a', 'b'], segmentCount: 2 }
+        ]
+      })
+      kit.operations.transitionOperation(input.operationId, 'running', { now: 1, result })
+      return result
+    })
+    const task = kit.create([kit.ch1_1.id])
+    await kit.tasks.idle()
+    expect(kit.tasks.get(task.id).items[0]?.lastRun?.error).toMatchObject({
+      code: 'network',
+      scope: 'chapter'
+    })
+  })
+})
+
+describe('AgentTaskService: chapters in parallel', () => {
+  /** A runner whose every run waits until `release()`, then ends as `end` says (completed by default). */
+  function heldRunner() {
+    const runner = scriptedRunner()
+    const waiting: Array<() => void> = []
+    let end = (_input: ChapterTranslationRunInput): ChapterTranslationRunResult =>
+      runner.done('completed')
+    const hold = (chapterId: string) =>
+      runner.outcomes.set(
+        chapterId,
+        (input) =>
+          new Promise((resolve) => {
+            waiting.push(() => resolve(end(input)))
+          })
+      )
+    const release = () => {
+      for (const go of waiting.splice(0)) go()
+    }
+    return {
+      ...runner,
+      hold,
+      release,
+      waiting: () => waiting.length,
+      endWith: (next: typeof end) => {
+        end = next
+      }
+    }
+  }
+
+  const settle = async (): Promise<void> => {
+    for (let i = 0; i < 5; i++) await new Promise((resolve) => setImmediate(resolve))
+  }
+
+  /** `count` new chapters of work 1, each with one line of raw text. */
+  function chapters(kit: ReturnType<typeof taskKit>, count: number, prefix: string) {
+    return Array.from({ length: count }, (_, i) => {
+      const chapter = kit.library.createChapter(kit.work1.id, `${prefix} ${i + 1}`).chapter
+      const text = `第${i + 1}章。`
+      kit.library.saveText(kit.work1.id, chapter.id, 'source', text, 0, segment(text, 'zh-Hans'))
+      return chapter
+    })
+  }
+
+  const runningOf = (kit: ReturnType<typeof taskKit>, taskId: string) =>
+    kit.states(taskId).filter((state) => state === 'running').length
+
+  it('runs two items of each of two tasks at once on an entry of ceiling 4', async () => {
+    const runner = heldRunner()
+    const kit = taskKit(runner.run)
+    const a = chapters(kit, 10, 'A')
+    const b = chapters(kit, 10, 'B')
+    for (const chapter of [...a, ...b]) runner.hold(chapter.id)
+    const older = kit.create(a.map((chapter) => chapter.id))
+    const newer = kit.create(b.map((chapter) => chapter.id))
+    await settle()
+    expect(runningOf(kit, older.id)).toBe(2)
+    expect(runningOf(kit, newer.id)).toBe(2)
+    expect(runner.calls[0]?.chapterId).toBe(a[0]!.id)
+    for (let i = 0; i < 20 && runner.waiting() > 0; i++) {
+      runner.release()
+      await settle()
+    }
+    await kit.tasks.idle()
+    expect(runner.max()).toBe(4)
+  })
+
+  it('runs exactly as many items as the entry ceiling, and the next when one ends', async () => {
+    const runner = heldRunner()
+    const kit = taskKit(runner.run)
+    kit.services.connections.updateEntry(kit.modelSelection.entryId, {
+      settings: { concurrencyLimit: 2 }
+    })
+    const list = chapters(kit, 5, 'C')
+    for (const chapter of list) runner.hold(chapter.id)
+    const task = kit.create(list.map((chapter) => chapter.id))
+    await settle()
+    expect(runningOf(kit, task.id)).toBe(2)
+    runner.release()
+    await settle()
+    expect(kit.states(task.id).filter((state) => state === 'completed')).toHaveLength(2)
+    expect(runningOf(kit, task.id)).toBe(2)
+    for (let i = 0; i < 5; i++) {
+      runner.release()
+      await settle()
+    }
+    await kit.tasks.idle()
+    expect(runner.max()).toBe(2)
+    expect(kit.tasks.get(task.id).task.state).toBe('completed')
+  })
+
+  it('pauses every running item at its safe point and is paused once the last one stopped', async () => {
+    const runner = heldRunner()
+    const kit = taskKit(runner.run)
+    const list = chapters(kit, 3, 'P')
+    for (const chapter of list) runner.hold(chapter.id)
+    runner.endWith((input) =>
+      input.shouldStop?.() === 'pause'
+        ? runner.done('stopped', { stopReason: 'pause' })
+        : runner.done('completed')
+    )
+    const task = kit.create(list.map((chapter) => chapter.id))
+    await settle()
+    expect(runningOf(kit, task.id)).toBe(3)
+    kit.control(task.id, 'pause')
+    expect(kit.tasks.get(task.id).task.state).toBe('pausing')
+    runner.release()
+    await kit.tasks.idle()
+    expect(kit.tasks.get(task.id).task).toMatchObject({ state: 'paused', reason: 'user' })
+    expect(kit.states(task.id)).toEqual(['queued', 'queued', 'queued'])
+    expect(runner.calls).toHaveLength(3)
+  })
+
+  it('writes every running item back to the queue when the app closes', async () => {
+    const runner = heldRunner()
+    const kit = taskKit(runner.run)
+    const list = chapters(kit, 3, 'Q')
+    for (const chapter of list) runner.hold(chapter.id)
+    const task = kit.create(list.map((chapter) => chapter.id))
+    await settle()
+    expect(runningOf(kit, task.id)).toBe(3)
+    kit.tasks.shutdown()
+    expect(kit.tasks.get(task.id).task).toMatchObject({ state: 'paused', reason: 'app_closed' })
+    expect(kit.states(task.id)).toEqual(['queued', 'queued', 'queued'])
+  })
+
+  it('lets only one of two items take the last call of the task cap', async () => {
+    const runner = scriptedRunner()
+    const kit = taskKit(runner.run)
+    const allowed: boolean[] = []
+    const list = chapters(kit, 2, 'G')
+    for (const chapter of list) {
+      runner.outcomes.set(chapter.id, async (input) => {
+        const ok = input.gate?.('main') ?? true
+        allowed.push(ok)
+        return ok ? runner.done('completed') : runner.done('stopped', { stopReason: 'budget' })
+      })
+    }
+    const task = kit.create(
+      list.map((chapter) => chapter.id),
+      { budget: { maxCalls: 1 } }
+    )
+    await kit.tasks.idle()
+    expect(runner.max()).toBe(2)
+    expect(allowed.sort()).toEqual([false, true])
+    expect(kit.tasks.get(task.id).task).toMatchObject({ state: 'paused', reason: 'budget' })
+  })
+
+  it('pins the same snapshot for an item whether or not the one before it has finished', async () => {
+    const hashes = async (ceiling: number) => {
+      const kit = taskKit(scriptedRunner().run)
+      kit.services.connections.updateEntry(kit.modelSelection.entryId, {
+        settings: { concurrencyLimit: ceiling }
+      })
+      const list = chapters(kit, 3, 'S')
+      const task = kit.create(list.map((chapter) => chapter.id))
+      await kit.tasks.idle()
+      return kit.tasks
+        .get(task.id)
+        .items.map((item) =>
+          kit.library.withWork(kit.work1.id, (db) => getRunContext(db, item.runKey!)?.snapshotHash)
+        )
+    }
+    const sequential = await hashes(1)
+    expect(sequential.every((hash) => typeof hash === 'string')).toBe(true)
+    expect(await hashes(4)).toEqual(sequential)
   })
 })

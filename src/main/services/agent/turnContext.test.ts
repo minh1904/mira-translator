@@ -146,6 +146,52 @@ describe('assembleTurnContext', () => {
     expect(tiny.messages.at(-3)?.content).toBe('hỏi nguyên văn')
   })
 
+  describe('step list kept across the summary', () => {
+    const todo = { turnId: '1', text: '[x] Đọc glossary\n[>] Dịch chương 2' }
+    const history = [turn('1'), turn('2'), turn('3'), turn('4')]
+    const summary = { text: 'TÓM TẮT', coveredTurnIds: ['1'] }
+
+    it('puts the list right after the summary when the turn that wrote it was summarised', () => {
+      const result = messagesOf(assembleTurnContext({ ...base, history, summary, todo }))
+      expect(result.messages[1]?.role).toBe('user')
+      expect(result.messages[1]?.content).toContain('Danh sách bước đang theo dõi')
+      expect(result.messages[1]?.content).toContain('[>] Dịch chương 2')
+    })
+
+    it('adds no copy while that turn is still sent as it was, or when the list is empty', () => {
+      const verbatim = messagesOf(
+        assembleTurnContext({ ...base, history, todo: { ...todo, turnId: '3' } })
+      )
+      expect(verbatim.messages.some((m) => m.content.includes('Danh sách bước'))).toBe(false)
+      const empty = messagesOf(
+        assembleTurnContext({ ...base, history, summary, todo: { turnId: '1', text: '' } })
+      )
+      expect(empty.messages.some((m) => m.content.includes('Danh sách bước'))).toBe(false)
+    })
+
+    it('adds the list when the turn that wrote it was cut', () => {
+      const long = [turn('1', 0, 'a'.repeat(5000)), turn('2'), turn('3'), turn('4')]
+      const result = messagesOf(
+        assembleTurnContext({ ...base, history: long, limitChars: 6_000, noSummary: true, todo })
+      )
+      expect(result.compaction.droppedTurns).toBe(1)
+      expect(result.messages[1]?.content).toContain('[x] Đọc glossary')
+    })
+
+    it('counts the list against the history share', () => {
+      const big = { turnId: '1', text: 'x'.repeat(3_500) }
+      const result = assembleTurnContext({
+        ...base,
+        history: [turn('1'), turn('2', 2_500), turn('3'), turn('4'), turn('5')],
+        summary,
+        todo: big,
+        limitChars: 9_000
+      })
+      // Without the list the history fits under half of 9,000; with it, turn 2 loses its result.
+      expect(messagesOf(result).compaction.trimmedTurns).toBe(1)
+    })
+  })
+
   it('reserves output tokens out of the model window', () => {
     expect(
       contextLimitChars({ id: 'm', name: 'm', contextLimit: 100_000, outputLimit: 20_000 })

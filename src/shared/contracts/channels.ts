@@ -119,6 +119,8 @@ export const CHANNELS = {
   agentSessionsSetPermissionLevel: 'agent:sessions:set-permission-level',
   agentTurnSend: 'agent:turn:send',
   agentTurnCancel: 'agent:turn:cancel',
+  agentTurnSteer: 'agent:turn:steer',
+  agentTurnWithdrawSteer: 'agent:turn:withdraw-steer',
   agentToolCallGet: 'agent:tool-call:get',
   agentContextSearch: 'agent:context:search',
   agentEditsKeep: 'agent:edits:keep',
@@ -135,6 +137,7 @@ export const CHANNELS = {
   agentTaskControl: 'agent:task:control',
   agentTaskSteer: 'agent:task:steer',
   agentTaskQuality: 'agent:task:quality',
+  agentTaskRuns: 'agent:task:runs',
   agentTaskDismiss: 'agent:task:dismiss'
 } as const
 
@@ -163,6 +166,8 @@ export const EVENT_CHANNELS = {
   agentTargetWriteIntent: 'agent:target:write-intent',
   /** Thông báo đích đã đổi sau khi operation kết thúc để editor cập nhật (`AgentTargetChanged`). */
   agentTargetChanged: 'agent:target:changed',
+  /** Một tin gửi thêm khi lượt đang chạy đổi trạng thái (`AgentSteerEvent`), phát tới mọi cửa sổ. */
+  agentSteerChanged: 'agent:steer:changed',
   /** Một tác vụ bền đổi trạng thái hoặc tiến độ (`AgentTaskChanged`), phát tới mọi cửa sổ. */
   agentTaskChanged: 'agent:task:changed'
 } as const

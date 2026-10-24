@@ -32,7 +32,7 @@ describe('addressingAnalysis', () => {
   it('prompt bắt buộc đại từ ngôi hai khi cách gọi là tên và kèm bảng mặc định', () => {
     const messages = buildAnalysisMessages({
       sourceLang: 'ja',
-      register: 'ja-fantasy',
+      register: { setting: 'fantasy', extra: [], culture: 'ja' },
       characters,
       evidence: collectAddressingEvidence(chapters, characters, 'ja')
     })

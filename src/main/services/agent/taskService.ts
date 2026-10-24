@@ -1,5 +1,6 @@
 import { createHash, randomUUID } from 'node:crypto'
 import type {
+  AgentOperation,
   AgentTargetChanged,
   AgentWriteIntent,
   ResolvedTarget
@@ -11,8 +12,11 @@ import type {
   AgentTaskDetailView,
   AgentTaskItemState,
   AgentTaskItemView,
+  AgentTaskLastRun,
   AgentTaskProgress,
   AgentTaskReason,
+  AgentTaskRunsView,
+  AgentTaskRunView,
   AgentTaskState,
   AgentTaskSteeringView,
   AgentTaskSteerInput,
@@ -22,9 +26,10 @@ import type {
   AgentTaskView,
   ContextStrategy
 } from '../../../shared/contracts/agentTask'
-import { TASK_ITEM_STATES } from '../../../shared/contracts/agentTask'
+import { parseOperationError, TASK_ITEM_STATES } from '../../../shared/contracts/agentTask'
 import type { TokenUsage } from '../../../shared/contracts/usage'
-import { lookupModel } from '../../infra/providers/modelCatalog'
+import type { ModelRef } from '../../../shared/contracts/aiPreferences'
+import { lookupModel, type ModelInfo } from '../../infra/providers/modelCatalog'
 import type { AgentRepository } from '../../infra/storage/agentRepository'
 import type { AgentTaskRepository } from '../../infra/storage/agentTaskRepository'
 import { StorageError } from '../../infra/storage/errors'
@@ -34,11 +39,13 @@ import type { ContextExtractionService } from '../context/contextExtractionServi
 import { parseSnapshot, takeContextSnapshot } from '../ai/translate/contextSnapshot'
 import { changeDyadFrom } from '../../infra/storage/addressingEntries'
 import { changeTermFrom } from '../../infra/storage/contextRevisions'
+import { ContextQuestionService } from '../context/contextQuestionService'
 import { hasGlossary } from '../../infra/storage/contextEntries'
 import type { QaDismissInput, TaskQualityView } from '../../../shared/contracts/taskQuality'
 import { dismissFinding, readTaskQuality } from './taskQuality'
 import type { LibraryStore } from '../library/library'
 import { aggregateTokenUsage, calculateTurnCost } from './agentUsage'
+import { pickNextItem } from './taskScheduling'
 import { defaultModelSelection, digestPayload } from './agentService'
 import {
   MissingSourceError,
@@ -46,6 +53,7 @@ import {
   type ChapterTranslationRunResult,
   type RunStopReason
 } from './chapterTranslationRunner'
+import { haltsTask, taskErrorFromFailures, toTaskError, type RunFailure } from './taskError'
 import type { AgentWriteCoordinator } from './writeCoordinator'
 
 export interface AgentTaskServiceOptions {
@@ -60,6 +68,8 @@ export interface AgentTaskServiceOptions {
   run?: typeof runChapterTranslation
   /** Term extraction for `extract_then_review` tasks. */
   extraction?: ContextExtractionService
+  /** Polish each chapter's new translation right after it is written (change `add-auto-polish`); default on. */
+  polish?: boolean
 }
 
 /** Where a task's events go: set once windows exist (`registerIpc`). */
@@ -74,6 +84,8 @@ export interface AgentTaskOutlets {
 interface RunningItem {
   itemId: string
   taskId: string
+  /** The model entry the task calls; its concurrency ceiling bounds how many items run (design D1). */
+  entryId: string
   workId: string
   chapterId: string
   controller: AbortController
@@ -123,8 +135,15 @@ export class AgentTaskService {
   private readonly newId: () => string
   private readonly run: typeof runChapterTranslation
   private readonly extraction: ContextExtractionService | null
+  private readonly polish: boolean
   private outlets: AgentTaskOutlets | null = null
-  private running: RunningItem | null = null
+  /** Items running now, by item id; several at once, up to each model entry's ceiling. */
+  private readonly running = new Map<string, RunningItem>()
+  /** Live calls and usage of every operation of a task now running, so parallel items share its caps. */
+  private readonly live = new Map<
+    string,
+    Map<string, { calls: number; usage: TokenUsage | null }>
+  >()
   private wakeQueued = false
   private closed = false
 
@@ -138,6 +157,7 @@ export class AgentTaskService {
     this.newId = options.newId ?? randomUUID
     this.run = options.run ?? runChapterTranslation
     this.extraction = options.extraction ?? null
+    this.polish = options.polish ?? true
   }
 
   connect(outlets: AgentTaskOutlets): void {
@@ -173,13 +193,25 @@ export class AgentTaskService {
     const labelOf = (chapterId: string) => labels.get(chapterId) ?? 'Chương đã xóa'
     const itemChapter = new Map(items.map((item) => [item.id, item.chapterId]))
     const steerings = this.tasks.listSteerings(taskId)
+    const model = lookupModel(this.modelNameOf(task) ?? '')
+    const lastRuns = new Map<string, AgentOperation>()
+    const extractions: string[] = []
+    for (const operation of this.operations.listTaskOperations(taskId)) {
+      if (operation.taskItemId && operation.capability === 'translate_chapter')
+        lastRuns.set(operation.taskItemId, operation)
+      if (operation.capability === 'extract_terms') extractions.push(operation.id)
+    }
     return {
       task: this.summary(task),
-      items: items.map((item) => ({
-        ...item,
-        chapterLabel: labelOf(item.chapterId),
-        ...(item.runKey ? { instruction: pinned.get(item.id) ?? null } : {})
-      })),
+      items: items.map((item) => {
+        const run = lastRuns.get(item.id)
+        return {
+          ...item,
+          chapterLabel: labelOf(item.chapterId),
+          ...(item.runKey ? { instruction: pinned.get(item.id) ?? null } : {}),
+          ...(run ? { lastRun: this.lastRunOf(run, labelOf(item.chapterId), false, model) } : {})
+        }
+      }),
       steerings: steerings.map((steering) => ({
         ...steering,
         requestedLabel: labelOf(steering.requestedChapterId),
@@ -187,7 +219,72 @@ export class AgentTaskService {
       })),
       currentInstruction:
         steerings.filter((s) => s.kind === 'instruction' && s.state !== 'superseded').at(-1)
-          ?.instructionText ?? null
+          ?.instructionText ?? null,
+      contextQuestions: new ContextQuestionService(this.library).countForRuns(
+        task.workId,
+        extractions
+      )
+    }
+  }
+
+  /** The runs of one chapter of a task, oldest first, with the evidence of the batches each committed. */
+  runs(taskId: string, itemId: string): AgentTaskRunsView {
+    const task = this.tasks.getTask(taskId)
+    if (!task) throw new StorageError('not_found', 'Không tìm thấy tác vụ.')
+    const item = this.itemOf(task, itemId)
+    const label = this.chapterLabels(task.workId).get(item.chapterId) ?? 'Chương đã xóa'
+    return {
+      itemId,
+      chapterLabel: label,
+      modelLabel: this.summary(task).modelLabel,
+      runs: this.operations
+        .listTaskOperations(taskId)
+        .filter((o) => o.taskItemId === itemId && o.capability === 'translate_chapter')
+        .map((operation): AgentTaskRunView => {
+          let batchesDone: number | null = null
+          try {
+            batchesDone =
+              this.library.readAgentOperationEvidence(task.workId, operation.id)?.batches.length ??
+              null
+          } catch {
+            // The work file is gone: the run still reads, without its batch count.
+          }
+          const summary = (operation.result as { summary?: unknown } | null)?.summary
+          return {
+            ...this.lastRunOf(operation, label, true, lookupModel(this.modelNameOf(task) ?? '')),
+            summary: typeof summary === 'string' ? summary : null,
+            batchesDone
+          }
+        })
+    }
+  }
+
+  /** `detail` (the provider's raw message and body piece) goes to the run list only. */
+  private lastRunOf(
+    operation: AgentOperation,
+    chapterLabel: string,
+    withDetail: boolean,
+    model: ModelInfo | undefined
+  ): AgentTaskLastRun {
+    let error = parseOperationError(operation.error)
+    if (!error) {
+      const failures = (operation.result as { failures?: RunFailure[] } | null)?.failures
+      error = taskErrorFromFailures(failures ?? [], { chapterLabel, at: operation.updatedAt })
+    }
+    if (error && !withDetail && 'detail' in error) {
+      const { detail: _detail, ...rest } = error
+      error = rest
+    }
+    const live = operation.state === 'queued' || operation.state === 'running'
+    const costUsd = calculateTurnCost(operation.usage, model).costUsd
+    return {
+      operationId: operation.id,
+      startedAt: operation.createdAt,
+      endedAt: live ? null : operation.updatedAt,
+      state: operation.state,
+      usage: operation.usage,
+      error,
+      ...(costUsd !== null ? { costUsd } : {})
     }
   }
 
@@ -212,7 +309,10 @@ export class AgentTaskService {
 
   /** A chat write into a chapter a task item is translating right now is a conflict. */
   isChapterBusy(workId: string, chapterId: string): boolean {
-    return this.running?.workId === workId && this.running.chapterId === chapterId
+    for (const running of this.running.values()) {
+      if (running.workId === workId && running.chapterId === chapterId) return true
+    }
+    return false
   }
 
   private summary(task: AgentTaskView): AgentTaskSummary {
@@ -234,16 +334,16 @@ export class AgentTaskService {
     } catch {
       // Disabled or deleted connection: the task still reads.
     }
+    const usage = aggregateTokenUsage(this.tasks.taskUsages(task.id))
+    const costUsd = calculateTurnCost(usage, lookupModel(this.modelNameOf(task) ?? '')).costUsd
     return {
       ...task,
       workTitle,
       modelLabel,
       counts,
-      usage: aggregateTokenUsage(this.tasks.taskUsages(task.id)),
-      extracting:
-        this.running?.taskId === task.id && this.running.extractCalls !== null
-          ? { calls: this.running.extractCalls }
-          : undefined
+      usage,
+      ...(costUsd !== null ? { costUsd } : {}),
+      extracting: this.extractingOf(task.id)
     }
   }
 
@@ -341,10 +441,13 @@ export class AgentTaskService {
 
     switch (input.command) {
       case 'pause':
+        // Every running item stops at its next safe point; the last one to stop settles the task.
+        for (const run of this.runningOf(task.id)) run.stop = 'pause'
         if (task.state === 'running') {
           next = this.tasks.transitionTask(task.id, 'pausing', version)
-          if (this.running?.taskId === task.id) this.running.stop = 'pause'
-          else next = this.tasks.transitionTask(task.id, 'paused', { now, reason: 'user' })
+          if (this.runningOf(task.id).length === 0) {
+            next = this.tasks.transitionTask(task.id, 'paused', { now, reason: 'user' })
+          }
         } else {
           next = this.tasks.transitionTask(task.id, 'paused', { ...version, reason: 'user' })
         }
@@ -364,10 +467,10 @@ export class AgentTaskService {
         })
         break
       case 'cancel':
+        for (const run of this.runningOf(task.id)) run.controller.abort()
         if (task.state === 'running' || task.state === 'pausing') {
           next = this.tasks.transitionTask(task.id, 'cancelling', version)
-          if (this.running?.taskId === task.id) this.running.controller.abort()
-          else next = this.finishCancel(task.id)
+          if (this.runningOf(task.id).length === 0) next = this.finishCancel(task.id)
         } else {
           next = this.tasks.transaction(() => {
             const moved = this.tasks.transitionTask(task.id, 'cancelled', version)
@@ -611,15 +714,32 @@ export class AgentTaskService {
   // ---------------------------------------------------------------------------------------------------
   // Scheduler
 
-  /** Schedules one look at the queue; calls while a look is pending or an item runs collapse. */
+  /**
+   * Schedules one look at the queue, which starts items until every model entry is at its ceiling (design
+   * D1, D2); calls while a look is pending collapse.
+   */
   wake(): void {
-    if (this.closed || this.running || this.wakeQueued) return
+    if (this.closed || this.wakeQueued) return
     this.wakeQueued = true
     queueMicrotask(() => {
       this.wakeQueued = false
-      if (this.closed || this.running) return
-      const item = this.tasks.nextQueuedItem()
-      if (item) this.start(item)
+      if (this.closed) return
+      const ceilings = new Map<string, number>()
+      for (;;) {
+        // An item stays `queued` in the library while its task extracts terms: the map says it runs.
+        const queued = this.tasks.queuedItems().filter((item) => !this.running.has(item.id))
+        for (const item of queued) {
+          if (!ceilings.has(item.entryId)) ceilings.set(item.entryId, this.ceilingOf(item))
+        }
+        const next = pickNextItem(
+          queued,
+          [...this.running.values()],
+          (entryId) => ceilings.get(entryId) ?? 1,
+          this.holding()
+        )
+        if (!next) return
+        this.start(next)
+      }
     })
   }
 
@@ -627,10 +747,49 @@ export class AgentTaskService {
   async idle(): Promise<void> {
     for (;;) {
       await new Promise((resolve) => setImmediate(resolve))
-      if (this.running) await this.running.done
-      else if (!this.wakeQueued && !this.tasks.nextQueuedItem()) return
+      if (this.running.size > 0)
+        await Promise.all([...this.running.values()].map((run) => run.done))
+      else if (!this.wakeQueued && this.tasks.queuedItems().length === 0) return
       else if (!this.wakeQueued) this.wake()
     }
+  }
+
+  /** The entry's configured ceiling; an entry that cannot be read runs one item, which then reports why. */
+  private ceilingOf(model: ModelRef): number {
+    try {
+      return this.connections.concurrencyOf(model.connectionId, model.entryId)
+    } catch {
+      return 1
+    }
+  }
+
+  private runningOf(taskId: string): RunningItem[] {
+    return [...this.running.values()].filter((run) => run.taskId === taskId)
+  }
+
+  /**
+   * Whether another item of the task still runs; the last one to end settles a stopping task. Read from
+   * the library, where each item leaves `running` before this check: runs that end in the same tick are
+   * all still in `this.running` until their promise settles.
+   */
+  private othersRunning(taskId: string, itemId: string): boolean {
+    return this.tasks
+      .listItems(taskId)
+      .some((item) => item.state === 'running' && item.id !== itemId)
+  }
+
+  /** Tasks that start no new item now: extracting terms first (D7), or stopping. */
+  private holding(): Set<string> {
+    const held = new Set<string>()
+    for (const run of this.running.values()) {
+      if (run.extractCalls !== null || run.stop !== null) held.add(run.taskId)
+    }
+    return held
+  }
+
+  private extractingOf(taskId: string): { calls: number } | undefined {
+    const calls = this.runningOf(taskId).find((run) => run.extractCalls !== null)?.extractCalls
+    return calls === undefined || calls === null ? undefined : { calls }
   }
 
   private start(item: AgentTaskItemView): void {
@@ -639,6 +798,7 @@ export class AgentTaskService {
     const running: RunningItem = {
       itemId: item.id,
       taskId: task.id,
+      entryId: task.model.entryId,
       workId: task.workId,
       chapterId: item.chapterId,
       controller,
@@ -646,13 +806,13 @@ export class AgentTaskService {
       done: Promise.resolve(),
       extractCalls: null
     }
-    this.running = running
+    this.running.set(item.id, running)
     running.done = this.runItem(task, item, running)
       .catch((error: unknown) => {
         console.error('Task scheduler failed:', error instanceof Error ? error.message : error)
       })
       .finally(() => {
-        if (this.running === running) this.running = null
+        if (this.running.get(item.id) === running) this.running.delete(item.id)
         this.wake()
       })
   }
@@ -767,8 +927,10 @@ export class AgentTaskService {
         chapterId: item.chapterId,
         operationId,
         modelSelection: task.model,
+        priority: 'background',
         runKey,
         policy: 'fill_untranslated',
+        polish: this.polish,
         skipIds: item.skippedSegments,
         batchKeyPrefix: `item:${item.id}:`,
         priorBatch: (batchKey) => this.priorBatch(task.workId, priorOperations, batchKey),
@@ -801,8 +963,10 @@ export class AgentTaskService {
       error = caught
     }
     if (this.closed) return
-    this.settleOperation(operationId, result, error, gate.calls())
-    this.settleItem(task.id, item.id, result, error)
+    const chapterLabel = target.kind === 'chapter' ? target.chapterLabel : undefined
+    this.settleOperation(operationId, result, error, gate.calls(), chapterLabel)
+    gate.close()
+    this.settleItem(task.id, item.id, result, error, chapterLabel)
     // Sent even when nothing was written: the editor locked by the write intent unlocks on it.
     try {
       this.outlets?.targetChanged?.({
@@ -854,6 +1018,7 @@ export class AgentTaskService {
         workId: task.workId,
         chapterIds,
         modelSelection: task.model,
+        priority: 'background',
         runId: operationId,
         gate: gate.allow,
         shouldStop: () => running.stop,
@@ -902,10 +1067,7 @@ export class AgentTaskService {
       const now = this.now()
       this.operations.transitionOperation(operationId, 'failed', {
         now,
-        error: {
-          code: error instanceof StorageError ? error.code : 'provider',
-          message: error instanceof Error ? error.message : String(error)
-        },
+        error: toTaskError(error, { scope: 'task', at: now }),
         result: { calls: gate.calls() }
       })
       const current = this.tasks.getTask(task.id)!
@@ -915,6 +1077,8 @@ export class AgentTaskService {
       else
         this.notify(this.tasks.transitionTask(task.id, 'waiting_user', { now, reason: 'provider' }))
       return false
+    } finally {
+      gate.close()
     }
   }
 
@@ -978,16 +1142,14 @@ export class AgentTaskService {
     operationId: string,
     result: ChapterTranslationRunResult | null,
     error: unknown,
-    calls: number
+    calls: number,
+    chapterLabel?: string
   ): void {
     const now = this.now()
     if (!result) {
       this.operations.transitionOperation(operationId, 'failed', {
         now,
-        error: {
-          code: error instanceof StorageError ? error.code : 'provider',
-          message: error instanceof Error ? error.message : String(error)
-        },
+        error: toTaskError(error, { chapterLabel, at: now }),
         result: { calls }
       })
       return
@@ -1007,12 +1169,20 @@ export class AgentTaskService {
     taskId: string,
     itemId: string,
     result: ChapterTranslationRunResult | null,
-    error: unknown
+    error: unknown,
+    chapterLabel?: string
   ): void {
+    // Cancelled while it ran (a task cancelled from `waiting_user`): the item is settled already.
+    if (this.tasks.getItem(itemId)?.state !== 'running') {
+      this.notify(this.tasks.getTask(taskId)!)
+      return
+    }
     if (!result) {
       const reason: AgentTaskReason =
         error instanceof MissingSourceError ? 'missing_raw' : 'provider'
       this.endItem(taskId, itemId, reason === 'missing_raw' ? 'waiting_user' : 'failed', reason)
+      if (haltsTask(toTaskError(error, { chapterLabel, at: this.now() }).code))
+        this.haltTask(taskId)
       return
     }
     const now = this.now()
@@ -1020,6 +1190,14 @@ export class AgentTaskService {
     if (result.state === 'stopped') {
       this.tasks.transitionItem(itemId, 'queued', { now, patch: { progress } })
       const task = this.tasks.getTask(taskId)!
+      if (this.othersRunning(taskId, itemId)) {
+        // The others stop at their next safe point; the last one settles the task.
+        if (result.stopReason === 'budget') {
+          for (const run of this.runningOf(taskId)) run.stop ??= 'budget'
+        }
+        this.notify(task)
+        return
+      }
       if (result.stopReason === 'budget' && task.state === 'running') {
         this.notify(this.tasks.transitionTask(taskId, 'paused', { now, reason: 'budget' }))
       } else if (task.state === 'pausing') {
@@ -1032,7 +1210,9 @@ export class AgentTaskService {
     if (result.state === 'cancelled') {
       this.tasks.transitionItem(itemId, 'cancelled', { now, patch: { progress } })
       const task = this.tasks.getTask(taskId)!
-      if (task.state === 'cancelling') this.notify(this.finishCancel(taskId))
+      if (task.state === 'cancelling' && !this.othersRunning(taskId, itemId)) {
+        this.notify(this.finishCancel(taskId))
+      } else this.notify(task)
       return
     }
     if (result.state === 'conflict') {
@@ -1044,9 +1224,23 @@ export class AgentTaskService {
     } else if (result.failedIds.length > 0) {
       const onlyBudget = result.failedIds.every((id) => result.budgetIds.includes(id))
       this.endItem(taskId, itemId, 'failed', onlyBudget ? 'budget' : 'provider', progress)
+      if (result.failures.some((failure) => haltsTask(failure.code))) this.haltTask(taskId)
     } else {
       this.endItem(taskId, itemId, 'completed', null, progress)
     }
+  }
+
+  /**
+   * A bad key or an empty account fails every chapter after this one the same way: the task waits for
+   * the person instead of burning through its queue. Only a task still running with chapters queued.
+   */
+  private haltTask(taskId: string): void {
+    const task = this.tasks.getTask(taskId)!
+    if (task.state !== 'running') return
+    if (!this.tasks.listItems(taskId).some((item) => item.state === 'queued')) return
+    this.notify(
+      this.tasks.transitionTask(taskId, 'waiting_user', { now: this.now(), reason: 'provider' })
+    )
   }
 
   private endItem(
@@ -1059,6 +1253,11 @@ export class AgentTaskService {
     const now = this.now()
     this.tasks.transitionItem(itemId, state, { now, reason, patch: progress ? { progress } : {} })
     const task = this.tasks.getTask(taskId)!
+    const stopping = task.state === 'cancelling' || task.state === 'pausing'
+    if (stopping && this.othersRunning(taskId, itemId)) {
+      this.notify(task)
+      return
+    }
     if (task.state === 'cancelling') {
       this.notify(this.finishCancel(taskId))
       return
@@ -1101,24 +1300,33 @@ export class AgentTaskService {
 
   /**
    * The outer gate of every call budget of the task: calls, reported tokens and, when the catalog has a
-   * price, cost, summed over the task's earlier runs plus the live one. A token cap that cannot be
-   * proven because a call reported no usage stops the task too.
+   * price, cost, summed over the task's finished runs plus **every** live one (design D6). Checking and
+   * counting happen in one synchronous call, so two parallel items cannot both take the last call. A
+   * token cap that cannot be proven because a call reported no usage stops the task too. `close()` once
+   * the operation's calls are written.
    */
   private gateFor(task: AgentTaskView, operationId: string) {
-    const earlier = this.operationsOfTask(task.id).filter(
-      (operation) => operation.id !== operationId
-    )
-    const earlierCalls = earlier.reduce((sum, operation) => sum + this.callsOf(operation.result), 0)
-    const earlierUsage = earlier.map((operation) => operation.usage)
+    const lives =
+      this.live.get(task.id) ?? new Map<string, { calls: number; usage: TokenUsage | null }>()
+    this.live.set(task.id, lives)
+    const mine = { calls: 0, usage: null as TokenUsage | null }
+    lives.set(operationId, mine)
     const info = lookupModel(this.modelNameOf(task) ?? '')
-    let liveCalls = 0
-    let liveUsage: TokenUsage | null = null
     return {
       allow: (): boolean => {
-        const calls = earlierCalls + liveCalls
+        const finished = this.operationsOfTask(task.id).filter(
+          (operation) => !lives.has(operation.id)
+        )
+        const running = [...lives.values()]
+        const calls =
+          finished.reduce((sum, operation) => sum + this.callsOf(operation.result), 0) +
+          running.reduce((sum, run) => sum + run.calls, 0)
         const { maxCalls, maxTokens, maxCostUsd } = task.budget
         if (maxCalls !== undefined && calls + 1 > maxCalls) return false
-        const usage = aggregateTokenUsage([...earlierUsage.filter(Boolean), liveUsage])
+        const usage = aggregateTokenUsage([
+          ...finished.map((operation) => operation.usage).filter(Boolean),
+          ...running.map((run) => run.usage)
+        ])
         if (maxTokens !== undefined) {
           if (calls > 0 && usage === null) return false
           if (usage && usage.inputTokens + usage.outputTokens >= maxTokens) return false
@@ -1127,14 +1335,18 @@ export class AgentTaskService {
           const cost = calculateTurnCost(usage, info).costUsd
           if (cost !== null && cost >= maxCostUsd) return false
         }
-        liveCalls++
+        mine.calls++
         return true
       },
       live: (usage: TokenUsage | null, calls: number) => {
-        liveUsage = usage
-        liveCalls = Math.max(liveCalls, calls)
+        mine.usage = usage
+        mine.calls = Math.max(mine.calls, calls)
       },
-      calls: () => liveCalls
+      calls: () => mine.calls,
+      close: () => {
+        lives.delete(operationId)
+        if (lives.size === 0) this.live.delete(task.id)
+      }
     }
   }
 
@@ -1169,9 +1381,8 @@ export class AgentTaskService {
     if (this.closed) return
     this.closed = true
     const now = this.now()
-    const running = this.running
-    running?.controller.abort()
-    if (running) {
+    for (const running of this.running.values()) {
+      running.controller.abort()
       const operationId = this.tasks.latestOperationId(running.itemId)
       const operation = operationId ? this.operations.getOperation(operationId) : null
       if (operation && (operation.state === 'running' || operation.state === 'queued')) {

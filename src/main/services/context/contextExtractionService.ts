@@ -1,6 +1,7 @@
 import { createHash, randomUUID } from 'node:crypto'
 import type { ReviewFlag } from '../../../shared/contracts/glossary'
 import type { TokenUsage } from '../../../shared/contracts/usage'
+import type { CallPriority } from '../../infra/providers/gateway/limiter'
 import { addUsage, toWireUsage, type Usage } from '../../infra/providers/usage'
 import { appendAiCall } from '../../infra/storage/aiCallLog'
 import {
@@ -27,7 +28,7 @@ import {
   type AnalysisCharacter
 } from '../ai/addressingAnalysis'
 import type { ConnectionService } from '../ai/connectionService'
-import { suggestRegister } from '../ai/translate/languageProfiles'
+import { resolveRegister } from '../../../shared/contracts/addressing/resolve'
 import {
   buildClassifyMessages,
   buildSweepMessages,
@@ -79,6 +80,8 @@ export interface ExtractContextInput {
   /** The task's chapters; only those without a scan row are sent. */
   chapterIds: string[]
   modelSelection: { connectionId: string; entryId: string }
+  /** Queue for the entry's call slots; a task runs as `background` so chat goes first. */
+  priority?: CallPriority
   runId?: string
   /** Asked before every model call; `false` stops the run before the request (task caps). */
   gate?: () => boolean
@@ -365,7 +368,8 @@ export class ContextExtractionService {
     const sourceLang = this.library.get(input.workId).sourceLang
     const translator = this.connections.translator(
       input.modelSelection.connectionId,
-      input.modelSelection.entryId
+      input.modelSelection.entryId,
+      input.priority
     )
     const call: ExtractionCaller =
       this.options.caller?.(input.modelSelection) ??
@@ -736,10 +740,10 @@ export class ContextExtractionService {
     const speaking = all.filter((_, index) => evidence[index]!.lines.length > 0)
     if (speaking.length < 2) return []
 
-    const genre = this.library.get(workId).genre ?? null
+    const work = this.library.get(workId)
     const messages = buildAnalysisMessages({
       sourceLang,
-      register: suggestRegister(sourceLang, genre) ?? null,
+      register: resolveRegister({ ...work, sourceLang }),
       characters: speaking,
       evidence: evidence.filter((each) => each.lines.length > 0),
       possibleChanges: addressChanges(chapters, speaking)

@@ -9,6 +9,15 @@ import {
 } from '../../../../shared/contracts/agent'
 import type { AgentTaskDetailView, AgentTaskSummary } from '../../../../shared/contracts/agentTask'
 import type { ResolvedTarget } from '../../../../shared/contracts/agent'
+import {
+  AGENT_TODO_CHARS,
+  AGENT_TODO_LIMIT,
+  AGENT_TODO_STATUSES,
+  type AgentTodoItem,
+  TODO_LIST,
+  todoListArgsSchema,
+  todosOf
+} from '../../../../shared/contracts/agentTodo'
 import type { CapabilityDefinition } from '../types'
 
 /** Characters of one side `read_chapter` returns per call; longer chapters are read by `offset`. */
@@ -20,7 +29,7 @@ export const TARGET_PARAM = {
     'Handle của đích do resolve_target hoặc ngữ cảnh cấp (ví dụ "ctx", "t1"). Không dùng ID.'
 }
 
-const TARGET_NEEDED =
+export const TARGET_NEEDED =
   'Cần target là handle tác phẩm hoặc chương: dùng handle "ctx" nếu có, hoặc gọi resolve_target với tên tác phẩm.'
 
 /** Says which target a capability needs and how to get it, so the model fixes the call next round. */
@@ -333,8 +342,8 @@ const chapterNumberOf = (
 export const listGlossaryCapability: CapabilityDefinition<Record<string, never>> = {
   name: 'list_glossary',
   description:
-    'Đọc bảng thuật ngữ đã duyệt. Với handle chương: các mục hiệu lực cho chương đó. Với handle tác phẩm: ' +
-    'mọi mục đã duyệt của tác phẩm, kèm dải chương (fromChapter, toChapter) nếu mục chỉ áp dụng một đoạn truyện.',
+    'Đọc bảng thuật ngữ đang có hiệu lực. Với handle chương: các mục hiệu lực cho chương đó. Với handle tác phẩm: ' +
+    'mọi mục đang có hiệu lực của tác phẩm, kèm dải chương (fromChapter, toChapter) nếu mục chỉ áp dụng một đoạn truyện.',
   kind: 'read',
   schema: v.object({}),
   parameters: targetOnly,
@@ -370,8 +379,8 @@ export const listGlossaryCapability: CapabilityDefinition<Record<string, never>>
 export const listAddressingCapability: CapabilityDefinition<Record<string, never>> = {
   name: 'list_addressing',
   description:
-    'Đọc các cặp xưng hô đã duyệt. Với handle chương: các cặp hiệu lực cho chương đó. Với handle tác phẩm: ' +
-    'mọi cặp đã duyệt của tác phẩm, kèm dải chương (fromChapter, toChapter) mà cặp có hiệu lực.',
+    'Đọc các cặp xưng hô đang có hiệu lực. Với handle chương: các cặp hiệu lực cho chương đó. Với handle tác phẩm: ' +
+    'mọi cặp đang có hiệu lực của tác phẩm, kèm dải chương (fromChapter, toChapter) mà cặp có hiệu lực.',
   kind: 'read',
   schema: v.object({}),
   parameters: targetOnly,
@@ -501,6 +510,41 @@ export const runSubagentCapability: CapabilityDefinition<{
     `Chạy subagent: ${(args as { description?: string }).description ?? 'Nhiệm vụ phụ'}`
 }
 
+/**
+ * The session's step list. The call itself is the record: the runtime finds the current list in the
+ * latest successful write, and fills in a read (no `todos`) with it.
+ */
+export const todoListCapability: CapabilityDefinition<{ todos?: AgentTodoItem[] }> = {
+  name: TODO_LIST,
+  description:
+    'Danh sách bước của việc nhiều bước trong phiên. Gửi "todos" để ghi đè toàn bộ danh sách (tối đa ' +
+    `${AGENT_TODO_LIMIT} bước, mỗi bước tối đa ${AGENT_TODO_CHARS} ký tự); bỏ "todos" để đọc danh sách hiện ` +
+    'tại; gửi danh sách rỗng để xóa. Mỗi lần gọi trả toàn bộ danh sách.',
+  kind: 'read',
+  schema: todoListArgsSchema,
+  parameters: {
+    type: 'object',
+    properties: {
+      todos: {
+        type: 'array',
+        maxItems: AGENT_TODO_LIMIT,
+        items: {
+          type: 'object',
+          properties: {
+            content: { type: 'string', description: 'Việc của bước, ngắn gọn.' },
+            status: { type: 'string', enum: [...AGENT_TODO_STATUSES] }
+          },
+          required: ['content', 'status']
+        }
+      }
+    },
+    required: []
+  },
+  targetPolicy: 'no_target',
+  handler: async ({ args }) => ({ ok: true, value: { todos: args.todos ?? null } }),
+  describe: ({ args }) => (todosOf(args) ? 'Cập nhật danh sách bước' : 'Đọc danh sách bước')
+}
+
 export const defaultReadCapabilities: CapabilityDefinition[] = [
   listWorksCapability,
   listChaptersCapability,
@@ -510,5 +554,6 @@ export const defaultReadCapabilities: CapabilityDefinition[] = [
   listGlossaryCapability,
   listAddressingCapability,
   askQuestionsCapability,
-  runSubagentCapability
+  runSubagentCapability,
+  todoListCapability
 ]

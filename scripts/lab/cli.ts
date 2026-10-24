@@ -34,7 +34,7 @@ import {
   collectAddressingEvidence,
   parseAnalysis
 } from '../../src/main/services/ai/addressingAnalysis'
-import { suggestRegister } from '../../src/main/services/ai/translate/languageProfiles'
+import { resolveRegister } from '../../src/shared/contracts/addressing/resolve'
 import type { TranslationModelCaller } from '../../src/shared/contracts/translateCore'
 import type { SecretCrypto } from '../../src/main/infra/storage/secretStore'
 import { ParagraphTranslator, paragraphUnits } from '../../src/main/services/ai/paragraphTranslation'
@@ -1817,7 +1817,7 @@ async function analyze(manifest: Manifest, args: Args): Promise<void> {
         number: n,
         text: library.readText(workId, ids[n - 1], 'source').content
       }))
-      const register = suggestRegister(work.sourceLang, work.genre)
+      const register = resolveRegister(work)
       const evidence = collectAddressingEvidence(chapters, characters, work.sourceLang)
       const messages = buildAnalysisMessages({
         sourceLang: work.sourceLang,

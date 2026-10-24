@@ -167,7 +167,7 @@ describe('CapabilityRegistry & Read Capabilities', () => {
     const tracker = new TurnBudgetTracker({
       maxModelRounds: 3,
       maxReadChars: 50,
-      maxWriteOperations: 1,
+      maxWriteChapters: 1,
       maxCapabilityCalls: 2
     })
 
@@ -188,8 +188,25 @@ describe('CapabilityRegistry & Read Capabilities', () => {
     expect(tracker.recordRead(30).allowed).toBe(true)
     expect(tracker.recordRead(25).allowed).toBe(false) // 30 + 25 > 50
 
-    // Write operations
-    expect(tracker.recordWriteOperation().allowed).toBe(true)
-    expect(tracker.recordWriteOperation().allowed).toBe(false)
+    // Writes count chapters, not operations
+    expect(tracker.recordWrite('w1:c1').allowed).toBe(true)
+    expect(tracker.recordWrite('w1:c1').allowed).toBe(true)
+    expect(tracker.recordWrite('w1:c2').allowed).toBe(false)
+  })
+
+  it('defaults to 15 rounds, 40 calls, 200,000 read characters and 3 chapters written', () => {
+    const tracker = new TurnBudgetTracker()
+    for (let round = 1; round < 15; round++) {
+      expect(tracker.recordModelRound()).toEqual({ allowed: true, isFinalRound: false })
+    }
+    expect(tracker.recordModelRound()).toEqual({ allowed: true, isFinalRound: true })
+    for (let call = 0; call < 40; call++) expect(tracker.recordCapabilityCall().allowed).toBe(true)
+    expect(tracker.recordCapabilityCall().allowed).toBe(false)
+    expect(tracker.recordRead(200_000).allowed).toBe(true)
+    expect(tracker.recordRead(1).allowed).toBe(false)
+    for (const chapter of ['c1', 'c2', 'c3', 'c1']) {
+      expect(tracker.recordWrite(chapter).allowed).toBe(true)
+    }
+    expect(tracker.recordWrite('c4').allowed).toBe(false)
   })
 })

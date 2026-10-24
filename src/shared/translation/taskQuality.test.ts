@@ -130,6 +130,8 @@ describe('evaluateTaskItem', () => {
 
   it('warns about unbalanced quotes and runaway repetition, and skips empty targets', () => {
     expect(codes(ctx(), [seg('「走」', '“Đi thôi.')])).toContain('text.unbalanced_quotes')
+    // The source itself splits the quote over two paragraphs: the translation follows it.
+    expect(codes(ctx(), [seg('「走。', '“Đi thôi.'), seg('快点」', 'Nhanh lên.”', 1)])).toEqual([])
     const loop = Array.from({ length: 5 }, () => 'đi mãi đi mãi').join(' ')
     expect(codes(ctx(), [seg('走走走走走走走走。', loop)])).toContain('text.repetition')
     expect(codes(ctx({ glossary: [term({})] }), [seg('韩立走了。', '   ')])).toEqual([])

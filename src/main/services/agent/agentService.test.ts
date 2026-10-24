@@ -3,7 +3,7 @@ import * as v from 'valibot'
 import type { AgentStreamEvent } from '../../../shared/contracts/agent'
 import { validateAgentEventSequence } from '../../../shared/contracts/agent'
 import { ProviderError } from '../../infra/providers/types'
-import { AGENT_WRITE_TOOLS } from '../../../shared/contracts/agentEmptyTurn'
+import { AGENT_WRITE_TOOLS, BUDGET_STOP_NOTICE } from '../../../shared/contracts/agentEmptyTurn'
 import { callTools, say, setupAgent } from './agentTestKit'
 import { AgentService, MAX_MODEL_ROUNDS, questionsOf } from './agentService'
 import { CapabilityRegistry } from './registry'
@@ -90,7 +90,12 @@ describe('AgentService model–tool loop', () => {
 
     it('stores a notice at the end when the turn only read and the last round was empty', async () => {
       const kit = setupAgent()
-      kit.model.script(callTools({ name: 'list_works', args: {} }), say(''))
+      // Two empties with zero output are deterministic, so the round is not sent a third time.
+      kit.model.script(
+        callTools({ name: 'list_works', args: {} }),
+        say('', { inputTokens: 10, outputTokens: 0 }),
+        say('', { inputTokens: 10, outputTokens: 0 })
+      )
       const res = await kit.agent.send({
         instruction: 'dịch toàn bộ truyện',
         modelSelection: kit.modelSelection
@@ -118,7 +123,11 @@ describe('AgentService model–tool loop', () => {
 
     it('adds no notice when a write completed even though the last round was empty', async () => {
       const kit = setupAgent()
-      kit.model.script(callTools({ name: 'translate_chapter', args: { target: 'ctx' } }), say(''))
+      kit.model.script(
+        callTools({ name: 'translate_chapter', args: { target: 'ctx' } }),
+        say('', { inputTokens: 10, outputTokens: 0 }),
+        say('', { inputTokens: 10, outputTokens: 0 })
+      )
       const res = await kit.agent.send({
         instruction: 'dịch chương này',
         context: { workId: kit.work1.id, chapterId: kit.ch1_2.id },
@@ -127,6 +136,20 @@ describe('AgentService model–tool loop', () => {
       expect(res.status).toBe('completed')
       expect(noticesOf(kit, res.turnId)).toEqual([])
     })
+  })
+
+  it('asks for short answers that report results, not the tool calls, and admit doubt', async () => {
+    const { agent, model, modelSelection } = setupAgent()
+    model.script(say('Ừ.'))
+    await agent.send({ instruction: 'xin chào', modelSelection })
+    const system = model.requests[0]!.messages.find((m) => m.role === 'system')!.content as string
+    expect(system).toContain('dài tương xứng câu hỏi')
+    expect(system).toContain('đừng kể lại từng lần gọi')
+    expect(system).toContain('đã đổi gì, đã kiểm gì và còn gì')
+    expect(system).toContain('nói thẳng là chưa chắc')
+    expect(system).toContain('làm ngay phần làm được')
+    // The voice lines come after the rules on handles, story data and approval, which still stand.
+    expect(system.indexOf('dài tương xứng')).toBeGreaterThan(system.indexOf('cần người dùng duyệt'))
   })
 
   it('tells the model to use ctx, read the overview once and batch independent reads', async () => {
@@ -321,8 +344,14 @@ describe('AgentService model–tool loop', () => {
 })
 
 describe('AgentService budget and loop', () => {
-  it('sends the sixth round without tools so the model must answer', async () => {
-    const { agent, model, modelSelection, work1, ch1_1 } = setupAgent()
+  const stopNotices = (kit: ReturnType<typeof setupAgent>, turnId: string) =>
+    kit.repository
+      .listParts(turnId)
+      .filter((part) => part.kind === 'progress' && part.text.startsWith(BUDGET_STOP_NOTICE))
+
+  it('sends the last round without tools and offers Tiếp tục', async () => {
+    const kit = setupAgent()
+    const { agent, model, modelSelection, work1, ch1_1 } = kit
     for (let offset = 0; offset < MAX_MODEL_ROUNDS - 1; offset++) {
       model.script(callTools({ name: 'read_chapter', args: { target: 'ctx', offset } }))
     }
@@ -336,24 +365,38 @@ describe('AgentService budget and loop', () => {
     expect(model.requests).toHaveLength(MAX_MODEL_ROUNDS)
     expect(model.requests.slice(0, -1).every((r) => r.tools !== undefined)).toBe(true)
     expect(model.requests.at(-1)!.tools).toBeUndefined()
+    expect(stopNotices(kit, res.turnId)).toHaveLength(1)
   })
 
-  it('stops a loop on the third identical call without a summary round', async () => {
-    const { agent, model, modelSelection } = setupAgent()
-    for (let i = 0; i < 3; i++) model.script(callTools({ name: 'list_works', args: {} }))
-    const { events, onStream } = recorder()
-    const res = await agent.send({ instruction: 'liệt kê', modelSelection, onStream })
-    expect(res.status).toBe('failed')
-    expect(model.requests).toHaveLength(3)
+  it('does not stop or notify when the model answers before the last round', async () => {
+    const kit = setupAgent()
+    kit.model.script(callTools({ name: 'list_works', args: {} }), say('Có hai tác phẩm.'))
+    const res = await kit.agent.send({ instruction: 'liệt kê', modelSelection: kit.modelSelection })
+    expect(res.status).toBe('completed')
+    expect(stopNotices(kit, res.turnId)).toHaveLength(0)
+  })
+
+  it('refuses the third identical call, carries on, and stops softly on the fourth', async () => {
+    const kit = setupAgent()
+    const { agent, model, modelSelection } = kit
+    for (let i = 0; i < 4; i++) model.script(callTools({ name: 'list_works', args: {} }))
+    model.script(say('Có hai tác phẩm.'))
+    const res = await agent.send({ instruction: 'liệt kê', modelSelection })
+    expect(res.status).toBe('completed')
+    expect(model.requests).toHaveLength(5)
+    expect(model.requests[3].tools).toBeDefined()
+    expect(model.requests[4].tools).toBeUndefined()
     const rows = agent.listToolCalls(res.turnId)
-    expect(rows.map((row) => row.state)).toEqual(['completed', 'completed', 'failed'])
-    expect(rows[2].result).toMatchObject({ error: { code: 'loop' } })
-    expect(events.at(-1)).toMatchObject({ kind: 'error', error: { code: 'loop' } })
+    expect(rows.map((row) => row.state)).toEqual(['completed', 'completed', 'failed', 'failed'])
+    expect(rows[2].result).toMatchObject({ error: { code: 'repeat' } })
+    expect(rows[3].result).toMatchObject({ error: { code: 'loop' } })
+    expect(stopNotices(kit, res.turnId)).toHaveLength(1)
     expect(agent.getTurn(res.turnId)?.usage).not.toBeNull()
   })
 
-  it('stops when a read would pass the character budget and never hands it to the model', async () => {
-    const { agent, model, modelSelection, registry } = setupAgent()
+  it('never hands a read over the character budget to the model and stops softly', async () => {
+    const kit = setupAgent()
+    const { agent, model, modelSelection, registry } = kit
     registry.register({
       name: 'huge_read',
       description: 'test',
@@ -361,22 +404,26 @@ describe('AgentService budget and loop', () => {
       schema: v.object({}),
       parameters: { type: 'object', properties: {}, required: [] },
       targetPolicy: 'no_target',
-      handler: async () => ({ ok: true, value: 'x'.repeat(100_001) })
+      handler: async () => ({ ok: true, value: 'x'.repeat(200_001) })
     })
-    model.script(callTools({ name: 'huge_read', args: {} }))
+    model.script(callTools({ name: 'huge_read', args: {} }), say('Không đọc hết được.'))
     const res = await agent.send({ instruction: 'đọc hết', modelSelection })
-    expect(res.status).toBe('failed')
-    expect(model.requests).toHaveLength(1)
+    expect(res.status).toBe('completed')
+    expect(model.requests).toHaveLength(2)
+    expect(model.requests[1].tools).toBeUndefined()
+    expect(JSON.stringify(model.requests[1])).not.toContain('x'.repeat(1_000))
     expect(agent.listToolCalls(res.turnId)[0].result).toMatchObject({
       error: { code: 'budget_read' }
     })
+    expect(stopNotices(kit, res.turnId)).toHaveLength(1)
   })
 
-  it('turns the call over the call cap into an error and makes the next round final', async () => {
-    const { agent, model, modelSelection, work1, ch1_1 } = setupAgent()
+  it('refuses the call over the call cap, cancels the rest and makes the next round final', async () => {
+    const kit = setupAgent()
+    const { agent, model, modelSelection, work1, ch1_1 } = kit
     model.script(
       callTools(
-        ...Array.from({ length: 21 }, (_, offset) => ({
+        ...Array.from({ length: 42 }, (_, offset) => ({
           name: 'read_chapter',
           args: { target: 'ctx', side: 'source', offset }
         }))
@@ -390,13 +437,16 @@ describe('AgentService budget and loop', () => {
     })
     expect(res.status).toBe('completed')
     const rows = agent.listToolCalls(res.turnId)
-    expect(rows.filter((row) => row.state === 'completed')).toHaveLength(20)
-    expect(rows[20].result).toMatchObject({ error: { code: 'budget_calls' } })
+    expect(rows.filter((row) => row.state === 'completed')).toHaveLength(40)
+    expect(rows[40].result).toMatchObject({ error: { code: 'budget_calls' } })
+    expect(rows[41].state).toBe('cancelled')
     expect(model.requests[1].tools).toBeUndefined()
+    expect(stopNotices(kit, res.turnId)).toHaveLength(1)
   })
 
-  it('stops before a fourth write operation runs', async () => {
-    const { agent, model, modelSelection, work1 } = setupAgent()
+  it('does not run a write to a fourth chapter and stops softly', async () => {
+    const kit = setupAgent()
+    const { agent, model, modelSelection, work1 } = kit
     const names = ['chương 1', 'chương 2', 'chương Tiết tử Thượng', 'chương Tiết tử Hạ']
     model.script(
       callTools(...names.map((description) => ({ name: 'resolve_target', args: { description } }))),
@@ -405,19 +455,22 @@ describe('AgentService budget and loop', () => {
           name: 'translate_chapter',
           args: { target }
         }))
-      )
+      ),
+      say('Đã dịch ba chương.')
     )
     const res = await agent.send({
       instruction: 'dịch chương 1, chương 2, Tiết tử Thượng và Tiết tử Hạ',
       context: { workId: work1.id },
       modelSelection
     })
-    expect(res.status).toBe('failed')
+    expect(res.status).toBe('completed')
     expect(agent.listOperations(res.turnId)).toHaveLength(3)
     expect(agent.listToolCalls(res.turnId).at(-1)?.result).toMatchObject({
       error: { code: 'budget_write' }
     })
-    expect(model.requests).toHaveLength(2)
+    expect(model.requests).toHaveLength(3)
+    expect(model.requests[2].tools).toBeUndefined()
+    expect(stopNotices(kit, res.turnId)).toHaveLength(1)
   })
 
   it('cuts the oldest turns from a long session and records it as activity, not in the transcript', async () => {
@@ -1138,6 +1191,100 @@ describe('AgentService response parts', () => {
     expect(
       model.requests.slice(1, 3).every((request) => request.messages[0].role === 'system')
     ).toBe(true)
+  })
+
+  describe('subagent model', () => {
+    const subagentTurn = (kit: ReturnType<typeof setupAgent>) =>
+      kit.agent.send({
+        instruction: 'thư viện có những truyện nào?',
+        modelSelection: kit.modelSelection
+      })
+    const useAuxiliary = (kit: ReturnType<typeof setupAgent>) =>
+      kit.services.connections.setAuxiliaryModel({
+        connectionId: kit.modelSelection.connectionId,
+        entryId: kit.auxEntryId
+      })
+    const askSubagent = callTools({
+      name: 'run_subagent',
+      args: { task: 'Tra cứu danh sách tác phẩm', description: 'Liệt kê tác phẩm' }
+    })
+
+    it('runs every subagent round on the auxiliary model and prices it at that model', async () => {
+      const kit = setupAgent()
+      useAuxiliary(kit)
+      kit.model.info = {
+        id: 'main',
+        name: 'Main',
+        toolCall: true,
+        cost: { input: 1000, output: 1000 }
+      }
+      kit.auxModel.info = {
+        id: 'aux',
+        name: 'Aux',
+        toolCall: true,
+        cost: { input: 100, output: 100 }
+      }
+      kit.model.script(askSubagent, say('Có 2 tác phẩm.'))
+      kit.auxModel.script(
+        callTools({ name: 'list_works', args: {} }),
+        say('Thư viện có 2 tác phẩm.')
+      )
+      const res = await subagentTurn(kit)
+      expect(kit.auxModel.requests).toHaveLength(2)
+      expect(kit.model.requests).toHaveLength(2)
+      const [parent] = kit.agent.listToolCalls(res.turnId)
+      expect(parent.result).toMatchObject({
+        ok: true,
+        value: { model: expect.stringContaining('Aux') }
+      })
+      // Four calls of 10 + 5 tokens: two at the turn's price, two at the auxiliary's.
+      expect(res.usage).toMatchObject({ inputTokens: 40, outputTokens: 20 })
+      expect(res.costUsd).toBeCloseTo((2 * 15 * 1000 + 2 * 15 * 100) / 1_000_000, 12)
+    })
+
+    it("stays on the turn's model when no auxiliary model is set or it cannot call tools", async () => {
+      for (const setUp of [
+        () => {},
+        (kit: ReturnType<typeof setupAgent>) => {
+          useAuxiliary(kit)
+          kit.auxModel.info = { id: 'aux', name: 'Aux', toolCall: false }
+        }
+      ]) {
+        const kit = setupAgent()
+        setUp(kit)
+        kit.model.script(askSubagent, say('Thư viện có 2 tác phẩm.'), say('Có 2 tác phẩm.'))
+        const res = await subagentTurn(kit)
+        expect(res.status).toBe('completed')
+        expect(kit.auxModel.requests).toHaveLength(0)
+        expect(kit.model.requests).toHaveLength(3)
+      }
+    })
+
+    it("starts over on the turn's model when the auxiliary model fails before any call", async () => {
+      const kit = setupAgent()
+      useAuxiliary(kit)
+      kit.auxModel.script(new Error('aux down'))
+      kit.model.script(askSubagent, say('Thư viện có 2 tác phẩm.'), say('Có 2 tác phẩm.'))
+      const res = await subagentTurn(kit)
+      const [parent] = kit.agent.listToolCalls(res.turnId)
+      expect(parent).toMatchObject({
+        state: 'completed',
+        result: { ok: true, value: { summary: 'Thư viện có 2 tác phẩm.' } }
+      })
+      expect((parent.result as { value: { model: string } }).value.model).not.toContain('Aux')
+    })
+
+    it('fails the parent call when the auxiliary model fails after storing a call', async () => {
+      const kit = setupAgent()
+      useAuxiliary(kit)
+      kit.auxModel.script(callTools({ name: 'list_works', args: {} }), new Error('aux down'))
+      kit.model.script(askSubagent, say('Subagent lỗi.'))
+      const res = await subagentTurn(kit)
+      const calls = kit.agent.getSessionDetail(res.sessionId).toolCalls
+      const parent = calls.find((call) => call.name === 'run_subagent')!
+      expect(parent.state).toBe('failed')
+      expect(calls.filter((call) => call.parentToolCallId === parent.id)).toHaveLength(1)
+    })
   })
 
   it('refuses a write in a subagent and stops it at its call ceiling', async () => {

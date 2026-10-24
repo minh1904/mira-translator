@@ -87,6 +87,13 @@ describe('decideToolCall', () => {
       decide({ name: 'create_translation_task', handle: 'ctx', target: chapter(workA, 'A', 'B') })
     ).toBe('needs_user')
   })
+
+  it('always asks before editing work details, which have no undo', () => {
+    const work: ResolvedTarget = { kind: 'work', workId: workA, workLabel: 'Đại Đạo' }
+    expect(decide({ name: 'update_work', kind: 'external', handle: 'ctx', target: work })).toBe(
+      'needs_user'
+    )
+  })
 })
 
 describe('risk of a needs_user decision', () => {

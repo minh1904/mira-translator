@@ -6,12 +6,12 @@ import type { MatchedContextEntry } from '../../../../shared/context/contextMatc
 import type { AddressingDyadResolved, CharacterItem } from '../../../../shared/contracts/addressing'
 import { languageName, languageProfile, type HonorificPolicy } from './languageProfiles'
 import type { OutputMode } from './outputMode'
-import {
-  ADDRESSING_RULES,
-  REGISTER_PRESETS,
-  type RegisterPreset,
-  type RegisterPresetId
-} from '../../../../shared/contracts/addressingPresets'
+import { ADDRESSING_RULES } from '../../../../shared/contracts/addressingPresets'
+import { composePreset } from '../../../../shared/contracts/addressing/compose'
+import type {
+  ComposedPreset,
+  RegisterSelection
+} from '../../../../shared/contracts/addressing/types'
 
 /**
  * Lắp request dịch: **một chỗ duy nhất** quyết định chữ nào được gửi.
@@ -29,7 +29,7 @@ import {
  */
 
 /** Định danh thế hệ prompt ghi vào trace đề xuất. */
-export const TRANSLATE_PROMPT_VERSION = 'translate-v10'
+export const TRANSLATE_PROMPT_VERSION = 'translate-v11'
 
 /** Tên thẻ của prompt dịch. Đổi tên ở đây thì system prompt, message user và bộ thoát thẻ đổi theo. */
 export const TAGS = {
@@ -59,8 +59,11 @@ export interface TranslatePromptContext {
   /** Thể loại người dùng ghi cho tác phẩm; chọn profile xưng hô. */
   genre?: string | null
   honorifics?: HonorificPolicy
-  /** Bộ mặc định xưng hô theo bối cảnh; vắng là không gửi bảng, chỉ gửi luật chung. */
-  register?: RegisterPresetId | null
+  /**
+   * Bối cảnh và văn hóa gốc đã quyết cho tác phẩm. Văn hóa chọn quy ước kính ngữ; bối cảnh chính chọn bảng
+   * xưng hô. Vắng hoặc không có bối cảnh là không gửi bảng, chỉ gửi luật chung.
+   */
+  register?: RegisterSelection | null
   /** Thuật ngữ đã khớp với lô. Mục chưa duyệt bị loại ở đây dù người gọi có lọc hay chưa. */
   glossary?: Array<ContextEntryItem | MatchedContextEntry>
   /** Cặp xưng hô hiệu lực; mục chưa duyệt bị loại như glossary. */
@@ -152,7 +155,9 @@ export function systemPrompt(context: TranslatePromptContext): string {
   const profile = languageProfile({
     sourceLang: context.sourceLang,
     genre: context.genre,
-    honorifics: context.honorifics
+    honorifics: context.honorifics,
+    culture: context.register?.culture,
+    setting: context.register?.setting
   })
   const parts = [
     `Bạn là dịch giả truyện, dịch ${lang} sang tiếng Việt cho độc giả Việt đọc giải trí.`,
@@ -199,7 +204,7 @@ export function systemPrompt(context: TranslatePromptContext): string {
     ...ADDRESSING_RULES.map((rule) => '- ' + rule),
     `</${t.addressingGeneral}>`
   )
-  const preset = context.register ? REGISTER_PRESETS[context.register] : undefined
+  const preset = context.register ? composePreset(context.register) : null
   if (preset) parts.push('', ...presetSection(preset))
   return parts.join('\n')
 }
@@ -409,7 +414,7 @@ export function charactersMentionedIn(characters: CharacterItem[], text: string)
  * Bảng gợi ý của bộ mặc định: một dòng cho mỗi quan hệ, chiều ngược ghi kèm khi khác. Nằm trong system
  * prompt vì nó chỉ phụ thuộc tác phẩm, giữ nguyên giữa các lô.
  */
-export function presetSection(preset: RegisterPreset): string[] {
+export function presetSection(preset: ComposedPreset): string[] {
   const tag = TAGS.addressingDefaults
   const rows = preset.rows.map((row) => {
     const signals = row.signals ? ` [${row.signals}]` : ''
@@ -419,7 +424,7 @@ export function presetSection(preset: RegisterPreset): string[] {
   })
   return [
     `<${tag}>`,
-    `Bối cảnh: ${preset.label}. Cặp gợi ý (tự xưng – gọi người nghe), chỉ dùng cho cặp nhân vật chưa có trong <${TAGS.addressing}>:`,
+    `Bối cảnh: ${preset.settingLabels.join(' + ')}${preset.cultureLabel ? `; văn hóa: ${preset.cultureLabel}` : ''}. Cặp gợi ý (tự xưng – gọi người nghe), chỉ dùng cho cặp nhân vật chưa có trong <${TAGS.addressing}>:`,
     ...rows,
     'Người kể gọi nhân vật ở ngôi ba:',
     ...preset.thirdPerson.map((line) => '- ' + line),

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { genreFamily, languageProfile, suggestRegister } from './languageProfiles'
+import { genreFamily, languageProfile } from './languageProfiles'
 
 describe('genreFamily', () => {
   it('nhận thể loại cổ trang và hiện đại từ chữ người dùng gõ', () => {
@@ -12,8 +12,10 @@ describe('genreFamily', () => {
   it('không chắc thì để chung', () => {
     expect(genreFamily(null)).toBe('unknown')
     expect(genreFamily('Ngôn tình')).toBe('unknown')
-    // Có cả hai dấu hiệu, ví dụ truyện xuyên không về hiện đại: không đoán.
-    expect(genreFamily('Xuyên không đô thị')).toBe('unknown')
+    // Có cả hai dấu hiệu (cung đấu cổ đại và đô thị): không đoán.
+    expect(genreFamily('Cung đấu, đô thị')).toBe('unknown')
+    // Xuyên không là chế độ kể, không cho biết bối cảnh: chỉ còn tín hiệu đô thị.
+    expect(genreFamily('Xuyên không đô thị')).toBe('modern')
   })
 })
 
@@ -50,35 +52,107 @@ describe('languageProfile', () => {
   })
 })
 
-describe('suggestRegister', () => {
-  it('gợi ý theo ngôn ngữ và thể loại', () => {
-    expect(suggestRegister('ja', 'Hiện đại · Tình cảm (現実世界〔恋愛〕)')).toBe('ja-modern')
-    expect(suggestRegister('ja', 'Dị giới · Tình cảm (異世界〔恋愛〕)')).toBe('ja-fantasy')
-    expect(suggestRegister('zh-Hans', 'Tiên hiệp')).toBe('zh-ancient')
-    expect(suggestRegister('zh-Hant', 'Đô thị')).toBe('zh-modern')
-    expect(suggestRegister('zh-Hans', 'Ngôn tình')).toBeNull()
-    expect(suggestRegister('en', null)).toBe('en-western')
-    expect(suggestRegister('ja', 'Hậu cung, trinh thám')).toBe('ja-court')
+describe('quy ước theo văn hóa gốc', () => {
+  const lines = (input: Parameters<typeof languageProfile>[0]): string =>
+    languageProfile(input).join('\n')
+
+  it('khi văn hóa trùng ngôn ngữ nguồn thì giữ nguyên profile của ngôn ngữ đó', () => {
+    expect(languageProfile({ sourceLang: 'ja', culture: 'ja' })).toEqual(
+      languageProfile({ sourceLang: 'ja' })
+    )
+    expect(languageProfile({ sourceLang: 'zh-Hans', culture: 'zh', setting: 'court' })).toEqual(
+      languageProfile({ sourceLang: 'zh-Hans', genre: 'cổ trang' })
+    )
+    expect(languageProfile({ sourceLang: 'en', culture: 'west' })).toEqual(
+      languageProfile({ sourceLang: 'en' })
+    )
   })
 
-  it('mã bộ ghi thẳng trong thể loại thắng phần đoán', () => {
-    expect(suggestRegister('ja', 'Học đường [ja-fantasy]')).toBe('ja-fantasy')
+  it('bản tiếng Anh của truyện Nhật dùng quy ước kính ngữ Nhật, không dùng dòng về chữ Nhật', () => {
+    const text = lines({ sourceLang: 'en', culture: 'ja' })
+    expect(text).toContain('Giữ hậu tố gắn sau tên')
+    expect(text).toContain('I/you không cho biết quan hệ')
+    expect(text).not.toContain('です/ます')
+    expect(text).not.toContain('romaji')
+  })
+
+  it('chính sách kính ngữ Nhật cũng áp cho bản tiếng Anh của truyện Nhật', () => {
+    expect(lines({ sourceLang: 'en', culture: 'ja', honorifics: { mode: 'localize' } })).toContain(
+      'Việt hóa kính ngữ gắn sau tên'
+    )
+  })
+
+  it('bản tiếng Anh của truyện Trung dùng Hán Việt cho tên, nhường dòng tên Latinh', () => {
+    const text = lines({ sourceLang: 'en', culture: 'zh', setting: 'cultivation' })
+    expect(text).toContain('Tên người, địa danh, công pháp, cảnh giới dùng âm Hán Việt')
+    expect(text).toContain('bổn tọa')
+    expect(text).toContain('I/you không cho biết quan hệ')
+    expect(text).not.toContain('chữ Latinh')
+    expect(text).not.toContain('咱们')
+  })
+
+  it('bối cảnh đã chọn thắng việc đoán nhóm thể loại của truyện Trung', () => {
+    const modern = lines({ sourceLang: 'zh-Hans', setting: 'modern', genre: 'Tiên hiệp' })
+    expect(modern).toContain('lối nói hiện đại')
+    const historical = lines({ sourceLang: 'zh-Hans', setting: 'court', genre: 'Đô thị' })
+    expect(historical).toContain('bối cảnh cổ đại')
+  })
+
+  it('bản tiếng Anh giữ nguyên dòng tên Latinh khi văn hóa là Nhật, Hàn hoặc phương Tây', () => {
+    expect(lines({ sourceLang: 'en', culture: 'ja' })).toContain('chữ Latinh')
+    expect(lines({ sourceLang: 'en', culture: 'ko' })).toContain('chữ Latinh')
+    expect(lines({ sourceLang: 'en', culture: 'west' })).toContain('chữ Latinh')
+  })
+
+  it('văn hóa khác ngôn ngữ chỉ ghép với tiếng Anh; ngôn ngữ khác quay về profile của chính nó', () => {
+    expect(languageProfile({ sourceLang: 'ja', culture: 'ko' })).toEqual(
+      languageProfile({ sourceLang: 'ja' })
+    )
+  })
+
+  it('xuyên không không còn bị coi là truyện cổ đại', () => {
+    expect(genreFamily('Xuyên không')).toBe('unknown')
+    expect(genreFamily('Xuyên không, cung đấu')).toBe('historical')
   })
 })
 
-describe('suggestRegister without evidence', () => {
-  // A Japanese work with no genre used to get the school preset, so teacher rules reached every work.
-  it('guesses no preset for a Japanese work without a setting signal', () => {
-    expect(suggestRegister('ja', null)).toBeNull()
-    expect(suggestRegister('ja', 'Hành động')).toBeNull()
-    expect(suggestRegister('ja', 'ハイファンタジー〔ファンタジー〕')).toBe('ja-fantasy')
-    expect(suggestRegister('ja', '現実世界〔恋愛〕')).toBe('ja-modern')
-    expect(suggestRegister('ja', 'Học đường')).toBe('ja-modern')
+describe('kính ngữ Hàn', () => {
+  const ko = (honorifics?: Parameters<typeof languageProfile>[0]['honorifics']): string =>
+    languageProfile({ sourceLang: 'ko', honorifics }).join('\n')
+
+  it('mặc định Việt hóa -ssi, dịch 오빠/형 theo vai và 선배 gọi trống ra "tiền bối"', () => {
+    const text = ko()
+    expect(text).toContain('Việt hóa hậu tố gắn sau tên')
+    expect(text).toContain('em – anh/chị')
+    expect(text).toContain('gọi trống dịch "tiền bối"')
+    expect(text).toContain('형님 cần biết giới tính người nói')
+    expect(text).not.toContain('Giữ hậu tố và danh xưng thân tộc Hàn')
   })
 
-  it('reads an English translation of a cultivation novel as ancient Chinese', () => {
-    expect(suggestRegister('en', 'Xianxia, cultivation')).toBe('zh-ancient')
-    expect(suggestRegister('en', 'LitRPG')).toBe('en-western')
+  it('chế độ giữ hậu tố giữ nguyên oppa, hyung, sunbae', () => {
+    const text = ko({ mode: 'keep' })
+    expect(text).toContain('Giữ hậu tố và danh xưng thân tộc Hàn')
+    expect(text).not.toContain('Việt hóa hậu tố gắn sau tên')
+  })
+
+  it('quy tắc của người dịch thay thế quy ước mặc định; quy tắc trống thì quay về mặc định', () => {
+    expect(ko({ mode: 'custom', rules: 'Giữ oppa, Việt hóa còn lại.' })).toContain(
+      'Giữ oppa, Việt hóa còn lại.'
+    )
+    expect(ko({ mode: 'custom', rules: ' ' })).toContain('Việt hóa hậu tố gắn sau tên')
+  })
+
+  it('không còn dòng ghép danh xưng lặp ở phần tên người', () => {
+    const lines = ko()
+      .split('\n')
+      .filter((line) => line.includes('anh Min-su-ssi'))
+    expect(lines).toHaveLength(1)
+  })
+
+  it('bản tiếng Anh của truyện Hàn dùng cùng quy ước kính ngữ Hàn', () => {
+    const text = languageProfile({ sourceLang: 'en', culture: 'ko' }).join('\n')
+    expect(text).toContain('Việt hóa hậu tố gắn sau tên')
+    expect(text).not.toContain('Đuôi câu lịch sự (-요')
   })
 })
 

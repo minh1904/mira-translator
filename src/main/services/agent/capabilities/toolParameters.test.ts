@@ -9,9 +9,12 @@ import {
   setWorkConventionsCapability
 } from './contextQuestionCapabilities'
 import { defaultReadCapabilities, getWorkOverviewCapability } from './readCapabilities'
-import { createWriteCapabilities } from './writeCapabilities'
+import { createWriteCapabilities, updateWorkCapability } from './writeCapabilities'
 import {
   createTranslationTaskCapability,
+  readAiCallLogCapability,
+  readTaskQualityCapability,
+  readTaskRunsCapability,
   readTranslationTasksCapability,
   steerTranslationTaskCapability
 } from './taskCapabilities'
@@ -25,9 +28,13 @@ const chatCapabilities: CapabilityDefinition[] = [
   write.translateChapterCapability,
   write.editTranslationCapability,
   write.undoOperationCapability,
+  updateWorkCapability,
   createTranslationTaskCapability,
   steerTranslationTaskCapability,
   readTranslationTasksCapability({ list: () => [], get: () => ({}) as never }),
+  readTaskQualityCapability({ list: () => [], quality: () => ({}) as never }),
+  readTaskRunsCapability({ list: () => [], get: () => ({}) as never, runs: () => ({}) as never }),
+  readAiCallLogCapability,
   getWorkOverviewCapability()
 ]
 
@@ -64,6 +71,13 @@ const samples: Record<string, { valid: unknown; invalid: unknown }> = {
     invalid: { replacements: [] }
   },
   undo_operation: { valid: { operationId: 'op' }, invalid: {} },
+  update_work: {
+    valid: {
+      work: { title: 'Sword Coming', author: null, status: 'in-progress' },
+      chapters: [{ number: 1, title: 'The Beginning' }]
+    },
+    invalid: { chapters: [{ number: 1, title: '' }] }
+  },
   create_translation_task: {
     valid: { fromChapter: 1, toChapter: 30 },
     invalid: { fromChapter: 1, toChapter: 30, contextStrategy: 'guess' }
@@ -73,7 +87,20 @@ const samples: Record<string, { valid: unknown; invalid: unknown }> = {
     invalid: { taskId: 't', fromChapter: 8, instruction: '' }
   },
   read_translation_tasks: { valid: {}, invalid: null },
-  get_work_overview: { valid: {}, invalid: null }
+  read_task_quality: {
+    valid: { rule: 'text.unbalanced_quotes', offset: 30, limit: 100 },
+    invalid: { limit: 101 }
+  },
+  read_task_runs: { valid: {}, invalid: null },
+  read_ai_call_log: {
+    valid: { kind: 'translate', offset: 3, withMessages: true },
+    invalid: { kind: '' }
+  },
+  get_work_overview: { valid: {}, invalid: null },
+  todo_list: {
+    valid: { todos: [{ content: 'Dịch chương 1', status: 'in_progress' }] },
+    invalid: { todos: [{ content: 'Dịch chương 1', status: 'done' }] }
+  }
 }
 
 type Entries = Record<string, { type: string }>
