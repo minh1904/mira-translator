@@ -93,7 +93,8 @@ function budgetDelta(
       split: after.byRound.split - before.byRound.split,
       bare: after.byRound.bare - before.byRound.bare,
       repair: after.byRound.repair - before.byRound.repair,
-      fallback: after.byRound.fallback - before.byRound.fallback
+      fallback: after.byRound.fallback - before.byRound.fallback,
+      polish: after.byRound.polish - before.byRound.polish
     },
     httpAttempts: after.httpAttempts - before.httpAttempts
   }

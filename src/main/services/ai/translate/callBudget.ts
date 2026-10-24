@@ -33,7 +33,8 @@ export class CallBudget {
     split: 0,
     bare: 0,
     repair: 0,
-    fallback: 0
+    fallback: 0,
+    polish: 0
   }
   private attempts = 0
   /** Set once the outer gate refused a call: the run stopped for the task's cap, not its own. */

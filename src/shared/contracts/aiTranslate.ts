@@ -82,7 +82,7 @@ export type TranslateErrorKind =
   | 'budget_exhausted'
 
 /** Các vòng gọi model trong một phiên dịch, được tính vào ngân sách gọi. */
-export type BudgetRound = 'main' | 'split' | 'bare' | 'repair' | 'fallback'
+export type BudgetRound = 'main' | 'split' | 'bare' | 'repair' | 'fallback' | 'polish'
 
 /** Báo cáo mức tiêu thụ ngân sách gọi của phiên dịch sau mỗi lô. */
 export interface BudgetReport {
@@ -109,6 +109,10 @@ export interface TranslateFailure {
    * Đề xuất tiếp tục các đoạn còn thiếu bằng model dự phòng trong Cài đặt.
    */
   fallback?: boolean
+  /** Hết hạn mức theo phút hay theo ngày, chỉ khi nhà cung cấp nói rõ. */
+  quotaScope?: 'minute' | 'day'
+  /** Thông điệp gốc và phần thân phản hồi đã che khóa, cho khung chi tiết kỹ thuật; không đưa cho agent. */
+  detail?: string
 }
 
 /**

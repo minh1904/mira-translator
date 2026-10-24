@@ -568,6 +568,23 @@ describe('the context snapshot of a run', () => {
     expect(plan.context.hash).toMatch(/^[0-9a-f]{64}$/)
   })
 
+  it('keeps the frozen setting after the setting changes mid-run, and says the context changed', async () => {
+    const h = setup()
+    h.library.update(h.workId, { setting: 'modern', culture: 'ja' })
+    const plan = h.translator.plan(h)
+    const ids = plan.batches.flatMap((batch) => batch.sourceIds)
+
+    const first = await h.translator.runBatch({ ...inputOf(h, plan), sourceIds: [ids[0]] })
+    expect(first.contextChanged).toBe(false)
+    expect(h.messages[0][0].content).toContain('Bối cảnh: Hiện đại, đô thị; văn hóa: Nhật.')
+
+    h.library.update(h.workId, { setting: 'fantasy' })
+    const second = await h.translator.runBatch({ ...inputOf(h, plan), sourceIds: [ids[1]] })
+    expect(second.contextChanged).toBe(true)
+    expect(h.messages[1][0].content).toContain('Hiện đại, đô thị')
+    expect(h.messages[1][0].content).not.toContain('Fantasy, quý tộc, isekai')
+  })
+
   it('keeps sending the snapshot after the glossary changes mid-run, and says it changed', async () => {
     const h = setup()
     const glossary = new GlossaryService(h.library, () => 1000)
@@ -678,7 +695,7 @@ describe('the call budget of a run', () => {
     expect(second.budget).toMatchObject({ used: 2, limit: 9, byRound: { main: 2 } })
     const proposal = h.library.withWork(h.workId, (db) => getProposal(db, first.proposalId!))
     expect((proposal.context[0] as { budget: unknown }).budget).toEqual({
-      byRound: { main: 1, split: 0, bare: 0, repair: 0, fallback: 0 },
+      byRound: { main: 1, split: 0, bare: 0, repair: 0, fallback: 0, polish: 0 },
       httpAttempts: 1
     })
   })

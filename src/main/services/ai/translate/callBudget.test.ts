@@ -17,7 +17,7 @@ describe('CallBudget', () => {
     expect(budget.snapshot()).toMatchObject({
       used: 5,
       limit: 5,
-      byRound: { main: 3, split: 2, bare: 0, repair: 0, fallback: 0 }
+      byRound: { main: 3, split: 2, bare: 0, repair: 0, fallback: 0, polish: 0 }
     })
   })
 

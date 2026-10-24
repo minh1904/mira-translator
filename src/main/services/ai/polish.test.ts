@@ -131,6 +131,55 @@ describe('polish — trau chuốt soát rồi sửa', () => {
     expect(result.accepted.map((e) => e.id)).toEqual(['[2]'])
   })
 
+  it('đọc trường gain và bỏ giá trị lạ; requireGain chỉ nhận gain cao', () => {
+    const edits = parsePolish(
+      '[{"id":"[1]","issue":"literal","gain":"cao","note":"a","dst":"Tôi bé tí thế này!"},' +
+        '{"id":"[2]","issue":"awkward","gain":"thấp","note":"b","dst":"Milly là hầu gái của gia tộc Granches!"},' +
+        '{"id":"[3]","issue":"awkward","gain":"khác","note":"c","dst":"“Ba năm nữa gặp lại.”"}]'
+    )
+    expect(edits.map((e) => e.gain)).toEqual(['cao', 'thấp', undefined])
+    const result = verifyEdits(items, edits, { glossary, requireGain: true })
+    expect(result.accepted.map((e) => e.id)).toEqual(['[1]'])
+    expect(result.rejected.map((r) => r.reason)).toEqual(['gain thấp', 'gain thấp'])
+  })
+
+  it('loại kiểu ngoặc CJK mà bản nháp không có', () => {
+    const result = verifyEdits(
+      [{ id: '[1]', src: '「あ」', dst: 'Chỉ là, vẫn còn một người “chưa kết hôn” thôi.' }],
+      [edit({ issue: 'awkward', dst: 'Chỉ là, vẫn còn một người 『chưa kết hôn』 thôi.' })],
+      {}
+    )
+    expect(result.rejected.map((r) => r.reason)).toEqual(['kiểu ngoặc lạ'])
+  })
+
+  it('loại khi thêm đại từ gọi người khác hoặc bỏ đại từ trang trọng, nhận khi thêm "tôi"', () => {
+    const talk: PolishItem[] = [
+      { id: '[1]', src: '「あの方は生きている」', dst: '“Ngài ấy vẫn còn sống ư?”' },
+      { id: '[2]', src: '「結婚しましょう」', dst: '“Chúng ta kết hôn đi ngài!”' },
+      { id: '[3]', src: 'こっちが小さい', dst: 'Bên này bé tí thế này.' }
+    ]
+    const result = verifyEdits(
+      talk,
+      [
+        edit({ id: '[1]', issue: 'voice', dst: '“Cậu ấy vẫn còn sống ư?”' }),
+        edit({ id: '[2]', issue: 'voice', dst: '“Chúng ta kết hôn đi ạ!”' }),
+        edit({ id: '[3]', dst: 'Tôi bé tí thế này.' })
+      ],
+      {}
+    )
+    expect(result.rejected.map((r) => r.reason)).toEqual(['đại từ mới "cậu"', 'bỏ đại từ "ngài"'])
+    expect(result.accepted.map((e) => e.id)).toEqual(['[3]'])
+  })
+
+  it('nêu ngôn ngữ nguồn trong prompt và ví dụ tiểu từ chỉ khi là tiếng Nhật', () => {
+    const [ja] = buildPolishMessages({ sourceLang: 'ja' }, items)
+    const [zh] = buildPolishMessages({ sourceLang: 'zh-Hans' }, items)
+    expect(ja.content).toContain('ゴホン')
+    expect(zh.content).not.toContain('ゴホン')
+    expect(zh.content).toContain('tiếng Trung')
+    expect(ja.content).toContain('"gain"')
+  })
+
   it('chia lô theo số ký tự, giữ thứ tự', () => {
     const many = Array.from({ length: 5 }, (_, i) => ({
       id: `[${i}]`,

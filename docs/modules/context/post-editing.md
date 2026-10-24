@@ -143,7 +143,8 @@ Trục phụ có thể thử cùng B: **trau chuốt theo lô hay cả chương*
 
 Lệnh `polish` của Lab ([`polish.ts`](../../../src/main/services/ai/polish.ts)): prompt soát rồi sửa, code
 loại bản sửa không đổi gì, lệch độ dài ±30%, mất thuật ngữ, mất tên, thêm tên mà bản gốc không nhắc, đổi
-con số hay mất dấu thoại. Chưa có trong app.
+con số hay mất dấu thoại. Từ 2026-10-24 bước này cũng chạy trong tác vụ dịch của app (mục
+[Trau chuốt tự động](#trau-chuốt-tự-động-sau-khi-dịch-đã-triển-khai-2026-10-24)).
 
 Chạy trên `n4696dd` chương 1–5, bản v5 không thinking có glossary AI, `gemini-2.5-flash` không thinking:
 khoảng $0.005 mỗi chương (rẻ hơn 4 lần lượt dịch). `polish-v1` sửa 35/461 đoạn nhưng thay "cô hầu gái"
@@ -160,6 +161,46 @@ bằng "Milly" ở cảnh người kể chưa biết tên, bỏ "chăng"; `polis
 
 Bước tiếp: kiểm xưng hô bằng code so với bảng (không để model tự quyết), luật cấm thêm chữ ngoài ngoặc
 thoại, rồi chấm cặp mù A/B với bản nháp như mục 6.
+
+### Trau chuốt tự động sau khi dịch (đã triển khai 2026-10-24)
+
+Quyết định của chủ sản phẩm (2026-10-24): sau khi đọc các lần chạy thử bên dưới, nối trau chuốt vào luồng
+tự động sau lượt dịch. Change `add-auto-polish`.
+
+- **Chạy ở đâu:** trong tác vụ dịch chương (`AgentTaskService`, mặc định bật; tùy chọn `polish` của dịch
+  vụ để tắt khi test). Dịch qua chat chưa trau chuốt.
+- **Cách chạy:** sau khi mọi lô của một chương đã ghi, `runChapterTranslation` gửi các câu **vừa dịch
+  trong lượt này** (không gồm câu một lượt trước của cùng mục đã ghi) cho model, rồi ghi các bản sửa nhận
+  được trong **cùng operation**. Hoàn tác một lần gỡ cả bản dịch lẫn trau chuốt.
+- **Model:** model phụ (Cài đặt › Model › Model phụ) nếu đã chọn, không thì model của tác vụ. Lần thử với
+  `gemini-3.8-flash` chỉ sửa 3–4 đoạn mỗi chương nên gần như không đổi gì; các lần thử cho kết quả có ích
+  đều dùng `gemini-3.1-pro-preview`. Muốn hiệu quả cần chọn model phụ mạnh hơn model dịch.
+- **Prompt `polish-v4`:** biến thể B (soát rồi sửa) cho phép viết lại câu để bớt văn dịch, kèm các luật
+  khóa nghĩa: giữ chi tiết, giữ mức lịch sự của lời thoại, giữ kiểu ngoặc của bản nháp, giữ nghĩa thành
+  ngữ và từ nối, không đổi đại từ gọi người khác. Mỗi bản sửa có `gain`; chỉ nhận `gain` cao.
+- **Kiểm bằng code (`verifyEdits`):** như `polish-v3`, thêm loại bản sửa đưa vào kiểu ngoặc CJK mà bản nháp
+  không có, thêm đại từ gọi người khác (ngài, cậu, cô, chàng, nàng, ông, anh, em, hắn...), hoặc bỏ đại từ
+  trang trọng (ngài, chàng, nàng, ngươi, trẫm, thần, thiếp). Thêm "tôi/ta" được phép vì đó là cách sửa
+  khi bản dịch sát chữ làm mất chủ ngữ.
+- **Best effort:** lỗi mạng, bộ lọc nội dung, hết ngân sách, xung đột với bản người sửa giữa chừng đều
+  giữ nguyên bản dịch và không làm hỏng lượt. Mỗi lô tính một lượt vào trần số lần gọi, token và chi phí
+  của tác vụ (vòng `polish` của `CallBudget`). Nhật ký AI của tác phẩm có mục `polish.main` cho từng lô.
+
+Kết quả thử (truyện 30 chương, chương 1–3, `gemini-3.1-pro-preview`, hai lần mỗi chương, một người đọc,
+chưa chấm mù): sửa 8–20 đoạn mỗi chương, hai lần chạy chỉ trùng khoảng 30–55%. Đọc 40 bản sửa của lần
+đầu: khoảng 19 tốt, 11 trung tính, 10 sai hoặc rủi ro (khoảng 25%; prompt trước khi thêm luật là khoảng
+30%). Luật giữ nghĩa thành ngữ làm lỗi "Đến nước này rồi" bị viết thành "Giờ này rồi" biến mất. Vẫn còn lọt:
+mất chi tiết ("lộng lẫy"), mất chữ "chỉ", đảo nghĩa một câu hỏi. Bản sửa nằm ở cả hai lần chạy vẫn sai
+khoảng 18%, nên không thể lọc bằng đồng thuận.
+
+Hạn chế đã biết:
+
+- Câu do lượt trước của cùng mục đã ghi (tiếp tục sau tạm dừng) không được trau chuốt.
+- Usage của lượt trau chuốt cộng vào operation và tính giá theo model của tác vụ, dù trau chuốt chạy trên
+  model phụ; trần chi phí vì thế chỉ gần đúng khi hai model khác giá.
+- Chưa có công tắc trong giao diện; chưa chọn riêng model trau chuốt (dùng model phụ).
+- Kiểm đại từ có thể chặn nhầm bản sửa đúng (ví dụ "cô" là danh từ), và bỏ sót đại từ ngoài danh sách.
+- Chưa đo bằng chấm cặp mù theo mục 6 và chưa thử với truyện không phải tiếng Nhật.
 
 ## 6. Kế hoạch đo (đề xuất)
 
