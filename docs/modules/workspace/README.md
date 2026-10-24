@@ -36,6 +36,8 @@ chưa triển khai.
 
 ## Nghiên cứu liên quan
 
+- [Màn Hoạt động](activity-screen.md): một màn thay hai tab Tác vụ và Nhật ký AI, bản ghi lỗi có cấu trúc,
+  tầng lần chạy; quyết định 2026-10-23, đã triển khai.
 - [Những gì nên đặt ở thanh bên](sidebar-research.md): thanh bên của LinguaGacha, Novelcrafter, CAT tool,
   Obsidian; quyết định lịch sử 2026-10-08 không dùng rail đã được thay ngày 2026-10-09 bằng sidebar thu
   được thành rail.
@@ -47,6 +49,8 @@ chưa triển khai.
   đã có Trang chủ, Thư viện và màn minh hoạ cho các mục còn lại, kèm lộ trình làm thật.
 - [Bố cục hai pane ở màn dịch chương](chapter-panes.md): cách Crowdin, Immersive Translate, CAT tool đặt
   bản gốc; đã làm thu gọn bản gốc, kéo chia bề rộng, cuộn cùng và làm sáng đoạn tương ứng.
+- [Xuống dòng và trình bày đoạn](paragraph-format.md): bản dịch giữ dòng trống của bản gốc, pane cách đoạn
+  và căn đều kiểu Hako; kiểu sách in để dành cho lúc xuất.
 - [Điều hướng chương và thanh bên màn dịch](chapter-sidebar-ux.md): nghiên cứu nút back trên topbar,
   ô tìm kiếm và nhảy chương, các bộ lọc trạng thái và tổ chức thanh bên.
 - [Các thao tác với panel chương](chapter-panel-actions.md): nghiên cứu menu ngữ cảnh trên từng chương,

@@ -124,6 +124,10 @@ Lệnh
 
 ### 5.1 Thẻ kế hoạch
 
+> Bước trước, đã triển khai 2026-10-23 (change `add-agent-todo-list`): tool `todo_list` và thẻ checklist trong
+> transcript cho model tự ghi tiến độ các bước. Nó **không thay** thẻ kế hoạch: không duyệt, không cấp quyền,
+> không ước tính chi phí. Thẻ kế hoạch có thể dùng lại phần danh sách của `TodoCard`.
+
 Hiện khi lệnh chạm hơn một chương, tốn hơn ngưỡng chi phí, hoặc ghi vào Context. Nội dung:
 
 - Phạm vi: tác phẩm, dải chương, số chương sẽ đổi.
@@ -273,6 +277,13 @@ Hạ tầng dùng chung cần có trước:
   Chạm trần thì `waiting_user` với **Tiếp tục**, không `failed`. Nâng trần không thay cho việc bớt vòng
   khám phá: ngữ cảnh mặc định và `get_work_overview` mới là chỗ giảm vòng, và model được hướng dẫn gọi các
   lệnh đọc độc lập song song trong cùng một vòng.
+
+  **Đã triển khai (change `raise-agent-round-budget`, 2026-10-23):** 15 vòng, 40 call, 200.000 ký tự đọc, ghi
+  tối đa 3 chương khác nhau. Chạm trần hoặc gọi lặp lần thứ tư thì call không chạy, vòng cuối không tool, lượt
+  `completed` kèm thông báo "Lượt dừng vì chạm giới hạn" và **Tiếp tục**. Khác chữ `waiting_user` ở trên: lượt
+  đóng lại và Tiếp tục gửi lượt mới, vì `waiting_user` gắn với một call đang chờ, còn lượt mới đã thấy tool call
+  của lượt trước nhờ `add-agent-session-memory`. Gọi lặp lần thứ ba không chạy mà nhắc model dùng kết quả trước.
+  Trần chi phí vẫn chưa có (mục 10.3).
 - **Lượt rỗng:** lượt kết thúc không có câu trả lời và không có thao tác ghi thì không được hiện là hoàn
   tất. Hiện thông báo "Lượt kết thúc mà không có phản hồi" kèm **Tiếp tục** (log 2026-10-22: lượt 16:55
   `completed` với câu trả lời rỗng).

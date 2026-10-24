@@ -105,14 +105,17 @@ từng cờ phải đo trên đoạn người đã chấm trước khi hiện ch
 
 ### Anh
 
-- Bản dịch Harry Potter tiếng Việt chuyển một cặp I – you thành hơn 50 cách xưng gọi, phần lớn bằng từ thân
-  tộc; Draco xưng "tao – mày" với bạn cùng lứa suốt truyện như nét tính cách
-  ([VNU JFS](https://js.vnu.edu.vn/FS/article/view/4390)). Với quyết định 2026-10-14, kiểu này chỉ giữ được
-  qua cặp đã duyệt.
+- Một nghiên cứu phân tích 75 cặp I – you của *Harry Potter and the Philosopher's Stone* và bản dịch tiếng Việt
+  (2016), kết luận dịch giả chọn tương đương từ "hệ thống xưng hô đa dạng" của tiếng Việt
+  ([VNU JFS](https://js.vnu.edu.vn/FS/article/view/4390), chỉ đọc được phần tóm tắt). Hai chi tiết từng ghi ở đây,
+  "hơn 50 cách xưng gọi" và Draco xưng "tao – mày" với bạn cùng lứa, **không có trong phần tóm tắt và chưa xác
+  minh được** (kiểm 2026-10-24); cần đọc bản PDF đầy đủ trước khi dùng làm căn cứ. Với quyết định 2026-10-14,
+  kiểu "tao – mày" chỉ giữ được qua cặp đã duyệt.
 - Câu dẫn: bỏ "he said" khi đã rõ người nói hoặc chuyển lên trước lời thoại; không đổi động từ cho "đa dạng"
   (dễ thành lỗi "said haughtily").
 - "love/darling/mate" kiểu Anh không phải tín hiệu người yêu hay bạn thân.
-- `suggestRegister('en')` luôn trả `en-western`, kể cả bản tiếng Anh của truyện tiên hiệp.
+- `suggestRegister('en')` từng luôn trả `en-western`, kể cả bản tiếng Anh của truyện tiên hiệp; từ 2026-10-24
+  tiếng Anh không tín hiệu thì không có bảng (xem [Xưng hô tiếng Việt](vietnamese-addressing.md#7-hai-trục-bối-cảnh-và-văn-hóa-gốc-2026-10-24)).
 
 ## 5. Đề xuất (chưa duyệt)
 

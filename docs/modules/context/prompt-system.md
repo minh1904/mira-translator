@@ -254,7 +254,8 @@ fantasy phương Tây cũng nhận câu về お前/テメェ và "thầy/cô �
   có bộ. Không có bộ (ví dụ truyện Trung chưa rõ cổ/hiện đại) thì không có luật thầy trò.
 - Chat: `systemPrompt(mode, register)` gồm luật gọi tên và luật của bộ; bộ chọn bằng `suggestRegister`
   như lô dịch. Bộ chỉ phụ thuộc tác phẩm nên system prompt chat vẫn giữ nguyên giữa các lượt.
-- Bộ vẫn đoán từ ngôn ngữ và thể loại; lưu lựa chọn theo tác phẩm vẫn là đề xuất ở mục dưới.
+- Từ 2026-10-24 bộ không còn đoán từ ngôn ngữ nguồn: bối cảnh và văn hóa lưu theo tác phẩm, `resolveRegister` quyết
+  định (xem [Xưng hô tiếng Việt, mục 7](vietnamese-addressing.md#7-hai-trục-bối-cảnh-và-văn-hóa-gốc-2026-10-24)).
 
 ## Bỏ luật cứng theo bối cảnh (2026-10-14, chưa đo lại bằng model)
 
@@ -291,7 +292,7 @@ luật đó giúp: lỗi gọi nhầm "thầy" giảm nhờ dữ liệu nhân v�
 - `suggestRegister`: truyện Nhật không có tín hiệu thì không đoán bộ (trước đây rơi vào `ja-modern`); có
   tín hiệu học đường/hiện đại mới ra `ja-modern`. Bản tiếng Anh của truyện tu tiên ra `zh-ancient`.
 - Chat chỉ còn luật chung (gọi tên, "mày – tao"), không nhận gì từ bộ; `ChatService` bỏ tùy chọn `register`.
-- Còn mở: lưu lựa chọn bộ theo tác phẩm (đề xuất ở mục dưới); đo cả thay đổi này bằng Lab.
+- Lưu lựa chọn bộ theo tác phẩm đã làm 2026-10-24 (mục 7 của tài liệu xưng hô); còn mở: đo bằng Lab.
 
 ## Bản chụp ngữ cảnh theo lượt dịch (đã triển khai 2026-10-07)
 

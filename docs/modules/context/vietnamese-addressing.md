@@ -1,8 +1,9 @@
 # Xưng hô tiếng Việt: bộ mặc định theo bối cảnh
 
-Cập nhật: 2026-10-06 · Trạng thái: các quyết định ở mục 1 **đã chốt**; bộ mặc định và luật trong prompt
-**đã triển khai**, đo sơ bộ trên một truyện trước thay đổi thầy trò; luật hạn chế mày/tao áp cả dịch và chat của bộ `ja-modern`/`zh-modern`, **chưa đo lại chất lượng bằng model**; lưu lựa chọn theo tác phẩm, nhiều dạng tên cho một nhân
-vật và bước phân tích trước khi dịch là **đề xuất**.
+Cập nhật: 2026-10-24 · Trạng thái: các quyết định ở mục 1 và mục 7.1 **đã chốt**; bảng theo hai trục bối cảnh và
+văn hóa gốc, lưu theo tác phẩm, chip thể loại **đã hiện thực** (mục 7.2) nhưng **chưa đo lại chất lượng bằng
+model**; ghi đè theo nhân vật hoặc cảnh, nhiều dạng tên cho một nhân vật, bước phân tích trước khi dịch và
+AI đề xuất bối cảnh là **đề xuất**. Mục 3 là bảng phẳng cũ, giữ làm lịch sử.
 
 > `v1`–`v4` trong chương này là tên thế hệ prompt **của các thí nghiệm đã chạy**; mã nay chỉ còn một
 > prompt và thẻ/khóa đổi sang tiếng Anh (`noi`/`xung`/`goi` → `speaker_to_listener`/`self_ref`/`addr_ref`,
@@ -78,6 +79,9 @@ Thẻ nhân vật (giới tính, vai trò, ghi chú) đi kèm, vì thiếu nó m
 khi có thẻ, cô Unya bị gọi "thầy" 26 lần trong 20 chương.
 
 ## 3. Sáu bộ mặc định
+
+> **Đã thay (2026-10-24).** Sáu bộ phẳng dưới đây gắn theo ngôn ngữ nguồn đã được thay bằng bảng hai trục
+> bối cảnh và văn hóa gốc (mục 7); mã cũ như `[ja-modern]` vẫn đọc được. Giữ mục này để biết các bộ cũ nói gì.
 
 Dữ liệu và từng dòng nằm ở [`addressingPresets.ts`](../../../src/shared/contracts/addressingPresets.ts).
 Mỗi dòng: loại quan hệ (A → B), tín hiệu bản gốc, cặp chiều thuận, cặp chiều ngược khi khác, ghi chú.
@@ -247,8 +251,8 @@ Anh với dữ liệu tiếng Việt.
   "em" (chưa có nguồn bản dịch fan).
 
 **Đề xuất kỹ thuật.**
-- **Lưu bộ mặc định theo tác phẩm** (schema), ghi đè được theo nhân vật hoặc cảnh — ví dụ nội tâm người
-  chuyển sinh giữ giọng hiện đại trong truyện `ja-fantasy`.
+- **Ghi đè bộ theo nhân vật hoặc cảnh** — ví dụ nội tâm người chuyển sinh giữ giọng hiện đại trong truyện
+  fantasy. Lưu bộ theo tác phẩm đã làm ở mục 7.2; phần ghi đè chi tiết hơn vẫn là đề xuất.
 - **Nhiều dạng tên cho một nhân vật**, mỗi dạng một bản dịch (họ tên, tên, họ, biệt danh). Hiện mỗi nhân
   vật có một tên dịch, và tên đã là nhân vật thì không còn là thuật ngữ — prompt `v1` mất luôn bản dịch
   tên đó.
@@ -258,5 +262,68 @@ Anh với dữ liệu tiếng Việt.
   kiểu — các chỉ số của mục 5 thành kiểm tra tự động.
 - **Kiểm chứng bằng bản in** (IPM, Amak, Kim Đồng; Lý Lan; Kim Dung bản Vũ Đức Sao Biển) — chưa có trích
   đoạn chính xác.
+
+## 7. Hai trục: bối cảnh và văn hóa gốc (2026-10-24)
+
+Bảng gợi ý gắn theo ngôn ngữ nguồn (mục 3) chọn sai trục: bối cảnh truyện (hiện đại, fantasy, cung đình…) và
+văn hóa gốc của câu chuyện (Nhật, Hàn, Trung, phương Tây) khác nhau, và văn hóa gốc không trùng ngôn ngữ văn
+bản. Truyện Nhật đọc từ bản tiếng Anh từng bị gán `en-western`; truyện chỉ có tên không có bảng; tiếng Hàn không
+có bảng nào. Chi tiết thiết kế ở change `add-multilingual-addressing-presets`; nội dung từng dòng và nguồn ở
+[Nhật](addressing-research-ja.md), [Hàn](addressing-research-ko.md), [Trung](addressing-research-zh.md),
+[phương Tây](addressing-research-west.md).
+
+### 7.1 Quyết định đã chốt (chủ sản phẩm, 2026-10-23)
+
+- Bảng theo hai trục: bối cảnh `modern`, `fantasy`, `court`, `cultivation`, `game` và văn hóa gốc `ja`, `ko`, `zh`,
+  `west`. Bảng trong prompt = dòng chung của bối cảnh + dòng riêng của văn hóa.
+- Một tác phẩm có **một bối cảnh chính và nhiều bối cảnh phụ**; dòng của bối cảnh chính thắng khi trùng quan hệ.
+  Cung đình và tu chân dùng chung dòng bằng cách chọn cả hai, không có bối cảnh `ancient` trung gian.
+- Văn hóa Hàn: Việt hóa `-ssi`, `오빠`/`형` dịch theo vai (em – anh/chị), `선배` gọi trống là "tiền bối"; chế độ giữ
+  hậu tố là công tắc riêng.
+- Không có tín hiệu thì chỉ gửi luật chung kèm luật suy cặp từ tuổi, quan hệ, trang trọng và chức danh; áp cho
+  mọi ngôn ngữ nguồn. Tiếng Anh không còn mặc định `en-western`.
+- "Em" của hầu gái và người khế ước **không** là cặp mặc định ở fantasy ("tôi – tiểu thư"); "em" chỉ khi thẻ
+  nhân vật cho biết người đó là thiếu nữ nhỏ tuổi gắn bó với chủ. Đây là điều chỉnh cho nghi can lỗi Rion xưng
+  "em" với Milly (mục 5b), **chưa kiểm chứng** rằng đó là nguyên nhân.
+
+### 7.2 Đã hiện thực (chưa đo bằng model)
+
+- Dữ liệu và ghép bảng ở `src/shared/contracts/addressing/`: `types.ts`, `compose.ts` (ghép, bí danh mã cũ, đọc mã
+  trong thể loại), `genres.ts` (chip và từ khóa), `resolve.ts` (`resolveRegister`), `labels.ts`, `data/`.
+  Mỗi dòng có độ tin cậy `high`/`medium`/`low`; ghi chú trong dữ liệu chỉ nói với model, không chứa ngày chốt hay
+  nhãn nguồn.
+- Thứ tự chọn: mã tổ hợp trong thể loại (`[ko-modern]`, hoặc mã cũ) > lựa chọn đã lưu > suy từ chip khi thể loại
+  chỉ cho **một** bối cảnh (chip mâu thuẫn như Đô Thị cùng Fantasy thì không đoán) > không bảng. Văn hóa: mã >
+  đã lưu > từ khóa thể loại (tu chân, kiếm hiệp, cung đấu → Trung) > ngôn ngữ nguồn, trừ tiếng Anh. "Không dùng
+  bảng" tắt bảng nhưng văn hóa vẫn điều khiển kính ngữ.
+- Lưu theo tác phẩm: ba cột `setting`, `settings_extra`, `culture` (schema tác phẩm v18, chỉ mục thư viện v21);
+  chưa chọn là `NULL`, `none` là tắt bảng. Form tác phẩm có chip thể loại, ô bối cảnh chính, bối cảnh phụ, văn hóa
+  và một câu nói bảng nào sẽ được dùng. Chip Xuyên Không là chế độ kể, không suy thành bối cảnh.
+- Bản chụp ngữ cảnh phiên bản 2 ghi `{ setting, extra, culture }` thay cho mã bảng. Bản chụp cũ vẫn đọc và dựng lại
+  được qua bảng bí danh; hash đã lưu không bị ghi lại, hash bản chụp mới đổi một lần. `en-western` cũ ánh xạ thành
+  `fantasy` + `west` (bảng cũ trộn fantasy với hiện đại, không có ánh xạ đúng); `zh-ancient` cũ thành `court` + `zh`.
+- Quy ước kính ngữ theo văn hóa: văn bản tiếng Anh mang văn hóa Nhật, Hàn hoặc Trung dùng quy ước của văn hóa đó
+  (Trung: tên Hán Việt thay cho dòng tên Latinh). `korean()` nhận chính sách kính ngữ; mặc định Việt hóa, chỉ `keep`
+  nói rõ mới giữ hậu tố. Prompt dịch lên `translate-v11`.
+- Sửa các dòng sai đã xác minh: dòng họ hàng và "cậu" thân tộc cho Nhật, hai dòng hôn phu mang "ta" vào fantasy,
+  "con" của thầy cô và "thần/khanh" của `en-western`, `Sir` đi với tên riêng và `Lord` theo tước hiệu, vua Joseon
+  tự xưng `과인` chứ không `짐`. `genreFamily` không còn xếp "xuyên không" vào cổ đại.
+
+### 7.3 Chưa làm hoặc còn mở
+
+- **Chưa đo bằng model.** Phần lớn dòng mới là suy từ kiến thức ngôn ngữ; nhiều nguồn tiếng Việt chỉ đọc qua tóm
+  tắt tìm kiếm, và không có bản in nào được đối chiếu. Cần chạy lại truyện có lỗi xưng hô đã ghi ở
+  [soát task dịch thật](translation-run-2026-10-22.md) (gồm Rion và Milly) trước khi coi bảng là mặc định.
+- **Chính sách hậu tố chưa lưu theo tác phẩm.** Hiện không nơi nào lưu `HonorificPolicy`: `japanese()` mặc định giữ
+  hậu tố, `korean()` mặc định Việt hóa, và chế độ `keep` chỉ có khi nơi gọi truyền vào.
+- **Họ hàng cần dữ liệu thẻ nhân vật** (bên nội hay ngoại, hơn hay kém); dòng họ hàng ghi điều kiện đó trong ghi
+  chú, còn thiếu thì gọi theo tuổi. Chưa có trường mới trên thẻ nhân vật.
+- AI đề xuất bối cảnh và văn hóa để người dịch duyệt, dò tín hiệu từ nội dung chương, ghi đè theo chương hay nhân
+  vật, ngôi ba của phương Tây: chưa làm.
+- Dòng bị bỏ vì nguồn yếu: yakuza và idol (Nhật), cung đình bản địa Nhật, nhân vật cổ `のじゃ`, tiểu chủ, tên + 老/小
+  (Trung), đại công và người hồi quy (Hàn). Có thể thêm lại khi có bằng chứng.
+- Các câu hỏi về nội dung từng dòng (hôn phu "tôi – cô" hay "ta – nàng", cấp dưới với sếp "tôi" hay "em", "điện
+  hạ" hay "bệ hạ" cho vua Joseon, "huân tước" hay "ngài" cho Lord) nằm ở mục câu hỏi mở của bốn tài liệu khảo sát;
+  dữ liệu hiện chọn phương án thận trọng nhất của từng tài liệu.
 
 [Về module Ngữ cảnh](README.md)

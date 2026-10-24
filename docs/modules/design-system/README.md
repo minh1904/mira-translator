@@ -382,5 +382,6 @@ artifact tái chạy được.
 
 [Mục lục module](../README.md) · [Quy tắc UI](../../../DESIGN.md) ·
 [Phân tích Obsidian](obsidian-comparison.md) ·
+[Hiển thị lỗi](error-display.md) ·
 [Phân tích Hermes (lịch sử)](hermes-comparison.md) ·
 [Nghiên cứu kính trên nền ảnh (lịch sử)](soft-glass-research.md)

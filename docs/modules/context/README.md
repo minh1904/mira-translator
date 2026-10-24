@@ -18,10 +18,12 @@ Tập hợp những gì đã nghiên cứu về glossary, nhân vật, xưng hô
 | AI tự lập glossary trước khi dịch thế nào, người duyệt ở đâu? | [AI trích xuất glossary](glossary-extraction.md) |
 | Ai nói với ai, giữ hậu tố hay Việt hóa? | [Nhân vật và xưng hô](characters-and-addressing.md) |
 | Học văn phong từ đâu, nhớ gì và tránh tiết lộ sớm thế nào? | [Văn phong và ký ức](style-and-memory.md) |
+| Gửi ngữ cảnh chương trước có làm bản dịch tốt hơn không? | [Ngữ cảnh chương trước](cross-chapter-context.md) |
 | Lưu, duyệt, sửa và truy vết dữ liệu ra sao? | [Dữ liệu và vòng đời](data-lifecycle.md) |
 | Chọn gì để gửi AI, cắt gì khi thiếu chỗ? | [Lắp ngữ cảnh](context-assembly.md) |
 | Prompt dịch và chat xếp thế nào, các sản phẩm khác làm gì? | [Hệ thống prompt](prompt-system.md) |
 | Chưa có cặp xưng hô thì AI xưng hô thế nào, theo bối cảnh nào? | [Xưng hô tiếng Việt](vietnamese-addressing.md) |
+| Mỗi văn hóa gốc dịch xưng hô sang tiếng Việt thế nào, nguồn và độ tin cậy ra sao? | [Nhật](addressing-research-ja.md) · [Hàn](addressing-research-ko.md) · [Trung](addressing-research-zh.md) · [Phương Tây](addressing-research-west.md) |
 | Chứng minh tốt hơn và tránh báo lỗi nhầm thế nào? | [Chất lượng và kiểm chứng](quality-and-evaluation.md) |
 | Sau lượt dịch: kiểm, tự sửa, trau chuốt và để người duyệt thế nào? | [Kiểm, tự sửa và trau chuốt](post-editing.md) |
 | Thế nào là bản dịch tiểu thuyết tốt, mỗi ngôn ngữ nguồn cần lưu ý gì? | [Văn phong bản dịch theo ngôn ngữ](translation-style-research.md) |

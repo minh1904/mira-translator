@@ -375,6 +375,84 @@ Model phụ chỉ kiểm trạng thái "chưa chọn" vì render tĩnh đọc st
 trước rồi mới tóm tắt có cấu trúc, cập nhật dần, bọc bằng `SUMMARY_PREFIX`. Mira lấy đúng thứ tự đó và lời dặn
 "chỉ tham khảo"; khác ở chỗ bản tóm tắt gắn với danh sách turn đã phủ để revert vô hiệu hóa được.
 
+## Đã triển khai (subagent chạy bằng Model phụ, change `route-subagent-to-auxiliary-model`, 2026-10-23)
+
+Trạng thái: **có trong mã và có test**.
+
+- `run_subagent` chạy bằng Model phụ khi đã đặt, mở được và catalog không ghi `toolCall: false`; ngược lại chạy
+  bằng model của lượt. Model phụ lỗi trước khi subagent lưu call nào thì chạy lại từ đầu bằng model của lượt; lỗi
+  sau đó làm call cha thất bại để không lưu call con hai lần. Kết quả call cha ghi nhãn model đã chạy (`model`).
+- Usage của mọi vòng subagent được cộng vào lượt (trước đây bị bỏ).
+- **Sửa chi phí lượt:** trước đây mọi usage của lượt, kể cả lời gọi tóm tắt bằng Model phụ, bị tính theo giá model
+  của lượt. Nay usage được gộp theo model đã sinh ra nó rồi tính theo giá của model đó (`sumTurnCost`). Gộp trước
+  khi tính vì chi phí một lần tính được làm tròn tới 0,0001 USD.
+- Chọn model nền dùng chung cho tóm tắt và subagent (`backgroundModels`).
+
+## Đã triển khai (chặn vòng rỗng và lặp văn bản, change `add-agent-empty-reply-guard`, 2026-10-23)
+
+Trạng thái: **có trong mã và có test** (`services/agent/roundGuards.ts`, `agentService.guards.test.ts`).
+
+- **Vòng rỗng** (không chữ, không tool call, không bị bộ lọc chặn; chỉ có suy luận vẫn là rỗng): gửi lại nguyên
+  request tới cùng model, tối đa 2 lần mỗi vòng, 3 lần mỗi lượt; dừng sớm khi hai lần liên tiếp đều báo 0 token
+  output. Lần thử không tính vào budget vòng, không lưu phần tử, usage vẫn cộng vào lượt, activity loại `retry`.
+  Không chuyển model dự phòng: agent chat không dùng chuỗi dự phòng (requirement "Model và khả năng gọi tool").
+- **Lặp văn bản:** khi chữ hoặc suy luận của vòng ≥ 2.000 ký tự (kiểm mỗi 500 ký tự mới) kết thúc bằng một đoạn
+  ≥ 60 ký tự lặp liên tiếp nguyên văn phủ quá nửa, request bị hủy bằng controller riêng của vòng, văn bản cắt trước
+  bản lặp thứ hai, tool call của vòng không chạy và lượt dừng mềm (`completed`, "Lượt dừng vì chạm giới hạn",
+  **Tiếp tục**). Không gửi vòng cuối không tool vì model đang lặp thường lặp tiếp.
+- Subagent dùng cùng hai luật; lặp thì kết thúc với `stopped`.
+
+**Nguồn Hermes:** `agent/empty_response_guard.py` (thử lại 3 lần, rỗng tất định khi hai lần cùng 0 token output,
+rồi đi chuỗi dự phòng; Mira không lấy phần dự phòng), `agent/repetition_guard.py` (chỉ bắt lặp nguyên văn dài 60+
+ký tự phủ đa số đoạn).
+
+**Giới hạn đã biết:** stream bị hủy vì lặp thường không có usage, nên chi phí của vòng đó có thể thiếu trong tổng.
+
+## Đã triển khai (danh sách bước `todo_list`, change `add-agent-todo-list`, 2026-10-23)
+
+Trạng thái: **có trong mã và có test**; chưa thử bằng tay trong app (task 5.3 của change).
+
+- Capability `todo_list` (`kind: 'read'`, không target, có ở Ask và Agent, không có ở subagent): gửi `todos` thì
+  ghi đè cả danh sách, bỏ `todos` thì đọc, danh sách rỗng thì xóa. Tối đa 20 bước × 200 ký tự, trạng thái
+  `pending`/`in_progress`/`completed`/`cancelled` (`shared/contracts/agentTodo.ts`).
+- Không có bảng riêng: danh sách hiện tại của phiên là `todos` của lần ghi thành công mới nhất trong các lượt chưa
+  revert (`AgentService.latestTodos`), nên revert, mở lại app và nhiều cửa sổ tự đúng.
+- Lượt ghi danh sách đã bị tóm tắt hoặc cắt thì danh sách được chèn lại ngay sau system/bản tóm tắt
+  (`todoBlock` trong `turnContext.ts`), tính vào ngưỡng lịch sử khi lượt đó đã được tóm tắt.
+- Transcript: các call `todo_list` thành công của một lượt gộp thành một thẻ `TodoCard` ở vị trí lần ghi đầu, nội
+  dung theo lần ghi cuối (`turnItems`); call lỗi vẫn là dòng tool. Trạng thái có icon, chữ cho trình đọc màn hình
+  và kiểu chữ (đậm, gạch ngang), không chỉ dựa vào màu.
+- `SYSTEM_PROMPT` dặn ghi danh sách cho việc từ ba bước, một bước `in_progress`, xóa khi đổi việc.
+
+**Quan sát Hermes** (`tools/todo_tool.py`): một tool ghi/đọc toàn bộ danh sách, chèn lại sau nén. Mira giới hạn
+nhỏ hơn nhiều (Hermes 256 × 4.000) và không lưu trạng thái riêng ngoài tool call.
+
+## Đã triển khai (tin gửi thêm khi lượt đang chạy, change `add-agent-turn-steering`, 2026-10-23)
+
+Trạng thái: **có trong mã và có test**; chưa thử bằng tay trong app (task 5.3 của change).
+
+- **Lưu trữ:** schema thư viện v19 thêm bảng `agent_turn_steer` (hàng đợi: `pending` → `delivered` / `withdrawn`
+  / `returned` / `forwarded`) và dựng lại `agent_turn_part` để có loại phần tử `steer`. Gửi lại cùng
+  `client_command_id` không tạo tin trùng; tối đa 5 tin chờ mỗi lượt.
+- **Điểm chèn:** sau khi mọi call của một vòng có kết quả (và sau call vừa duyệt khi lượt chạy tiếp), trước lời gọi
+  model kế tiếp. Các tin chờ thành `delivered` và phần tử `steer` trong một transaction. Prompt dựng message từ
+  phần tử `steer`: một message `user` có nhãn `[Người dùng gửi thêm khi lượt đang chạy]` sau kết quả tool của vòng
+  đó, nên vòng sau, lượt chạy tiếp và lịch sử ở lượt sau (cả dạng văn bản cho model không có tool) cùng một nguồn.
+  Lượt đang bị Dừng thì không chèn.
+- **Kết thúc lượt còn tin chờ:** `completed` thì tạo ngay lượt mới (cùng chế độ, mức quyền, ngữ cảnh) trước mọi
+  `await` rồi chạy nó; mọi trạng thái kết thúc khác (kể cả `waiting_user` và `interrupted` khi mở lại app) trả tin
+  về `returned` ngay trong `AgentRepository.transitionTurn`.
+- **Policy:** chữ của tin đã chèn được nối vào instruction khi xét đích "do người dùng nêu".
+- **IPC:** `agent:turn:steer`, `agent:turn:withdraw-steer`, event `agent:steer:changed` tới mọi cửa sổ; snapshot
+  phiên có `steers`. Lệch design D4: lỗi "lượt không chạy", "đủ 5 tin" và "đã chèn" đi bằng mã `conflict` có thông
+  điệp riêng, vì `ErrorCode` của IPC là tập cố định.
+- **Renderer:** khi lượt chạy, Enter gửi tin chen ngang; nút Gửi hiện trước Dừng khi có chữ; +, chế độ và model bị
+  tắt. Tin chờ (X để rút) và tin trả lại (Gửi/Bỏ; Gửi khi có lượt chờ trả lời thì chỉ đưa chữ vào ô) nằm phía trên ô
+  nhập. Phần tử `steer` hiện như lời người dùng với nhãn "Gửi thêm khi đang chạy".
+
+**Quan sát Hermes** (`agent/agent_runtime_helpers.py`, `apply_pending_steer_to_tool_results`): chèn steer thành
+message `user` riêng có nhãn ngay sau kết quả tool. Mira giữ cách đó và thêm hàng đợi bền, rút lại được.
+
 ## 1. Snapshot Mira trước các change (quan sát mã, 2026-10-07)
 
 **Kết nối:**
@@ -530,6 +608,6 @@ backend thì bấm được; phần chưa có backend chỉ hiện giao diện. 
 
 [Cài đặt và lớp provider của Hermes](hermes-settings-and-adapters.md) ·
 [Rà flow Kết nối AI so với Hermes](hermes-ux-flow-review.md) ·
-[Học thêm từ Hermes: lõi gọi model, dữ liệu, vỏ app](hermes-runtime-research.md) · [Mục lục module](../README.md) ·
+[Học thêm từ Hermes: lõi gọi model, dữ liệu, vỏ app](hermes-runtime-research.md) · [Đẩy request song song an toàn](parallel-requests.md) · [Mục lục module](../README.md) ·
 [Roadmap Trợ lý](../proposals/agent-roadmap.md) ·
 [Design system theo Hermes](../design-system/hermes-comparison.md)

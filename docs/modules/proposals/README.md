@@ -63,6 +63,15 @@ hô từ chương E đóng cặp cũ ở chương trước E và thêm cặp m�
 `read_translation_tasks` và `steer_translation_task` (cần duyệt); màn Tác vụ có form chỉ dẫn, danh sách điều
 chỉnh và chỉ dẫn từng chương đã pin.
 
+Đã triển khai (2026-10-24, chưa có OpenSpec change): chat có `update_work` sửa thông tin tác phẩm (tên, tên
+gốc, tác giả, thể loại, bối cảnh, văn hóa, mô tả, trạng thái) và đổi tên chương theo số chương, ví dụ khi
+người dùng muốn dịch tên truyện và tên chương. Ảnh bìa và lưu trữ vẫn chỉ do người dùng đổi. Các thay đổi này
+không nằm trong cơ chế hoàn tác của operation nên policy luôn hỏi duyệt (mức Cho phép tất cả/Autopilot chạy
+luôn); đổi tên mà không gửi tên gốc thì tên cũ được ghi vào tên gốc khi trường này còn trống, kết quả công cụ
+giữ giá trị cũ của từng trường và từng chương. Số chương không tồn tại thì không ghi gì. Khi công cụ hoàn tất,
+danh sách tác phẩm, danh sách chương, màn chi tiết tác phẩm và đầu màn chương đang mở tự tải lại
+(`onAgentWorkUpdate`); văn bản trong editor không bị nạp lại.
+
 `add-translation-task-qa` thêm cảnh báo chất lượng cho item của task (work v15: `qa_dismissal`). Hàm thuần
 `evaluateTaskItem` chạy tám luật bằng các evaluator sẵn có (glossary cấm/thiếu, xưng hô, chữ gốc sót, độ dài,
 lặp, ngoặc) trên **bản chụp item đã pin**, ghép nguồn–đích theo segment ID; cảnh báo tính khi đọc, không lưu,

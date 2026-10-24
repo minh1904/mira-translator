@@ -238,6 +238,8 @@ vai trò trong một control. Màn feature chỉ dùng tên semantic như `bg-su
   Mono với fallback Cascadia/Consolas.
 - Chỉ dùng các cỡ UI 12, 13, 15 và 20 px; nội dung đọc là 16 px. Không thêm cỡ để sửa cục bộ một màn.
 - Body dùng line-height 1.5, nhãn và tiêu đề ngắn dùng 1.3. Trọng lượng hợp lệ là 400, 500 và 600.
+- Nội dung truyện trong pane chương căn đều, mỗi đoạn cách nhau `space-xs`; dòng trống không cộng thêm
+  khoảng cách. Không thụt đầu dòng.
 - Tạo phân cấp theo thứ tự: nội dung, weight, màu semantic, khoảng cách. Không dùng ALL CAPS, tracking tùy
   ý hoặc nhiều cấp heading chỉ để trang trí.
 - Chuỗi dài, tên model và đường dẫn phải co/cắt có chủ ý; không làm control nở vô hạn.
