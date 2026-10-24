@@ -33,6 +33,7 @@ import type { ConnectionService } from '../ai/connectionService'
 import type { ContextExtractionService } from '../context/contextExtractionService'
 import { parseSnapshot, takeContextSnapshot } from '../ai/translate/contextSnapshot'
 import { changeDyadFrom } from '../../infra/storage/addressingEntries'
+import { changeTermFrom } from '../../infra/storage/contextRevisions'
 import { hasGlossary } from '../../infra/storage/contextEntries'
 import type { QaDismissInput, TaskQualityView } from '../../../shared/contracts/taskQuality'
 import { dismissFinding, readTaskQuality } from './taskQuality'
@@ -531,6 +532,26 @@ export class AgentTaskService {
             speakerPronoun: change.speakerPronoun,
             recipientPronoun: change.recipientPronoun,
             secondPerson: change.secondPerson
+          },
+          now
+        )
+      )
+    }
+    if (input.change.kind === 'term') {
+      const change = input.change
+      // Same order as a pair: the work DB first, with an id from the command so a resend finds it.
+      contextRef = this.library.withWork(task.workId, (db) =>
+        changeTermFrom(
+          db,
+          {
+            newEntryId: uuidFrom(`steering:${task.id}:${input.clientCommandId}`),
+            entryId: change.entryId,
+            fromChapterId: from.chapterId,
+            fields: {
+              target: change.target,
+              ...(change.notes !== undefined ? { notes: change.notes } : {})
+            },
+            actor: 'user'
           },
           now
         )

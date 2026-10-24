@@ -90,8 +90,8 @@ export function saveText(db: Db, args: SaveTextArgs, now: number, newId: () => s
   checkText(content, segments)
 
   const current = db
-    .prepare('SELECT rev FROM chapter_text WHERE chapter_id = ? AND side = ?')
-    .get<{ rev: number }>(chapterId, side)
+    .prepare('SELECT rev, content FROM chapter_text WHERE chapter_id = ? AND side = ?')
+    .get<{ rev: number; content: string }>(chapterId, side)
   const rev = current?.rev ?? 0
   if (expectedRev !== rev) {
     throw new StorageError(
@@ -135,6 +135,9 @@ export function saveText(db: Db, args: SaveTextArgs, now: number, newId: () => s
     // Zero rows means someone else got in between the read and the write.
     if (result.changes !== 1)
       throw new StorageError('conflict', 'Văn bản đã đổi ở nơi khác. Hãy tải lại.')
+    // A source that changed must be scanned for terms again.
+    if (side === 'source' && current.content !== content)
+      db.prepare('DELETE FROM context_extraction_scan WHERE chapter_id = ?').run(chapterId)
   }
 
   const kept = new Set(

@@ -51,6 +51,10 @@ export function glossaryHandlers(deps: HandlerDeps): AreaHandlers<'glossary'> {
     [CHANNELS.glossaryApplied]: createHandler(appliedContextSchema, (input) =>
       glossary.applied(input.workId, input.chapterId)
     ),
+    [CHANNELS.glossaryHistory]: createHandler(
+      v.strictObject({ workId: idSchema, entryId: idSchema }),
+      (input) => glossary.history(input.workId, input.entryId)
+    ),
     [CHANNELS.glossaryCheckCompliance]: createHandler(
       v.strictObject({
         workId: idSchema,

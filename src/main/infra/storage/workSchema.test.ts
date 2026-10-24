@@ -30,7 +30,7 @@ describe('work schema', () => {
   it('stamps the Mira application id and the latest schema version', () => {
     const db = openDatabase(join(tempDir(), 'work.mira'))
     migrate(db, workSchema)
-    expect(readPragmas(db)).toEqual({ userVersion: 18, applicationId: WORK_APPLICATION_ID })
+    expect(readPragmas(db)).toEqual({ userVersion: 19, applicationId: WORK_APPLICATION_ID })
     db.close()
   })
 
@@ -278,7 +278,7 @@ describe('work schema', () => {
 
     // Upgrade through the current schema.
     migrate(db, workSchema)
-    expect(readPragmas(db).userVersion).toBe(18)
+    expect(readPragmas(db).userVersion).toBe(19)
 
     // Data preserved
     const row = db.prepare('SELECT title FROM work WHERE id = ?').get<{ title: string }>('w1')
@@ -320,7 +320,7 @@ describe('work schema', () => {
       INSERT INTO provenance (segment_id, origin, at) VALUES ('s', 'human', 1);
     `)
     migrate(db, workSchema)
-    expect(readPragmas(db).userVersion).toBe(18)
+    expect(readPragmas(db).userVersion).toBe(19)
     expect(
       db
         .prepare("SELECT content, rev FROM chapter_text WHERE chapter_id = 'c' AND side = 'target'")
@@ -387,7 +387,7 @@ describe('work schema', () => {
 
     migrate(db, workSchema)
 
-    expect(readPragmas(db).userVersion).toBe(18)
+    expect(readPragmas(db).userVersion).toBe(19)
     expect(db.prepare('SELECT id, action, answer FROM ai_turn ORDER BY created_at').all()).toEqual([
       { id: 't-ask', action: 'ask', answer: 'Đáp' },
       { id: 't-edit', action: 'edit', answer: 'Bản sửa' },
@@ -445,21 +445,45 @@ describe('work schema', () => {
     db.close()
   })
 
-  it('enforces context_alias unique form constraint', () => {
+  it('keeps a form unique per entry; two entries may share one (ranges are checked in code)', () => {
     const db = fresh()
     db.exec(`
       INSERT INTO context_entry (id, kind, source, target, created_at, updated_at)
       VALUES ('e1', 'term', 's1', 't1', 1, 1), ('e2', 'term', 's2', 't2', 1, 1);
       INSERT INTO context_alias (id, entry_id, form, created_at)
-      VALUES ('a1', 'e1', 'alias1', 1);
+      VALUES ('a1', 'e1', 'alias1', 1), ('a2', 'e2', 'alias1', 1);
     `)
     expect(
       thrown(() =>
         db.exec(
-          "INSERT INTO context_alias (id, entry_id, form, created_at) VALUES ('a2', 'e2', 'alias1', 1)"
+          "INSERT INTO context_alias (id, entry_id, form, created_at) VALUES ('a3', 'e1', 'alias1', 1)"
         )
       )
     ).toBe(true)
+    db.close()
+  })
+
+  it('upgrades v18 to v19: aliases survive the table rebuild, entries have no history yet', () => {
+    const db = openDatabase(join(tempDir(), 'v18_to_v19.mira'))
+    migrate(db, {
+      applicationId: WORK_APPLICATION_ID,
+      migrations: workSchema.migrations.filter((m) => m.version <= 18)
+    })
+    db.exec(`
+      INSERT INTO context_entry (id, kind, source, target, created_at, updated_at)
+        VALUES ('e', 'term', 'ミリィ', 'Milly', 1, 1);
+      INSERT INTO context_alias (id, entry_id, form, created_at) VALUES ('a', 'e', 'ミリィ姉さん', 1);
+    `)
+    migrate(db, workSchema)
+    expect(db.prepare('SELECT id, entry_id, form FROM context_alias').all()).toEqual([
+      { id: 'a', entry_id: 'e', form: 'ミリィ姉さん' }
+    ])
+    expect(db.prepare('SELECT supersedes_id, user_edited_at FROM context_entry').get()).toEqual({
+      supersedes_id: null,
+      user_edited_at: null
+    })
+    db.exec("DELETE FROM context_entry WHERE id = 'e'")
+    expect(db.prepare('SELECT count(*) AS n FROM context_alias').get()).toEqual({ n: 0 })
     db.close()
   })
 
@@ -486,7 +510,7 @@ describe('work schema', () => {
 
     migrate(db, workSchema)
 
-    expect(readPragmas(db).userVersion).toBe(18)
+    expect(readPragmas(db).userVersion).toBe(19)
     expect(
       db.prepare('SELECT id, action, answer, target_range_json, location_json FROM ai_turn').all()
     ).toEqual([
@@ -535,7 +559,7 @@ describe('work schema', () => {
 
     migrate(db, workSchema)
 
-    expect(readPragmas(db).userVersion).toBe(18)
+    expect(readPragmas(db).userVersion).toBe(19)
     db.exec(`
       INSERT INTO translate_run_context (run_key, chapter_id, snapshot_json, snapshot_hash, created_at)
       VALUES ('translate:r', 'c', '{}', 'h', 1);
@@ -556,7 +580,7 @@ describe('work schema', () => {
       INSERT INTO chapter (id, position, created_at, updated_at) VALUES ('c', 0, 1, 1);
     `)
     migrate(db, workSchema)
-    expect(readPragmas(db).userVersion).toBe(18)
+    expect(readPragmas(db).userVersion).toBe(19)
     const insert = () =>
       db.exec(`INSERT INTO qa_dismissal (rule_code, rule_version, chapter_id, segment_id, target_hash, created_at)
         VALUES ('text.length_ratio', 1, 'c', 's1', 'h', 1)`)
@@ -647,7 +671,7 @@ describe('work schema', () => {
 
     migrate(db, workSchema)
 
-    expect(readPragmas(db).userVersion).toBe(18)
+    expect(readPragmas(db).userVersion).toBe(19)
     expect(
       db
         .prepare("SELECT source, status, term_type, review_flags FROM context_entry WHERE id = 'e'")
@@ -698,7 +722,7 @@ describe('work schema', () => {
         `)
       }
       migrate(db, workSchema)
-      expect(readPragmas(db).userVersion).toBe(18)
+      expect(readPragmas(db).userVersion).toBe(19)
       expect(db.prepare("SELECT title FROM work WHERE id = 'w'").get()).toEqual({
         title: 'Tác phẩm cũ'
       })

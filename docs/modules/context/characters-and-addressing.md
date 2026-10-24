@@ -36,6 +36,23 @@ Chưa làm: màn Xưng hô chưa hiện câu bằng chứng của cặp; hộp s
 trị AI đề xuất khi lưu). Task dừng vì ngân sách đúng ở lời gọi phân tích thì lần Tiếp tục không phân tích lại
 (chương đã quét xong).
 
+**Xưng hô đổi từ chương N do bước trích (đã triển khai 2026-10-24, change `add-context-progression`):**
+
+- **Gợi ý bằng code (`addressChanges`).** Code đếm theo chương cách mỗi người được gọi trong lời thoại: tên hay
+  alias, kèm hậu tố gọi người nào (さん, 様, くん, ちゃん, 先輩, 殿…). Mira sinh gợi ý "có thể đổi từ chương N"
+  khi đủ ba điều kiện:
+  - cách gọi chiếm quá nửa ở chương N khác ở chương N−1;
+  - hai chương liền nhau;
+  - mỗi chương có ít nhất 2 lần gọi.
+
+  Gợi ý đi vào prompt phân tích trong phần `<possible_changes>`. Gợi ý một mình không đổi gì.
+- **Model trả `fromChapter`** trên một cặp khi cặp đó đổi từ một chương. Nếu cặp đã áp dụng ở chương đó, thay
+  đổi đi qua cùng chốt chặn với thuật ngữ: cần câu chứng ở ít nhất 2 chương từ chương N trở đi.
+  - Qua chốt thì Mira gọi `changeDyadFrom`: cặp cũ kết thúc ở N−1, cặp mới bắt đầu từ N.
+  - Không qua chốt thì cặp giữ nguyên và nhận cờ `revision_suggested`.
+  - Cặp chưa có thì vẫn được tạo như trước.
+- Mọi lần đổi cặp từ chương N đều ghi vào lịch sử của cặp mới, cả do steering lẫn do bước trích.
+
 ## Tách ba lớp
 
 | Lớp | Ghi nhận | Không suy diễn thành |

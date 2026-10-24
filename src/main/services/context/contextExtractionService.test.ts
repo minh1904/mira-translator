@@ -5,6 +5,8 @@ import {
   getContextEntry,
   readReviewInfo
 } from '../../infra/storage/contextEntries'
+import { listEntryChanges } from '../../infra/storage/contextChanges'
+import { createCharacter, listDyads, setDyad } from '../../infra/storage/addressingEntries'
 import { setupAgent } from '../agent/agentTestKit'
 import type { ExtractionMessage } from '../ai/glossaryExtraction'
 import {
@@ -28,7 +30,7 @@ interface Term {
 }
 
 /** A fake model: the sweep returns `forms`, the classification returns `terms` for the forms asked. */
-function scriptedCaller(terms: Term[]) {
+function scriptedCaller(terms: Term[], revisions: unknown[] = [], analysis: unknown = null) {
   const sweeps: string[] = []
   const classifies: string[] = []
   let calls = 0
@@ -45,11 +47,19 @@ function scriptedCaller(terms: Term[]) {
         .filter((form) => user.includes(form))
       return { text: JSON.stringify({ terms: forms }), usage: { input: 10, output: 5 } as never }
     }
+    if (analysis && messages[0]!.content.includes('bảng xưng hô'))
+      return { text: JSON.stringify(analysis), usage: { input: 10, output: 5 } as never }
     classifies.push(user)
     const asked = terms
       .filter((term) => user.includes(`source="${term.source}"`))
       .map(({ swept: _, ...term }) => term)
-    return { text: JSON.stringify({ terms: asked }), usage: { input: 10, output: 5 } as never }
+    const fixes = revisions.filter((fix) =>
+      user.includes(`<entry source="${(fix as { source: string }).source}"`)
+    )
+    return {
+      text: JSON.stringify({ terms: asked, revisions: fixes }),
+      usage: { input: 10, output: 5 } as never
+    }
   }
   return {
     caller,
@@ -62,7 +72,13 @@ function scriptedCaller(terms: Term[]) {
   }
 }
 
-function setup(terms: Term[], texts: string[], sourceLang: 'zh-Hans' | 'ja' = 'zh-Hans') {
+function setup(
+  terms: Term[],
+  texts: string[],
+  sourceLang: 'zh-Hans' | 'ja' = 'zh-Hans',
+  revisions: unknown[] = [],
+  analysis: unknown = null
+) {
   const kit = setupAgent()
   const work = kit.library.create({ title: 'Truyện thử', sourceLang })
   const chapters = texts.map((text, index) => {
@@ -71,7 +87,7 @@ function setup(terms: Term[], texts: string[], sourceLang: 'zh-Hans' | 'ja' = 'z
     kit.library.saveText(work.id, chapter.id, 'source', full, 0, segment(full, sourceLang))
     return chapter
   })
-  const model = scriptedCaller(terms)
+  const model = scriptedCaller(terms, revisions, analysis)
   const service = new ContextExtractionService(kit.library, kit.services.connections, {
     caller: model.caller,
     now: () => 50
@@ -243,7 +259,7 @@ describe('ContextExtractionService: counting, known entries and flags', () => {
       createContextEntry(db, { source: 'ハルネ', target: 'Harune' })
     )
     await kit.extract([kit.chapters[0]!.id])
-    expect(kit.model.classifies[0]).toContain('- ハルネ → Harune')
+    expect(kit.model.classifies[0]).toContain('<entry source="ハルネ" target="Harune">')
     expect(rows(kit).map((row) => row.source)).toEqual(['ハルネ'])
     expect(
       kit.library.withWork(kit.work.id, (db) => getContextEntry(db, harune.id))?.aliases
@@ -274,6 +290,90 @@ describe('ContextExtractionService: counting, known entries and flags', () => {
     expect(
       kit.library.withWork(kit.work.id, (db) => getContextEntry(db, iron.id))?.aliases
     ).toEqual([])
+  })
+})
+
+describe('ContextExtractionService: revisions of known entries', () => {
+  const run = async (evidence: string) => {
+    const kit = setup(
+      [{ source: 'リオン', type: 'person', target: 'Rion' }],
+      ['リオンが来た。ミリィ（Milly）が笑った。リオンが走る。'],
+      'ja',
+      [{ source: 'ミリィ', kind: 'correction', target: 'Milly', evidence: [evidence] }]
+    )
+    const milly = kit.library.withWork(kit.work.id, (db) =>
+      createContextEntry(db, { source: 'ミリィ', target: 'Mili', origin: 'ai' })
+    )
+    await kit.extract([kit.chapters[0]!.id])
+    return {
+      kit,
+      entry: kit.library.withWork(kit.work.id, (db) => getContextEntry(db, milly.id)),
+      history: kit.library.withWork(kit.work.id, (db) => listEntryChanges(db, milly.id))
+    }
+  }
+
+  it('applies a correction with a real quote and records the old value', async () => {
+    const { kit, entry, history } = await run('ch1: ミリィ（Milly）が笑った。')
+    expect(kit.model.classifies[0]).toContain('<entry source="ミリィ" target="Mili">')
+    expect(entry?.target).toBe('Milly')
+    expect(history[0]).toMatchObject({
+      actor: 'ai',
+      kind: 'correction',
+      oldValue: 'Mili',
+      newValue: 'Milly'
+    })
+  })
+
+  it('drops a correction whose quote is not in the chunk', async () => {
+    const { entry, history } = await run('ch1: ミリィはMillyと名乗った。')
+    expect(entry?.target).toBe('Mili')
+    expect(history.map((change) => change.kind)).toEqual(['create'])
+  })
+})
+
+describe('ContextExtractionService: addressing that changes from a chapter', () => {
+  it('closes the pair before the chapter and starts the new one there, with quotes from two chapters', async () => {
+    const lines = [
+      '「桐谷さん、おはよう」と美咲が言った。',
+      '「彰、行こう」と美咲が言った。',
+      '「彰、待って」と美咲が言った。'
+    ]
+    const kit = setup([], lines, 'ja', [], {
+      characters: [],
+      dyads: [
+        {
+          from: '美咲',
+          to: '桐谷彰',
+          self: 'tớ',
+          address: 'Akira',
+          fromChapter: 2,
+          evidence: ['ch2: 「彰、行こう」と美咲が言った。', 'ch3: 「彰、待って」と美咲が言った。']
+        }
+      ]
+    })
+    const ids = kit.library.withWork(kit.work.id, (db) => {
+      const misaki = createCharacter(db, { source: '美咲', target: 'Misaki' })
+      const akira = createCharacter(db, {
+        source: '桐谷彰',
+        target: 'Kiritani Akira',
+        aliases: ['桐谷', '彰']
+      })
+      const old = setDyad(db, {
+        sourceCharacterId: misaki.id,
+        targetCharacterId: akira.id,
+        speakerPronoun: 'tôi',
+        recipientPronoun: 'Kiritani-san'
+      })
+      return { old: old.id }
+    })
+    await kit.extract(kit.chapters.map((chapter) => chapter.id))
+    const dyads = kit.library.withWork(kit.work.id, (db) => listDyads(db))
+    expect(dyads.find((dyad) => dyad.id === ids.old)?.toChapterId).toBe(kit.chapters[0]!.id)
+    expect(dyads.find((dyad) => dyad.id !== ids.old)).toMatchObject({
+      speakerPronoun: 'tớ',
+      recipientPronoun: 'Akira',
+      fromChapterId: kit.chapters[1]!.id
+    })
   })
 })
 

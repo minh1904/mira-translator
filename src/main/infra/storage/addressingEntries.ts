@@ -5,7 +5,8 @@ import type {
   CharacterGender,
   CharacterItem
 } from '../../../shared/contracts/addressing'
-import type { ContextStatus } from '../../../shared/contracts/glossary'
+import type { ContextChangeActor, ContextStatus } from '../../../shared/contracts/glossary'
+import { recordChange } from './contextChanges'
 import { StorageError } from './errors'
 import type { Db, SqlValue } from './sqlite'
 
@@ -645,6 +646,10 @@ export function changeDyadFrom(
     speakerPronoun: string
     recipientPronoun: string
     secondPerson?: string | null
+    /** Who asked for the change; the history records it. Steering is a person. */
+    actor?: ContextChangeActor
+    quote?: { chapterId: string | null; quote: string }
+    runId?: string | null
   },
   now: number = Date.now()
 ): { newDyadId: string; closedDyadId: string | null } {
@@ -706,6 +711,24 @@ export function changeDyadFrom(
       now
     )
     db.prepare('UPDATE context_entry SET id = ? WHERE id = ?').run(params.newDyadId, created.id)
+    const value = (d: { speakerPronoun: string; recipientPronoun: string } | null) =>
+      d ? `${d.speakerPronoun} / ${d.recipientPronoun}` : null
+    recordChange(
+      db,
+      {
+        entryId: params.newDyadId,
+        actor: params.actor ?? 'user',
+        kind: 'progression',
+        field: 'addressing',
+        oldValue: value(closed),
+        newValue: value(params),
+        fromChapterId: params.fromChapterId,
+        quote: params.quote?.quote ?? null,
+        quoteChapterId: params.quote?.chapterId ?? null,
+        runId: params.runId ?? null
+      },
+      now
+    )
     return { newDyadId: params.newDyadId, closedDyadId: closed?.id ?? null }
   })
 }

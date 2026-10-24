@@ -8,11 +8,14 @@ import {
   japaneseCandidates,
   knownForBatch,
   mergeCandidates,
+  nameParts,
   parseClassification,
+  parseRevisions,
   parseSweep,
   shortAliasClash,
   stripAuthorNote,
   sweepChunks,
+  verifiedRevisionQuotes,
   verifyTerms,
   type Candidate,
   type ExtractionChapter
@@ -292,5 +295,65 @@ describe('glossaryExtraction: lọc, đếm, họ thuật ngữ', () => {
       { source: 'ハルネ村', type: 'place', alias_of: 'ハルネ' },
       { source: '桐谷彰', type: 'person', target: 'Kiritani Akira', reading: 'きりたにあきら' }
     ])
+  })
+})
+
+describe('glossaryExtraction: revisions of known entries', () => {
+  it('shows entries seen in the chunk once, apart from <known>, and asks for revisions', () => {
+    const messages = buildClassifyMessages(
+      'ja',
+      [cand('リオン')],
+      [
+        { source: 'ミリィ', target: 'Mili' },
+        { source: 'ハルネ', target: 'Harune' }
+      ],
+      [
+        {
+          source: 'ミリィ',
+          target: 'Mili',
+          context: { chapter: 20, line: 'ミリィ（Milly）が笑った' }
+        }
+      ]
+    )
+    expect(messages[0]?.content).toContain('"revisions"')
+    expect(messages[1]?.content).toContain(
+      '<known_in_chunk>\n<entry source="ミリィ" target="Mili">\n  - ch20: ミリィ（Milly）が笑った\n</entry>\n</known_in_chunk>'
+    )
+    expect(messages[1]?.content).toContain('<known>\n- ハルネ → Harune\n</known>')
+  })
+
+  it('reads revisions and keeps only quotes found in the chapter they name', () => {
+    expect(
+      parseRevisions(
+        '{"terms":[],"revisions":[{"source":"ミリィ","kind":"correction","target":"Milly","evidence":["ch20: ミリィ（Milly）が笑った"]},{"source":"x","kind":"rename"}]}'
+      )
+    ).toEqual([
+      {
+        source: 'ミリィ',
+        kind: 'correction',
+        target: 'Milly',
+        evidence: ['ch20: ミリィ（Milly）が笑った']
+      }
+    ])
+    const chapters = [{ number: 20, text: 'ミリィ（Milly）が笑った。' }]
+    expect(
+      verifiedRevisionQuotes(
+        ['ch20: ミリィ（Milly）が笑った', 'ch21: ミリィ（Milly）が笑った', 'ch20: 嘘の文だよ'],
+        chapters
+      )
+    ).toEqual([{ chapter: 20, quote: 'ミリィ（Milly）が笑った' }])
+  })
+})
+
+describe('nameParts', () => {
+  it('splits a full name into the parts the text uses on their own', () => {
+    const text = [
+      'セレナ・ヴァルトハイムが来た。',
+      ...Array(11).fill('セレナが笑った。'),
+      'セレナさん、待って。',
+      'ヴァルトハイム家。'
+    ].join('\n')
+    expect(nameParts('セレナ・ヴァルトハイム', one(text))).toEqual(['セレナ', 'セレナさん'])
+    expect(nameParts('ミリィ', one(text))).toEqual([])
   })
 })

@@ -4,7 +4,9 @@ import type { TokenUsage } from '../../../shared/contracts/usage'
 import { addUsage, toWireUsage, type Usage } from '../../infra/providers/usage'
 import { appendAiCall } from '../../infra/storage/aiCallLog'
 import {
+  changeDyadFrom,
   listCharacters,
+  listDyads,
   saveAddressingProposals,
   type AddressingProposal
 } from '../../infra/storage/addressingEntries'
@@ -16,6 +18,7 @@ import {
   type ExtractedCandidateWrite
 } from '../../infra/storage/contextEntries'
 import {
+  addressChanges,
   buildAnalysisMessages,
   collectAddressingEvidence,
   parseAnalysis,
@@ -28,22 +31,35 @@ import { suggestRegister } from '../ai/translate/languageProfiles'
 import {
   buildClassifyMessages,
   buildSweepMessages,
+  countForms,
   familyBatches,
   familyMismatches,
   japaneseCandidates,
   knownForBatch,
   mergeCandidates,
+  nameParts,
   parseClassification,
+  parseRevisions,
   parseSweep,
   shortAliasClash,
   stripAuthorNote,
   sweepChunks,
+  verifiedRevisionQuotes,
   verifyTerms,
+  type ExtractedRevision,
   type ExtractedTerm,
   type ExtractionChapter,
   type ExtractionMessage,
+  type KnownInChunk,
   type KnownTerm
 } from '../ai/glossaryExtraction'
+import {
+  flagRevision,
+  reviseEntry,
+  revisionBlock,
+  type RevisionQuote
+} from '../../infra/storage/contextRevisions'
+import type { Db } from '../../infra/storage/sqlite'
 import type { LibraryStore } from '../library/library'
 
 /** One model call: the messages in, the text and reported usage out. */
@@ -81,6 +97,7 @@ export interface ExtractContextResult {
 
 const CLASSIFY_BATCH = 60
 const CANDIDATE_LIMIT = 400
+const KNOWN_IN_CHUNK = 20
 const QUOTES_PER_TERM = 3
 const NAME_TYPES = new Set(['person', 'place', 'organization'])
 
@@ -104,6 +121,122 @@ export function scriptMismatch(sourceLang: string, type: string, target: string)
     return /[fjwz]/i.test(target) || /(ei|ou)\b/i.test(target)
   }
   return false
+}
+
+interface KnownEntry extends KnownTerm {
+  id: string
+  notes: string | null
+  aliases: string[]
+  status: string
+  toChapterId: string | null
+}
+
+/**
+ * Entries whose forms appear in the chunk, most frequent first, with a fresh line from the latest
+ * chapter that has one: what the model may propose to fix.
+ */
+function knownInChunk(
+  entries: KnownEntry[],
+  chunk: ExtractionChapter[]
+): Array<KnownInChunk & { id: string }> {
+  const counts = countForms(
+    entries.flatMap((entry) => [entry.source, ...entry.aliases]),
+    chunk,
+    chunk.length
+  )
+  return entries
+    .map((entry) => {
+      const seen = [entry.source, ...entry.aliases].map((form) => counts.get(form))
+      const count = seen.reduce((sum, each) => sum + (each?.count ?? 0), 0)
+      const context = seen
+        .flatMap((each) => each?.contexts ?? [])
+        .sort((a, b) => b.chapter - a.chapter)[0]
+      return { entry, count, context }
+    })
+    .filter((each) => each.count > 0 && each.context)
+    .sort((a, b) => b.count - a.count)
+    .slice(0, KNOWN_IN_CHUNK)
+    .map(({ entry, context }) => ({
+      id: entry.id,
+      source: entry.source,
+      target: entry.target,
+      notes: entry.notes,
+      context: context!
+    }))
+}
+
+/**
+ * A pair the analysis says changes from a chapter, when the pair already applies there: through the
+ * guards of `revisionBlock`, then `changeDyadFrom`, else a `revision_suggested` flag. Returns the new
+ * pair's id, 'kept' when nothing applies, or `null` when there is no such pair (a normal proposal).
+ */
+function progressDyad(
+  db: Db,
+  input: {
+    from: string
+    to: string
+    fromChapterId: string
+    self: string
+    address: string
+    secondPerson: string | null
+    evidence: RevisionQuote[]
+    runId: string
+    now: number
+  }
+): string | 'kept' | null {
+  return db.transaction(() => {
+    const idOf = (source: string): string | undefined =>
+      listCharacters(db).find((each) => each.source.toLowerCase() === source.toLowerCase())?.id
+    const sourceCharacterId = idOf(input.from)
+    const targetCharacterId = idOf(input.to)
+    if (!sourceCharacterId || !targetCharacterId) return null
+    const active = listDyads(db, { chapterId: input.fromChapterId, status: 'approved' }).find(
+      (dyad) =>
+        dyad.sourceCharacterId === sourceCharacterId && dyad.targetCharacterId === targetCharacterId
+    )
+    if (!active) return null
+    if (active.speakerPronoun === input.self && active.recipientPronoun === input.address)
+      return 'kept'
+    const blocked = revisionBlock(db, {
+      entryId: active.id,
+      actor: 'ai',
+      kind: 'progression',
+      fromChapterId: input.fromChapterId,
+      evidence: input.evidence,
+      values: {}
+    })
+    if (blocked) {
+      flagRevision(db, active.id, {
+        kind: 'progression',
+        fields: { target: `${input.self} / ${input.address}` },
+        fromChapterId: input.fromChapterId,
+        evidence: input.evidence,
+        reason: blocked
+      })
+      return 'kept'
+    }
+    try {
+      return changeDyadFrom(
+        db,
+        {
+          newDyadId: randomUUID(),
+          sourceCharacterId,
+          targetCharacterId,
+          fromChapterId: input.fromChapterId,
+          speakerPronoun: input.self,
+          recipientPronoun: input.address,
+          secondPerson: input.secondPerson,
+          actor: 'ai',
+          quote: input.evidence[0],
+          runId: input.runId
+        },
+        input.now
+      ).newDyadId
+    } catch {
+      // The pair starts at that chapter or later: an edit for a person, not for the model.
+      return 'kept'
+    }
+  })
 }
 
 /** Verbatim lines of `chapters` that contain `form`, one per chapter. */
@@ -237,15 +370,30 @@ export class ContextExtractionService {
         const candidates = mergeCandidates(fromCode, swept, chunk, { corpus, limit: Infinity })
           .filter((candidate) => !owned.has(candidate.source.toLowerCase()))
           .slice(0, CANDIDATE_LIMIT)
-        const known: KnownTerm[] = entries.filter((entry) => entry.status !== 'rejected')
+        const known = entries.filter((entry) => entry.status !== 'rejected')
+        // Entries seen in this chunk ride along with the first batch, so the model can propose fixes.
+        const inChunk = knownInChunk(
+          known.filter((entry) => entry.toChapterId === null),
+          chunk
+        )
         const terms: ExtractedTerm[] = []
+        const revisions: ExtractedRevision[] = []
+        let first = true
         for (const batch of familyBatches(
           candidates,
           CLASSIFY_BATCH,
           known.map((term) => term.source)
         )) {
-          const messages = buildClassifyMessages(sourceLang, batch, knownForBatch(batch, known))
-          terms.push(...parseClassification(await ask(messages)))
+          const messages = buildClassifyMessages(
+            sourceLang,
+            batch,
+            knownForBatch(batch, known),
+            first ? inChunk : []
+          )
+          first = false
+          const text = await ask(messages)
+          terms.push(...parseClassification(text))
+          revisions.push(...parseRevisions(text))
         }
         input.signal?.throwIfAborted()
         const verified = verifyTerms(terms, corpus, sourceLang)
@@ -316,19 +464,24 @@ export class ContextExtractionService {
           }))
         ]
         const saved = this.library.withWork(input.workId, (db) =>
-          saveExtraction(db, {
-            runId,
-            model,
-            promptHash,
-            scannedChapterIds: chunk.map((chapter) => chapter.id),
-            candidates: writes,
-            now: now()
+          db.transaction(() => {
+            const result = saveExtraction(db, {
+              runId,
+              model,
+              promptHash,
+              scannedChapterIds: chunk.map((chapter) => chapter.id),
+              candidates: writes,
+              now: now()
+            })
+            this.applyRevisions(db, revisions, inChunk, chunk, corpus, runId, now())
+            return result
           })
         )
         pending.push(...saved.pending)
         scannedChapterIds.push(...chunk.map((chapter) => chapter.id))
       }
       if (chapters.length > 0) {
+        this.splitFullNames(input.workId, corpus, runId, now())
         pending.push(
           ...(await this.analyzeAddressing(
             input.workId,
@@ -362,17 +515,99 @@ export class ContextExtractionService {
     }
   }
   /** The work's glossary terms, rejected ones included, with the type extraction gave them. */
-  private knownTerms(workId: string): Array<KnownTerm & { aliases: string[]; status: string }> {
+  private knownTerms(workId: string): KnownEntry[] {
     return this.library.withWork(workId, (db) => {
       const types = new Map(readReviewInfo(db).map((info) => [info.entryId, info.termType]))
       return listContextEntries(db, { kind: 'term' }).map((entry) => ({
+        id: entry.id,
         source: entry.source,
         target: entry.target,
+        notes: entry.notes,
         aliases: entry.aliases,
         status: entry.status,
+        toChapterId: entry.toChapterId,
         type: types.get(entry.id) ?? null
       }))
     })
+  }
+
+  /** Parts of people's full names that the text uses on their own become aliases, by code. */
+  private splitFullNames(
+    workId: string,
+    corpus: ExtractionChapter[],
+    runId: string,
+    now: number
+  ): void {
+    const people = this.knownTerms(workId).filter(
+      (entry) =>
+        entry.type === 'person' && entry.status !== 'rejected' && /[・＝]/u.test(entry.source)
+    )
+    for (const entry of people) {
+      const added = nameParts(entry.source, corpus).filter((form) => !entry.aliases.includes(form))
+      if (added.length === 0) continue
+      this.library.withWork(workId, (db) =>
+        reviseEntry(
+          db,
+          {
+            entryId: entry.id,
+            actor: 'code',
+            kind: 'correction',
+            fields: { aliases: added },
+            evidence: [],
+            runId
+          },
+          now
+        )
+      )
+    }
+  }
+
+  /**
+   * The model's fixes of entries it was shown: each needs a real quote from the chunk, then goes through
+   * `reviseEntry`, whose guards keep it to a flag when it must not apply. Others are dropped.
+   */
+  private applyRevisions(
+    db: Db,
+    revisions: ExtractedRevision[],
+    shown: Array<KnownInChunk & { id: string }>,
+    chunk: Array<ExtractionChapter & { id: string }>,
+    corpus: Array<ExtractionChapter & { id: string }>,
+    runId: string,
+    now: number
+  ): void {
+    const idOf = (number: number): string | null =>
+      corpus.find((chapter) => chapter.number === number)?.id ?? null
+    for (const revision of revisions) {
+      const entry = shown.find((each) => each.source === revision.source)
+      if (!entry) continue
+      const quotes = verifiedRevisionQuotes(revision.evidence, chunk)
+      if (quotes.length === 0) continue
+      const fromChapterId =
+        revision.kind === 'progression' && revision.fromChapter !== undefined
+          ? idOf(revision.fromChapter)
+          : null
+      if (revision.kind === 'progression' && !fromChapterId) continue
+      const text = chunk.map((chapter) => chapter.text).join('\n')
+      reviseEntry(
+        db,
+        {
+          entryId: entry.id,
+          actor: 'ai',
+          kind: revision.kind,
+          fromChapterId,
+          fields: {
+            ...(revision.target ? { target: revision.target } : {}),
+            ...(revision.notes ? { notes: revision.notes } : {}),
+            ...(revision.aliases
+              ? { aliases: revision.aliases.filter((alias) => text.includes(alias)) }
+              : {})
+          },
+          evidence: quotes.map((quote) => ({ chapterId: idOf(quote.chapter), quote: quote.quote })),
+          runId
+        },
+        now
+      )
+    }
   }
 
   /**
@@ -428,7 +663,8 @@ export class ContextExtractionService {
       sourceLang,
       register: suggestRegister(sourceLang, genre) ?? null,
       characters: speaking,
-      evidence: evidence.filter((each) => each.lines.length > 0)
+      evidence: evidence.filter((each) => each.lines.length > 0),
+      possibleChanges: addressChanges(chapters, speaking)
     })
     const text = await ask(messages)
     let result: ReturnType<typeof parseAnalysis>
@@ -451,6 +687,7 @@ export class ContextExtractionService {
       }
     }
     const proposals: AddressingProposal[] = []
+    const changed: string[] = []
     for (const dyad of result.dyads) {
       const from = person(String(dyad.from))
       const to = person(String(dyad.to))
@@ -458,6 +695,29 @@ export class ContextExtractionService {
       const address = typeof dyad.address === 'string' ? dyad.address.trim() : ''
       const quotes = verifiedQuotes(dyad.evidence, chapters)
       if (!from || !to || !self || !address || quotes.length === 0) continue
+      const fromChapterId = chapters.find((chapter) => chapter.number === dyad.fromChapter)?.id
+      if (fromChapterId) {
+        const outcome = this.library.withWork(workId, (db) =>
+          progressDyad(db, {
+            from: from.source,
+            to: to.source,
+            fromChapterId,
+            self,
+            address,
+            secondPerson: typeof dyad.secondPerson === 'string' ? dyad.secondPerson : null,
+            evidence: quotes.map((quote) => ({
+              chapterId: chapters.find((chapter) => chapter.number === quote.chapter)?.id ?? null,
+              quote: quote.quote
+            })),
+            runId,
+            now
+          })
+        )
+        if (outcome !== null) {
+          if (outcome !== 'kept') changed.push(outcome)
+          continue
+        }
+      }
       proposals.push({
         from,
         to,
@@ -471,10 +731,13 @@ export class ContextExtractionService {
         }))
       })
     }
-    if (proposals.length === 0) return []
+    if (proposals.length === 0) return changed
     const promptHash = 'sha256:' + createHash('sha256').update(messages[0]!.content).digest('hex')
-    return this.library.withWork(workId, (db) =>
-      saveAddressingProposals(db, { runId, model, promptHash, proposals, now })
-    )
+    return [
+      ...changed,
+      ...this.library.withWork(workId, (db) =>
+        saveAddressingProposals(db, { runId, model, promptHash, proposals, now })
+      )
+    ]
   }
 }

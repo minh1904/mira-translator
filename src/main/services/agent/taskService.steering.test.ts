@@ -12,6 +12,11 @@ import {
   setDyad
 } from '../../infra/storage/addressingEntries'
 import { AgentRepository } from '../../infra/storage/agentRepository'
+import {
+  createContextEntry,
+  getEffectiveGlossary,
+  listContextEntries
+} from '../../infra/storage/contextEntries'
 import { AgentTaskRepository } from '../../infra/storage/agentTaskRepository'
 import { getRunContext } from '../../infra/storage/translateRunContext'
 import { parseSnapshot } from '../ai/translate/contextSnapshot'
@@ -322,10 +327,59 @@ describe('steering: addressing from chapter E', () => {
     expect(pairsAt(kit, 3)).toEqual(['em'])
 
     const resent = kit.steer(task.id, 3, change(a, b), id)
-    expect(resent.steering.contextRef?.closedDyadId).toBeTruthy()
+    expect(resent.steering.contextRef).toMatchObject({ closedDyadId: expect.any(String) })
     const all = kit.library.withWork(kit.work.id, (db) => listDyads(db))
     expect(all).toHaveLength(2)
     expect(kit.tasks.listSteerings(task.id)).toHaveLength(1)
+    await kit.tasks.idle()
+  })
+})
+
+describe('steering: a term from chapter E', () => {
+  const targetsAt = (kit: ReturnType<typeof steeringKit>, n: number) =>
+    kit.library.withWork(kit.work.id, (db) =>
+      getEffectiveGlossary(db, kit.chapters[n - 1]!.id).map((entry) => entry.target)
+    )
+
+  it('closes the term before E and starts the new one at E; a resend after a failure makes one', async () => {
+    const kit = steeringKit()
+    const task = kit.paused()
+    const entry = kit.library.withWork(kit.work.id, (db) =>
+      createContextEntry(db, { source: '記憶遡行', target: 'Hồi tưởng' })
+    )
+    const change = { kind: 'term' as const, entryId: entry.id, target: 'Truy Hồi Ký Ức' }
+    const id = command()
+    const spy = vi.spyOn(kit.repository, 'createSteering').mockImplementationOnce(() => {
+      throw new Error('library down')
+    })
+    expect(() => kit.steer(task.id, 3, change, id)).toThrow('library down')
+    spy.mockRestore()
+
+    const resent = kit.steer(task.id, 3, change, id)
+    expect(resent.steering.contextRef).toMatchObject({ closedEntryId: entry.id })
+    expect(targetsAt(kit, 2)).toEqual(['Hồi tưởng'])
+    expect(targetsAt(kit, 3)).toEqual(['Truy Hồi Ký Ức'])
+    expect(
+      kit.library.withWork(kit.work.id, (db) => listContextEntries(db, { kind: 'term' }))
+    ).toHaveLength(2)
+    expect(kit.tasks.listSteerings(task.id)).toHaveLength(1)
+    await kit.tasks.idle()
+  })
+
+  it('refuses when the term starts at E', async () => {
+    const kit = steeringKit()
+    const task = kit.paused()
+    const entry = kit.library.withWork(kit.work.id, (db) =>
+      createContextEntry(db, {
+        source: '記憶遡行',
+        target: 'Hồi tưởng',
+        fromChapterId: kit.chapters[2]!.id
+      })
+    )
+    expect(() =>
+      kit.steer(task.id, 3, { kind: 'term', entryId: entry.id, target: 'Truy Hồi Ký Ức' })
+    ).toThrow(/bắt đầu từ chương này/)
+    expect(kit.tasks.listSteerings(task.id)).toHaveLength(0)
     await kit.tasks.idle()
   })
 })

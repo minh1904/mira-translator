@@ -67,6 +67,7 @@ import type { SegmentInput, TextRecord, TextSide } from '../shared/contracts/tex
 import type { TaskQualityView } from '../shared/contracts/taskQuality'
 import type {
   AppliedContext,
+  ContextEntryHistory,
   ContextEntryItem,
   ContextReviewInfo,
   ImportNamesResult
@@ -341,6 +342,8 @@ const desktopApi: DesktopApi = {
     }
   },
   glossary: {
+    history: (options) =>
+      ipcRenderer.invoke(CHANNELS.glossaryHistory, options) as Promise<Result<ContextEntryHistory>>,
     list: (options) =>
       ipcRenderer.invoke(CHANNELS.glossaryList, options) as Promise<
         Result<{ entries: ContextEntryItem[] }>

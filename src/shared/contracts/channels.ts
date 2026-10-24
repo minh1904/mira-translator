@@ -71,6 +71,7 @@ export const CHANNELS = {
   glossaryCheckCompliance: 'glossary:checkCompliance',
   glossaryReviewInfo: 'glossary:reviewInfo',
   glossaryApplied: 'glossary:applied',
+  glossaryHistory: 'glossary:history',
   addressingCharactersList: 'addressing:characters:list',
   addressingCharactersGet: 'addressing:characters:get',
   addressingCharactersCreate: 'addressing:characters:create',

@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
+  addressChanges,
   buildAnalysisMessages,
   collectAddressingEvidence,
   parseAnalysis,
@@ -98,5 +99,43 @@ describe('provenGender', () => {
     ).toBe('unknown')
     expect(provenGender({ gender: 'female' }, forms, chapters)).toBe('unknown')
     expect(provenGender(undefined, forms, chapters)).toBe('unknown')
+  })
+})
+
+describe('addressChanges', () => {
+  const kiritani = { source: '桐谷彰', target: 'Kiritani Akira', aliases: ['桐谷', '彰'] }
+  const chapter = (number: number, line: string) => ({
+    number,
+    text: `「${line}」\n「${line}、待って」`
+  })
+
+  it('suggests a change from the chapter where the usual call changes', () => {
+    const chapters = [
+      ...Array.from({ length: 9 }, (_, i) => chapter(i + 1, '桐谷さん')),
+      chapter(10, '彰'),
+      chapter(11, '彰'),
+      chapter(12, '彰')
+    ]
+    expect(addressChanges(chapters, [kiritani])).toEqual([
+      { source: '桐谷彰', fromChapter: 10, before: '桐谷さん', after: '彰' }
+    ])
+    expect(
+      buildAnalysisMessages({
+        sourceLang: 'ja',
+        register: null,
+        characters: [kiritani],
+        evidence: [],
+        possibleChanges: addressChanges(chapters, [kiritani])
+      })[1]!.content
+    ).toContain('<possible_changes>\n- 桐谷彰: chương 9 gọi "桐谷さん", chương 10 gọi "彰"')
+  })
+
+  it('suggests nothing for one scene in one chapter', () => {
+    const chapters = [
+      chapter(6, '桐谷さん'),
+      { number: 7, text: '「彰！」\n「桐谷さん、ごめん」' },
+      chapter(8, '桐谷さん')
+    ]
+    expect(addressChanges(chapters, [kiritani])).toEqual([])
   })
 })

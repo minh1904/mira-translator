@@ -183,6 +183,43 @@ Câu hỏi mở: tự duyệt alias tách bằng code? Đổi target giữa truy
 tính là tín hiệu (sửa tay, hay cả đề xuất của chat đã nhận)? Lời gọi LLM chạy nền có tính vào ngân sách task?
 Truyện đang ra tự quét khi có chương mới?
 
+### Đã triển khai (change `add-context-progression`, 2026-10-24)
+
+Không còn bước duyệt (2026-10-23), nên mọi thay đổi đều áp ngay. Thay cho bước duyệt là chốt chặn và lịch sử.
+
+- **Hai loại thay đổi.**
+  - `correction`: mục sai từ đầu, sửa tại chỗ cho cả truyện.
+  - `progression`: mục đóng ở chương N−1, và một mục mới nối với mục cũ (`supersedes_id`) bắt đầu từ chương N.
+    Thuật ngữ đổi được từ chương N như xưng hô (`changeTermFrom`), kể cả qua steering của task (IPC).
+- **Dạng viết** chỉ còn duy nhất trong cùng phạm vi chương. Migration 19 của file tác phẩm dựng lại
+  `context_alias` với `UNIQUE (entry_id, form)`. Code từ chối hai mục có phạm vi chồng nhau cùng một dạng.
+- **Một hàm áp: `reviseEntry`.** Thay đổi do AI đề xuất chỉ áp khi qua đủ ba chốt:
+  - mục chưa được người dùng sửa tay (`user_edited_at`);
+  - `progression` có câu chứng ở ít nhất 2 chương từ chương N trở đi;
+  - không trả lại một giá trị mà AI đã thay đi.
+
+  Không qua chốt thì mục không đổi; mục nhận cờ `revision_suggested`, đề xuất nằm trong `detail` dạng JSON.
+- **Bước trích đề xuất sửa.** Lô phân loại đầu tiên của mỗi khúc kèm `<known_in_chunk>`: tối đa 20 mục có dạng
+  trong khúc, mỗi mục một câu mới. Model có thể trả `revisions`. Câu chứng phải có nguyên văn trong chương nó nêu.
+  Không thêm lời gọi model nào.
+- **Cơ chế 3 (alias bằng code)** đã làm. Phần tên trong tên đầy đủ có ・/＝ xuất hiện riêng ≥ 2 lần thì thành
+  alias, cùng các dạng "phần tên + hậu tố" có thật.
+- **Cơ chế 4 (học từ sửa tay)** đã làm, theo từng dòng:
+  - người dùng lưu bản dịch mà thay bản dịch X của một mục bằng Y (≤ 40 ký tự, không chứa dấu kết câu), thì
+    Mira ghi một tín hiệu;
+  - cùng cặp X → Y ở 2 chương thì mục đổi theo kiểu `correction`, nguồn là `user_edit_signal`;
+  - lần lưu nào thêm hoặc bớt dòng thì bỏ qua (`shortcut:` trong `editSignals.ts`).
+- **Cơ chế 5 (progression)** đã làm, cho cả thuật ngữ lẫn xưng hô (xem
+  [nhân vật và xưng hô](characters-and-addressing.md)).
+- **Lịch sử.** Bảng `context_entry_change` ghi mọi lần tạo hoặc đổi: ai đổi, trường, giá trị cũ và mới, chương bắt
+  đầu, câu chứng. Màn Từ điển có nút "Lịch sử" cho từng mục.
+- **Chương bị ảnh hưởng.** Hộp thoại "Lịch sử" liệt kê các chương đã dịch trước lần `correction` gần nhất mà
+  nguồn có dạng của mục. Nút "Dịch lại các chương này" tạo task dịch đúng các chương đó, sau khi người dùng xác
+  nhận. Mira không tự sửa bản dịch nào.
+- **Quét lại.** Lưu nguồn của một chương với nội dung khác thì chương đó mất dấu "đã quét".
+
+Cơ chế 1–2 (compliance theo mục, xếp theo tác động) vẫn là đề xuất. Lịch sử chưa có nút hoàn tác.
+
 ## 8. Bước trích sau change `improve-glossary-extraction` (đã triển khai 2026-10-24)
 
 Mục này mô tả hành vi hiện tại; các mục 3–4 ở trên là thiết kế ban đầu. Không thêm lời gọi model nào: một lần

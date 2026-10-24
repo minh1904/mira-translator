@@ -139,11 +139,75 @@ export const ANALYSIS_OUTPUT_EXAMPLE = {
   ]
 }
 
+/** Cách gọi tên một nhân vật đổi giữa hai chương liên tiếp: gợi ý, chưa phải kết luận. */
+export interface AddressChange {
+  source: string
+  fromChapter: number
+  before: string
+  after: string
+}
+
+const CALL_SUFFIX = '(さん|様|さま|くん|君|ちゃん|先輩|殿|先生)?'
+const DIALOGUE = /[「『]([^」』]*)[」』]/gu
+const escapeRegExp = (text: string): string => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+
+/**
+ * Đếm theo chương cách mỗi nhân vật được gọi trong lời thoại (tên hay alias, kèm hậu tố gọi người nào). Khi
+ * cách gọi nhiều nhất đổi giữa hai chương liên tiếp có ít nhất 2 lần gọi mỗi chương, đó là một gợi ý "có
+ * thể đổi từ chương N". Không biết ai nói, nên model mới là người gán cặp.
+ */
+export function addressChanges(
+  chapters: ChapterSource[],
+  characters: AnalysisCharacter[]
+): AddressChange[] {
+  const out: AddressChange[] = []
+  const ordered = [...chapters].sort((a, b) => a.number - b.number)
+  for (const character of characters) {
+    const forms = [character.source, ...(character.aliases ?? [])]
+      .filter((form) => form.trim())
+      .sort((a, b) => b.length - a.length)
+    if (forms.length === 0) continue
+    const call = new RegExp(`(${forms.map(escapeRegExp).join('|')})${CALL_SUFFIX}`, 'gu')
+    let previous: { number: number; top: string } | null = null
+    for (const chapter of ordered) {
+      const counts = new Map<string, number>()
+      for (const line of chapter.text.matchAll(DIALOGUE)) {
+        for (const match of line[1]!.matchAll(call)) {
+          counts.set(match[0], (counts.get(match[0]) ?? 0) + 1)
+        }
+      }
+      const total = [...counts.values()].reduce((sum, n) => sum + n, 0)
+      if (total < 2) {
+        previous = null
+        continue
+      }
+      const [top, most] = [...counts].sort((a, b) => b[1] - a[1])[0]!
+      // No call holds a majority (a scene that mixes both): nothing to compare.
+      if (most * 2 <= total) {
+        previous = null
+        continue
+      }
+      if (previous && previous.number === chapter.number - 1 && previous.top !== top) {
+        out.push({
+          source: character.source,
+          fromChapter: chapter.number,
+          before: previous.top,
+          after: top
+        })
+      }
+      previous = { number: chapter.number, top }
+    }
+  }
+  return out
+}
+
 export function buildAnalysisMessages(input: {
   sourceLang: SourceLanguage | string
   register: RegisterPresetId | null
   characters: AnalysisCharacter[]
   evidence: CharacterEvidence[]
+  /** Gợi ý từ `addressChanges`. */
+  possibleChanges?: AddressChange[]
 }): Array<{ role: 'system' | 'user'; content: string }> {
   const preset = input.register ? REGISTER_PRESETS[input.register] : undefined
   const system = [
@@ -157,6 +221,7 @@ export function buildAnalysisMessages(input: {
     '- Chỉ đề xuất cặp có ít nhất một câu bằng chứng; trích nguyên câu gốc kèm số chương. Không chắc thì ghi rõ trong "notes" và để "confidence": "thấp".',
     '- "gender" male/female BẮT BUỘC kèm "genderEvidence": một câu nguyên văn có tên nhân vật và một từ chỉ giới tính (女, 男, 娘, 少女, 少年, 彼女, 彼…). Đại từ tự xưng 僕, 俺, 私 không phải bằng chứng giới tính. Không có câu như vậy: "unknown".',
     '- Không bịa nhân vật mới; dùng đúng "source" đã cho.',
+    '- <possible_changes> là chỗ cách gọi một nhân vật đổi giữa hai chương. Nếu câu thoại cho thấy một cặp đổi cách xưng hô từ một chương và giữ cách mới về sau, trả cặp đó kèm "fromChapter" (số chương bắt đầu) và câu chứng ở ít nhất hai chương từ chương đó trở đi. Đổi chỉ trong một cảnh (cãi nhau, nói đùa) thì không ghi "fromChapter".',
     '</rules>',
     ...(preset ? ['', ...presetSection(preset)] : []),
     '',
@@ -187,7 +252,18 @@ export function buildAnalysisMessages(input: {
       .filter(Boolean)
       .join('\n')
   })
-  const user = [...blocks, '', 'Lập bảng xưng hô theo luật ở trên. Chỉ trả về JSON.'].join('\n\n')
+  const changes = (input.possibleChanges ?? []).map(
+    (change) =>
+      `- ${change.source}: chương ${change.fromChapter - 1} gọi "${change.before}", chương ${change.fromChapter} gọi "${change.after}"`
+  )
+  const user = [
+    ...blocks,
+    ...(changes.length > 0
+      ? [['<possible_changes>', ...changes, '</possible_changes>'].join('\n')]
+      : []),
+    '',
+    'Lập bảng xưng hô theo luật ở trên. Chỉ trả về JSON.'
+  ].join('\n\n')
   return [
     { role: 'system', content: system },
     { role: 'user', content: user }
@@ -211,6 +287,8 @@ export interface AnalysisResult {
     notes?: string
     evidence?: string[]
     confidence?: string
+    /** Số chương cặp này bắt đầu áp dụng, khi xưng hô đổi giữa truyện. */
+    fromChapter?: number
   }>
 }
 

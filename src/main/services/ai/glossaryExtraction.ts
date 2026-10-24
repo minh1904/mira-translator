@@ -372,13 +372,43 @@ export const EXTRACTION_OUTPUT_EXAMPLE = {
     },
     { source: 'ミリィさん', type: 'person', alias_of: 'ミリィ' },
     { source: 'ドア', type: 'not-a-term', reason: 'từ thông dụng' }
+  ],
+  revisions: [
+    {
+      source: 'リオン',
+      kind: 'progression',
+      fromChapter: 12,
+      notes: 'đã thành hiệp sĩ của vương quốc',
+      evidence: ['ch12: 騎士リオンは剣を掲げた', 'ch13: 騎士となったリオンが…']
+    }
   ]
+}
+
+/** Một mục đã có xuất hiện trong khúc, gửi kèm câu ngữ cảnh mới để model đề xuất sửa nếu cần. */
+export interface KnownInChunk {
+  source: string
+  target: string
+  notes?: string | null
+  context: CandidateContext
+}
+
+/** Đề xuất sửa một mục đã có; code kiểm câu chứng rồi mới áp. */
+export interface ExtractedRevision {
+  source: string
+  kind: 'correction' | 'progression'
+  target?: string
+  notes?: string
+  aliases?: string[]
+  /** Số chương bắt đầu, cho `progression`. */
+  fromChapter?: number
+  evidence: string[]
 }
 
 export function buildClassifyMessages(
   sourceLang: string,
   candidates: Candidate[],
-  known: KnownTerm[] = []
+  known: KnownTerm[] = [],
+  inChunk: KnownInChunk[] = []
 ): ExtractionMessage[] {
   const lang = languageName(sourceLang)
   const system = [
@@ -391,6 +421,7 @@ export function buildClassifyMessages(
     '- Gom các dạng của cùng một thực thể (tên đầy đủ, tên gọi tắt, tên kèm hậu tố) vào một mục: "source" là dạng đầy đủ nhất, các dạng khác ở "aliases". Chỉ dùng dạng có trong <candidates> hoặc trong câu ngữ cảnh.',
     '- <known> là các mục đã chốt: không đổi, không phân loại lại. Ứng viên chỉ là dạng khác của một mục đã chốt: ghi "alias_of" là "source" của mục đó. Ứng viên cùng họ với mục đã chốt (cùng hậu tố, cùng tiền tố) dịch theo đúng khuôn của mục đó, kể cả cách viết hoa.',
     '- Ứng viên có "reading" là cách đọc tác giả chú bên cạnh; dùng nó khi dịch.',
+    '- <known_in_chunk> là mục đã có xuất hiện trong khúc này, kèm một câu mới. Chỉ khi câu trong khúc cho thấy rõ mục sai từ đầu (cách đọc, giới tính, thân phận lộ ra) thì trả trong "revisions" một mục "kind": "correction"; khi mục đổi từ một chương (đổi tên, chức danh mới, quan hệ mới) thì "kind": "progression" kèm "fromChapter". Ghi "target", "notes" hay "aliases" mới, và "evidence" là câu nguyên văn kèm số chương. Đổi chỉ trong một cảnh (hồi tưởng, cải trang, nói đùa) không phải revision. Không chắc thì không trả.',
     ...namingPolicy(sourceLang),
     '- "gender" chỉ cho "person": male, female hoặc unknown; chỉ ghi male/female khi ngữ cảnh cho thấy rõ.',
     '- "note" chỉ ghi vai trò hay quan hệ đã lộ trong ngữ cảnh được cho; không đoán diễn biến, không tiết lộ thân phận về sau.',
@@ -401,11 +432,27 @@ export function buildClassifyMessages(
     'Trả về đúng một đối tượng JSON, không kèm giải thích hay dấu ```, theo mẫu:',
     JSON.stringify(EXTRACTION_OUTPUT_EXAMPLE)
   ].join('\n')
+  const shown = new Set(inChunk.map((entry) => entry.source))
+  const knownOnly = known.filter((term) => !shown.has(term.source))
   const user = [
-    ...(known.length > 0
+    ...(inChunk.length > 0
+      ? [
+          '<known_in_chunk>',
+          ...inChunk.map((entry) =>
+            [
+              `<entry source="${entry.source}" target="${entry.target}"${entry.notes ? ` notes="${entry.notes}"` : ''}>`,
+              `  - ch${entry.context.chapter}: ${entry.context.line}`,
+              '</entry>'
+            ].join('\n')
+          ),
+          '</known_in_chunk>',
+          ''
+        ]
+      : []),
+    ...(knownOnly.length > 0
       ? [
           '<known>',
-          ...known.map(
+          ...knownOnly.map(
             (term) =>
               `- ${term.source}${term.aliases?.length ? ` (${term.aliases.join(', ')})` : ''} → ${term.target}${term.type ? ` [${term.type}]` : ''}`
           ),
@@ -448,6 +495,53 @@ export function parseClassification(text: string): ExtractedTerm[] {
         : {}),
       ...(typeof reading === 'string' && reading.trim() !== '' ? { reading: reading.trim() } : {})
     }))
+}
+
+export function parseRevisions(text: string): ExtractedRevision[] {
+  const parsed = jsonObjectOf(text) as { revisions?: unknown }
+  if (!Array.isArray(parsed.revisions)) return []
+  const text_ = (value: unknown): string | undefined =>
+    typeof value === 'string' && value.trim() !== '' ? value.trim() : undefined
+  return parsed.revisions.flatMap((item): ExtractedRevision[] => {
+    const raw = item as Record<string, unknown> | null
+    const source = text_(raw?.source)
+    const kind = raw?.kind
+    if (!raw || !source || (kind !== 'correction' && kind !== 'progression')) return []
+    const fromChapter = Number(raw.fromChapter)
+    return [
+      {
+        source,
+        kind,
+        ...(text_(raw.target) ? { target: text_(raw.target) } : {}),
+        ...(text_(raw.notes) ? { notes: text_(raw.notes) } : {}),
+        ...(Array.isArray(raw.aliases)
+          ? { aliases: raw.aliases.flatMap((a) => (text_(a) ? [text_(a)!] : [])) }
+          : {}),
+        ...(Number.isInteger(fromChapter) ? { fromChapter } : {}),
+        evidence: Array.isArray(raw.evidence)
+          ? raw.evidence.flatMap((e) => (text_(e) ? [text_(e)!] : []))
+          : []
+      }
+    ]
+  })
+}
+
+/**
+ * Câu chứng của một đề xuất sửa có thật trong chương nó nêu: mọi mảnh của câu nằm trong chương đó.
+ * Câu không nêu chương hoặc nêu chương ngoài `chapters` bị bỏ.
+ */
+export function verifiedRevisionQuotes(
+  evidence: string[],
+  chapters: ExtractionChapter[]
+): Array<{ chapter: number; quote: string }> {
+  return evidence.flatMap((line) => {
+    const number = Number(/^\s*ch\s*(\d+)\s*[:：]/i.exec(line)?.[1])
+    const chapter = chapters.find((each) => each.number === number)
+    const pieces = quotePieces(line)
+    if (!chapter || pieces.join('').length < 4 || !pieces.every((p) => chapter.text.includes(p)))
+      return []
+    return [{ chapter: number, quote: pieces.join('…').slice(0, 200) }]
+  })
 }
 
 export interface Verification {
@@ -535,6 +629,29 @@ export function verifyTerms(
     aliases.forEach((alias) => taken.add(alias))
   }
   return { accepted, rejected, dropped }
+}
+
+const CALL_SUFFIXES = ['さん', '様', 'さま', 'くん', '君', 'ちゃん', '先輩', '殿', '先生']
+
+/**
+ * Alias tách từ tên đầy đủ có ・ hoặc ＝ (セレナ・ヴァルトハイム): mỗi phần ≥ 2 ký tự xuất hiện riêng (ngoài
+ * tên đầy đủ) ít nhất 2 lần, cùng các dạng "phần + hậu tố gọi người" có thật trong văn bản.
+ */
+export function nameParts(source: string, chapters: ExtractionChapter[]): string[] {
+  const parts = source.split(/[・＝]/u).filter((part) => part.length >= 2)
+  if (parts.length < 2) return []
+  const called = parts.flatMap((part) => CALL_SUFFIXES.map((suffix) => part + suffix))
+  const counts = countForms([source, ...called, ...parts], chapters, 0)
+  const standalone = (part: string): number =>
+    (counts.get(part)?.count ?? 0) +
+    CALL_SUFFIXES.reduce((sum, suffix) => sum + (counts.get(part + suffix)?.count ?? 0), 0)
+  const kept = parts.filter((part) => standalone(part) >= 2)
+  return [
+    ...kept,
+    ...called.filter(
+      (form) => kept.some((part) => form.startsWith(part)) && (counts.get(form)?.count ?? 0) > 0
+    )
+  ]
 }
 
 const KANJI = /^[一-龥々]$/u

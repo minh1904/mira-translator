@@ -75,6 +75,7 @@ import type {
   GlossaryComplianceReport,
   ImportNamesResult
 } from './glossary'
+import type { ContextEntryHistory } from './glossary'
 import type {
   AddressingComplianceReport,
   AddressingDyadItem,
@@ -291,6 +292,8 @@ export interface AiAccountsApi {
 }
 
 export interface GlossaryApi {
+  /** Changes of one entry, newest first, and the chapters to translate again after a correction. */
+  history(options: { workId: string; entryId: string }): Promise<Result<ContextEntryHistory>>
   list(options: {
     workId: string
     kind?: ContextKind

@@ -1,6 +1,7 @@
 import * as v from 'valibot'
 import { idSchema } from './library'
 import type { ModelRef } from './aiPreferences'
+import { TERM_NOTES_MAX, TERM_TEXT_MAX } from './glossary'
 import type { TokenUsage } from './usage'
 
 /** State vocabulary of durable tasks (change `add-durable-translation-tasks` owns it). */
@@ -269,10 +270,10 @@ export type AgentTaskSteeringState = (typeof STEERING_STATES)[number]
 export const STEERING_INSTRUCTION_MAX = 2000
 
 /** The pair a `context_ref` steering wrote in the work DB: the new one and the one it closed. */
-export interface SteeringContextRef {
-  newDyadId: string
-  closedDyadId: string | null
-}
+/** What a `context_ref` steering wrote: an addressing pair, or a term, from its chapter on. */
+export type SteeringContextRef =
+  | { newDyadId: string; closedDyadId: string | null }
+  | { newEntryId: string; closedEntryId: string }
 
 export interface AgentTaskSteeringView {
   id: string
@@ -312,6 +313,12 @@ export const agentTaskSteerInputSchema = v.pipe(
         speakerPronoun: pronoun,
         recipientPronoun: pronoun,
         secondPerson: v.optional(pronoun)
+      }),
+      v.strictObject({
+        kind: v.literal('term'),
+        entryId: idSchema,
+        target: v.pipe(v.string(), v.trim(), v.minLength(1), v.maxLength(TERM_TEXT_MAX)),
+        notes: v.optional(v.pipe(v.string(), v.trim(), v.maxLength(TERM_NOTES_MAX)))
       }),
       v.strictObject({
         kind: v.literal('third_person'),

@@ -33,13 +33,15 @@ export const REVIEW_FLAG_CODES = [
   'script_mismatch',
   'reopened',
   'family_mismatch',
-  'short_alias'
+  'short_alias',
+  'revision_suggested'
 ] as const
 export type ReviewFlagCode = (typeof REVIEW_FLAG_CODES)[number]
 
 export interface ReviewFlag {
   code: ReviewFlagCode
-  /** `alias_conflict`: the alias form that belongs to another entry; `short_alias`: the short form left off. */
+  /** `alias_conflict`: the alias form that belongs to another entry; `short_alias`: the short form left off;
+   * `revision_suggested`: the held-back change as JSON (`RevisionSuggestion`). */
   detail?: string
 }
 
@@ -63,6 +65,33 @@ export interface ContextReviewInfo {
   termType: string | null
   flags: ReviewFlag[]
   evidence: ContextEvidence[]
+}
+
+/** Who changed an entry: the model, a person, a person's repeated hand edit of a translation, or code. */
+export type ContextChangeActor = 'ai' | 'user' | 'user_edit_signal' | 'code'
+/** `correction` fixes the whole story; `progression` applies from `fromChapterId`. */
+export type ContextChangeKind = 'create' | 'correction' | 'progression'
+
+/** One changed field of an entry, with the quote behind it. */
+export interface ContextEntryChange {
+  id: string
+  entryId: string
+  actor: ContextChangeActor
+  kind: ContextChangeKind
+  field: string
+  oldValue: string | null
+  newValue: string | null
+  fromChapterId: string | null
+  quote: string | null
+  quoteChapterId: string | null
+  runId: string | null
+  createdAt: number
+}
+
+/** An entry's history and the translated chapters its latest correction left out of date. */
+export interface ContextEntryHistory {
+  changes: ContextEntryChange[]
+  affectedChapterIds: string[]
 }
 
 export const TERM_TEXT_MAX = 200

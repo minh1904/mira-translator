@@ -1,5 +1,6 @@
 import type {
   AppliedContext,
+  ContextEntryHistory,
   ContextEntryItem,
   ContextKind,
   ContextOrigin,
@@ -18,6 +19,8 @@ import {
   type ListContextOptions,
   type UpdateContextEntryParams
 } from '../../infra/storage/contextEntries'
+import { listEntryChanges } from '../../infra/storage/contextChanges'
+import { affectedChapters } from '../../infra/storage/contextRevisions'
 import { parseNamesText } from '../../../shared/context/namesParser'
 import {
   matchContextEntries,
@@ -59,6 +62,13 @@ export class GlossaryService {
 
   reviewInfo(workId: string, entryIds?: string[]): ContextReviewInfo[] {
     return this.library.withWork(workId, (db) => readReviewInfo(db, entryIds))
+  }
+
+  history(workId: string, entryId: string): ContextEntryHistory {
+    return this.library.withWork(workId, (db) => ({
+      changes: listEntryChanges(db, entryId),
+      affectedChapterIds: affectedChapters(db, entryId)
+    }))
   }
 
   get(workId: string, entryId: string): ContextEntryItem | null {

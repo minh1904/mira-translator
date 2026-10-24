@@ -2,6 +2,7 @@ import { useEffect, useState, type JSX } from 'react'
 import {
   AddIcon,
   BookBookmarkIcon,
+  HistoryIcon,
   ImportIcon,
   PenNewSquareIcon,
   TrashBinMinimalisticIcon
@@ -20,6 +21,7 @@ import { CompactButton } from '../../../components/ui/CompactButton'
 import { ICON } from '../../../components/ui/icon'
 import { EmptyState } from '../../../components/ui/EmptyState'
 import { SearchInput } from '../../../components/ui/Input'
+import { EntryHistoryDialog } from './EntryHistoryDialog'
 import { DeleteGlossaryDialog, EditGlossaryDialog, ImportNamesDialog } from './GlossaryDialogs'
 import { useGlossary } from './useGlossary'
 
@@ -39,6 +41,7 @@ export function reviewFlagLabel(flag: ReviewFlag): string {
   if (flag.code === 'script_mismatch') return 'Bản dịch sai hệ chữ'
   if (flag.code === 'family_mismatch') return 'Lệch khuôn với thuật ngữ cùng họ'
   if (flag.code === 'short_alias') return `Dạng ngắn "${flag.detail ?? ''}" dễ khớp nhầm`
+  if (flag.code === 'revision_suggested') return 'AI đề xuất sửa, chưa áp'
   return 'Mở lại vì có bằng chứng mới'
 }
 
@@ -96,6 +99,7 @@ export function GlossaryScreen({ workId }: GlossaryScreenProps): JSX.Element {
   const [chapters, setChapters] = useState<ChapterItem[]>([])
   const [editingEntry, setEditingEntry] = useState<ContextEntryItem | null | 'new'>(null)
   const [deletingEntry, setDeletingEntry] = useState<ContextEntryItem | null>(null)
+  const [historyEntry, setHistoryEntry] = useState<ContextEntryItem | null>(null)
   const [importOpen, setImportOpen] = useState(false)
 
   useEffect(() => {
@@ -156,7 +160,7 @@ export function GlossaryScreen({ workId }: GlossaryScreenProps): JSX.Element {
 
       {/* Danh sách thuật ngữ chính */}
       <div className="overflow-hidden rounded-sm border border-default bg-surface">
-        <div className="grid grid-cols-[minmax(0,1.5fr)_minmax(0,1.5fr)_110px_minmax(0,1.2fr)_80px] items-center border-b border-default bg-subtle px-3 py-2 text-body-xs font-medium text-subtle">
+        <div className="grid grid-cols-[minmax(0,1.5fr)_minmax(0,1.5fr)_110px_minmax(0,1.2fr)_104px] items-center border-b border-default bg-subtle px-3 py-2 text-body-xs font-medium text-subtle">
           <span>Từ gốc / Biến thể</span>
           <span>Bản dịch đích</span>
           <span>Hiệu lực</span>
@@ -190,7 +194,7 @@ export function GlossaryScreen({ workId }: GlossaryScreenProps): JSX.Element {
               <li
                 key={entry.id}
                 className={cn(
-                  'grid grid-cols-[minmax(0,1.5fr)_minmax(0,1.5fr)_110px_minmax(0,1.2fr)_80px] items-center px-3 py-2.5 text-body-xs transition-colors hover:bg-hover',
+                  'grid grid-cols-[minmax(0,1.5fr)_minmax(0,1.5fr)_110px_minmax(0,1.2fr)_104px] items-center px-3 py-2.5 text-body-xs transition-colors hover:bg-hover',
                   entry.status === 'pending' && 'bg-warning/5',
                   entry.status === 'rejected' && 'opacity-60'
                 )}
@@ -241,6 +245,12 @@ export function GlossaryScreen({ workId }: GlossaryScreenProps): JSX.Element {
                 {/* Các thao tác */}
                 <div className="flex items-center justify-end gap-1">
                   <CompactButton
+                    icon={<HistoryIcon size={ICON.sm} />}
+                    aria-label="Lịch sử"
+                    title="Lịch sử"
+                    onClick={() => setHistoryEntry(entry)}
+                  />
+                  <CompactButton
                     icon={<PenNewSquareIcon size={ICON.sm} />}
                     aria-label="Chỉnh sửa"
                     title="Chỉnh sửa"
@@ -278,6 +288,15 @@ export function GlossaryScreen({ workId }: GlossaryScreenProps): JSX.Element {
       />
 
       <ImportNamesDialog open={importOpen} onOpenChange={setImportOpen} onImport={importNames} />
+
+      <EntryHistoryDialog
+        workId={workId}
+        entry={historyEntry}
+        onOpenChange={(open) => {
+          if (!open) setHistoryEntry(null)
+        }}
+        chapterNumber={chapterNumber}
+      />
 
       <DeleteGlossaryDialog
         open={deletingEntry !== null}

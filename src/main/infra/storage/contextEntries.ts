@@ -8,6 +8,7 @@ import type {
   ContextStatus,
   ReviewFlag
 } from '../../../shared/contracts/glossary'
+import { recordChange, recordFieldChanges } from './contextChanges'
 import { StorageError } from './errors'
 import type { Db } from './sqlite'
 
@@ -31,7 +32,7 @@ interface AliasRow {
   form: string
 }
 
-function touchWork(db: Db, now: number): void {
+export function touchWork(db: Db, now: number): void {
   db.prepare('UPDATE work SET updated_at = ?').run(now)
 }
 
@@ -108,7 +109,62 @@ function dropRejectedOwners(db: Db, forms: string[], excludeEntryId?: string): v
   }
 }
 
-function checkUniqueness(db: Db, source: string, aliases: string[], excludeEntryId?: string): void {
+/** The fields an entry's history tracks, as text. */
+export const entryFields = (entry: {
+  source: string
+  target: string
+  notes: string | null
+  aliases: string[]
+}): Record<string, string | null> => ({
+  source: entry.source,
+  target: entry.target,
+  notes: entry.notes,
+  aliases: entry.aliases.join(', ')
+})
+
+/** Chapter positions a range covers; `null` is an open end. */
+export interface ChapterRange {
+  lo: number | null
+  hi: number | null
+}
+
+export function rangeOf(
+  db: Db,
+  fromChapterId: string | null | undefined,
+  toChapterId: string | null | undefined
+): ChapterRange {
+  const position = (id: string | null | undefined): number | null =>
+    id
+      ? (db.prepare('SELECT position FROM chapter WHERE id = ?').get<{ position: number }>(id)
+          ?.position ?? null)
+      : null
+  return { lo: position(fromChapterId), hi: position(toChapterId) }
+}
+
+/** SQL over `context_entry e` joined to chapters `fc`/`tc`: the entry's range overlaps one range. */
+const OVERLAPS = `(? IS NULL OR fc.position IS NULL OR fc.position <= ?)
+  AND (? IS NULL OR tc.position IS NULL OR tc.position >= ?)`
+const overlapParams = (range: ChapterRange): Array<number | null> => [
+  range.hi,
+  range.hi,
+  range.lo,
+  range.lo
+]
+const RANGED = `context_entry e
+  LEFT JOIN chapter fc ON fc.id = e.from_chapter_id
+  LEFT JOIN chapter tc ON tc.id = e.to_chapter_id`
+
+/**
+ * A form (source or alias) belongs to one entry per stretch of chapters: an entry closed at chapter N−1
+ * and the one that replaces it from N may share forms; two entries whose ranges overlap may not.
+ */
+export function checkUniqueness(
+  db: Db,
+  source: string,
+  aliases: string[],
+  excludeEntryId?: string,
+  range: ChapterRange = { lo: null, hi: null }
+): void {
   const trimmedSource = source.trim()
   const trimmedAliases = aliases.map((a) => a.trim())
 
@@ -137,11 +193,10 @@ function checkUniqueness(db: Db, source: string, aliases: string[], excludeEntry
     // Check if exists as context_entry source
     const existingEntry = db
       .prepare(
-        excludeEntryId
-          ? `SELECT source FROM context_entry WHERE lower(source) = lower(?) AND ${GLOSSARY} AND id != ? LIMIT 1`
-          : `SELECT source FROM context_entry WHERE lower(source) = lower(?) AND ${GLOSSARY} LIMIT 1`
+        `SELECT e.source FROM ${RANGED} WHERE lower(e.source) = lower(?) AND e.${GLOSSARY}
+           AND e.id != ? AND ${OVERLAPS} LIMIT 1`
       )
-      .get<{ source: string }>(candidate, ...(excludeEntryId ? [excludeEntryId] : []))
+      .get<{ source: string }>(candidate, excludeEntryId ?? '', ...overlapParams(range))
 
     if (existingEntry) {
       throw new StorageError('conflict', `Thuật ngữ "${candidate}" đã tồn tại trong từ điển.`)
@@ -150,11 +205,10 @@ function checkUniqueness(db: Db, source: string, aliases: string[], excludeEntry
     // Check if exists as context_alias form
     const existingAlias = db
       .prepare(
-        excludeEntryId
-          ? 'SELECT form FROM context_alias WHERE lower(form) = lower(?) AND entry_id != ? LIMIT 1'
-          : 'SELECT form FROM context_alias WHERE lower(form) = lower(?) LIMIT 1'
+        `SELECT a.form FROM ${RANGED} JOIN context_alias a ON a.entry_id = e.id
+         WHERE lower(a.form) = lower(?) AND a.entry_id != ? AND ${OVERLAPS} LIMIT 1`
       )
-      .get<{ form: string }>(candidate, ...(excludeEntryId ? [excludeEntryId] : []))
+      .get<{ form: string }>(candidate, excludeEntryId ?? '', ...overlapParams(range))
 
     if (existingAlias) {
       throw new StorageError(
@@ -341,7 +395,7 @@ export function createContextEntry(db: Db, params: CreateContextEntryParams): Co
 
     validateChapters(db, fromChapterId, toChapterId)
     dropRejectedOwners(db, [source, ...aliases])
-    checkUniqueness(db, source, aliases)
+    checkUniqueness(db, source, aliases, undefined, rangeOf(db, fromChapterId, toChapterId))
 
     db.prepare(`
       INSERT INTO context_entry (
@@ -370,6 +424,22 @@ export function createContextEntry(db: Db, params: CreateContextEntryParams): Co
     for (const form of aliases) {
       insertAlias.run(randomUUID(), id, form, now)
     }
+    recordChange(
+      db,
+      {
+        entryId: id,
+        actor: origin === 'ai' ? 'ai' : 'user',
+        kind: 'create',
+        field: 'target',
+        oldValue: null,
+        newValue: target,
+        fromChapterId,
+        quote: null,
+        quoteChapterId: null,
+        runId: null
+      },
+      now
+    )
 
     touchWork(db, now)
 
@@ -441,9 +511,17 @@ export function updateContextEntry(
       nextAliases.length !== current.aliases.length ||
       nextAliases.some((a, i) => a.toLowerCase() !== (current.aliases[i]?.toLowerCase() ?? ''))
 
-    if (sourceChanged || aliasesChanged) {
+    const rangeChanged =
+      nextFromChapterId !== current.fromChapterId || nextToChapterId !== current.toChapterId
+    if (sourceChanged || aliasesChanged || rangeChanged) {
       dropRejectedOwners(db, [nextSource, ...nextAliases], id)
-      checkUniqueness(db, nextSource, nextAliases, id)
+      checkUniqueness(
+        db,
+        nextSource,
+        nextAliases,
+        id,
+        rangeOf(db, nextFromChapterId, nextToChapterId)
+      )
     }
 
     db.prepare(`
@@ -474,6 +552,29 @@ export function updateContextEntry(
         insertAlias.run(randomUUID(), id, form, now)
       }
     }
+    // Every edit here comes from a person (the Glossary screen): it is history, and AI proposals stop
+    // overwriting the entry from now on.
+    recordFieldChanges(
+      db,
+      {
+        entryId: id,
+        actor: 'user',
+        kind: 'correction',
+        fromChapterId: null,
+        quote: null,
+        quoteChapterId: null,
+        runId: null
+      },
+      entryFields(current),
+      entryFields({
+        source: nextSource,
+        target: nextTarget,
+        notes: nextNotes,
+        aliases: nextAliases
+      }),
+      now
+    )
+    db.prepare('UPDATE context_entry SET user_edited_at = ? WHERE id = ?').run(now, id)
 
     touchWork(db, now)
 
@@ -567,7 +668,7 @@ function ownerOf(db: Db, form: string): MatchRow | null {
   )
 }
 
-const parseFlags = (json: string): ReviewFlag[] => {
+export const parseFlags = (json: string): ReviewFlag[] => {
   try {
     const flags = JSON.parse(json) as unknown
     return Array.isArray(flags) ? (flags as ReviewFlag[]) : []
@@ -662,7 +763,25 @@ export function saveExtraction(db: Db, input: SaveExtractionInput): SaveExtracti
       )
       for (const form of aliases) insertAlias.run(newId(), id, form, now)
       addEvidence(id, candidate.evidence)
-      if (candidate.status !== 'rejected') pending.push(id)
+      if (candidate.status !== 'rejected') {
+        pending.push(id)
+        recordChange(
+          db,
+          {
+            entryId: id,
+            actor: 'ai',
+            kind: 'create',
+            field: 'target',
+            oldValue: null,
+            newValue: candidate.target.trim(),
+            fromChapterId: null,
+            quote: candidate.evidence[0]?.quote ?? null,
+            quoteChapterId: candidate.evidence[0]?.chapterId ?? null,
+            runId: input.runId
+          },
+          now
+        )
+      }
     }
 
     const scan = db.prepare(

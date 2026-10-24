@@ -662,6 +662,56 @@ const version18 = `
 ALTER TABLE context_entry ADD COLUMN reading TEXT;
 `
 
+/**
+ * Context that changes over the story (change `add-context-progression`): a form is unique per entry, so
+ * an entry closed at chapter N−1 and the one that replaces it from N can share their forms (overlap is
+ * checked in code); entries remember what they replace and when a person last edited them; every change
+ * is recorded; hand edits of a translation leave signals.
+ */
+const version19 = `
+CREATE TABLE context_alias_v19 (
+  id TEXT PRIMARY KEY,
+  entry_id TEXT NOT NULL REFERENCES context_entry (id) ON DELETE CASCADE,
+  form TEXT NOT NULL,
+  created_at INTEGER NOT NULL,
+  UNIQUE (entry_id, form)
+);
+INSERT INTO context_alias_v19 (id, entry_id, form, created_at)
+  SELECT id, entry_id, form, created_at FROM context_alias;
+DROP TABLE context_alias;
+ALTER TABLE context_alias_v19 RENAME TO context_alias;
+CREATE INDEX context_alias_entry ON context_alias (entry_id);
+CREATE INDEX context_alias_form ON context_alias (form);
+
+ALTER TABLE context_entry ADD COLUMN supersedes_id TEXT REFERENCES context_entry (id) ON DELETE SET NULL;
+ALTER TABLE context_entry ADD COLUMN user_edited_at INTEGER;
+
+CREATE TABLE context_entry_change (
+  id TEXT PRIMARY KEY,
+  entry_id TEXT NOT NULL REFERENCES context_entry (id) ON DELETE CASCADE,
+  actor TEXT NOT NULL CHECK (actor IN ('ai', 'user', 'user_edit_signal', 'code')),
+  kind TEXT NOT NULL CHECK (kind IN ('create', 'correction', 'progression')),
+  field TEXT NOT NULL,
+  old_value TEXT,
+  new_value TEXT,
+  from_chapter_id TEXT REFERENCES chapter (id) ON DELETE SET NULL,
+  quote TEXT,
+  quote_chapter_id TEXT REFERENCES chapter (id) ON DELETE SET NULL,
+  run_id TEXT,
+  created_at INTEGER NOT NULL
+);
+CREATE INDEX context_entry_change_entry ON context_entry_change (entry_id);
+
+CREATE TABLE context_edit_signal (
+  entry_id TEXT NOT NULL REFERENCES context_entry (id) ON DELETE CASCADE,
+  chapter_id TEXT NOT NULL REFERENCES chapter (id) ON DELETE CASCADE,
+  old_value TEXT NOT NULL,
+  new_value TEXT NOT NULL,
+  created_at INTEGER NOT NULL,
+  PRIMARY KEY (entry_id, chapter_id, new_value)
+);
+`
+
 export const workSchema: SchemaSpec = {
   applicationId: WORK_APPLICATION_ID,
   migrations: [
@@ -772,6 +822,13 @@ export const workSchema: SchemaSpec = {
       version: 18,
       up(db) {
         db.exec(version18)
+      }
+    },
+    {
+      version: 19,
+      foreignKeysOff: true,
+      up(db) {
+        db.exec(version19)
       }
     }
   ]
