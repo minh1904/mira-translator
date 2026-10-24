@@ -94,4 +94,40 @@ describe('turnItems', () => {
     ])
     expect(childCalls(calls, 'p').map((item) => item.id)).toEqual(['a'])
   })
+
+  describe('todo_list', () => {
+    const write = (id: string, todos: unknown, patch: Partial<AgentToolCallView> = {}) =>
+      call(id, { name: 'todo_list', args: { todos }, ...patch })
+    const first = [{ content: 'Đọc', status: 'in_progress' }]
+    const later = [{ content: 'Đọc', status: 'completed' }]
+
+    it('draws one card at the first write, with what the latest write holds', () => {
+      const items = turnItems({
+        turn,
+        parts: [
+          part({ seq: 1, kind: 'tool_call', toolCallId: 'w1' }),
+          part({ seq: 2, round: 2, kind: 'tool_call', toolCallId: 'r1' }),
+          part({ seq: 3, round: 3, kind: 'tool_call', toolCallId: 'read' }),
+          part({ seq: 4, round: 4, kind: 'tool_call', toolCallId: 'w2' })
+        ],
+        toolCalls: {
+          w1: write('w1', first),
+          r1: call('r1', { round: 2 }),
+          read: call('read', { round: 3, name: 'todo_list', args: {} }),
+          w2: write('w2', later, { round: 4 })
+        }
+      })
+      expect(items.map((item) => item.kind)).toEqual(['todo', 'tool'])
+      expect(items[0]).toMatchObject({ kind: 'todo', items: later })
+    })
+
+    it('keeps a failed write as a tool row and leaves turns without a list alone', () => {
+      const items = turnItems({
+        turn,
+        parts: [part({ seq: 1, kind: 'tool_call', toolCallId: 'bad' })],
+        toolCalls: { bad: write('bad', 'x', { state: 'failed' }) }
+      })
+      expect(items.map((item) => item.kind)).toEqual(['tool'])
+    })
+  })
 })

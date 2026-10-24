@@ -13,6 +13,9 @@ export interface WorkAreaProps {
   addChapterSignal: number
   /** Mở hộp thoại xuất cho các chương được chọn. */
   onExportChapters(ids: ReadonlySet<string>): void
+  /** Tên và số chương của tác phẩm, cho khu cần nói tên tác phẩm trong câu lệnh điền sẵn. */
+  workTitle: string
+  chapterCount: number
 }
 
 /**
@@ -24,5 +27,7 @@ export interface WorkArea {
   label: string
   /** Đánh dấu khu vực đang ở dạng minh họa ("Sắp có"). */
   soon?: boolean
+  /** Dấu nhỏ cạnh nhãn tab (đang chạy, số việc cần xử lý); trả về null khi không có gì để báo. */
+  Badge?: (props: { workId: string }) => ReactNode
   render(props: WorkAreaProps): ReactNode
 }

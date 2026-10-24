@@ -1,6 +1,8 @@
+import type { CultureId, SettingId } from '../../../../../shared/contracts/addressing/types'
 import type {
   BuiltinSourceLanguage,
   SourceLanguage,
+  WorkSetting,
   WorkSummary
 } from '../../../../../shared/contracts/library'
 
@@ -24,6 +26,11 @@ export interface Work {
   author?: string
   /** Thể loại dạng văn bản tự do, ví dụ "Tiên hiệp, cổ đại". */
   genre?: string
+  /** Bối cảnh chính đã chọn; 'none' là không dùng bảng xưng hô; không có là chưa chọn. */
+  setting?: WorkSetting
+  settingsExtra?: SettingId[]
+  /** Văn hóa gốc đã chọn; không có là chưa chọn. */
+  culture?: CultureId
   /** Phiên bản ảnh bìa, thay đổi mỗi khi cập nhật bìa; không có khi tác phẩm chưa có ảnh bìa. */
   coverVersion?: number
   sourceLanguage: SourceLanguage
@@ -88,6 +95,9 @@ export function toWork(summary: WorkSummary): Work {
     description: summary.description ?? undefined,
     author: summary.author ?? undefined,
     genre: summary.genre ?? undefined,
+    setting: summary.setting ?? undefined,
+    settingsExtra: summary.settingsExtra,
+    culture: summary.culture ?? undefined,
     coverVersion: summary.coverVersion ?? undefined,
     sourceLanguage: summary.sourceLang,
     chapterCount: summary.chapterCount,

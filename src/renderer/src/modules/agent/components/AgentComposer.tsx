@@ -27,6 +27,7 @@ import { commandHistory, historyStep } from './commandHistory'
 import { attachmentKey, composeContext, pinnedSelection } from './composeContext'
 import { ContextChipRow } from './ContextChipRow'
 import { PermissionLevelMenu } from './PermissionLevelMenu'
+import { SteerList } from './SteerList'
 
 const NO_ATTACHMENTS: AgentAttachment[] = []
 const NO_WORKS: string[] = []
@@ -36,6 +37,9 @@ export const COMPOSER_PLACEHOLDERS = {
   ask: 'Hỏi về truyện, chương hoặc bản dịch',
   agent: 'Mô tả việc cần làm'
 } as const
+
+/** While a turn runs, what the user types goes into that turn instead of starting another one. */
+export const STEER_PLACEHOLDER = 'Gõ thêm để chỉnh hướng lượt đang chạy'
 
 /** Model của Trợ lý: chọn một lần trên ô soạn, dùng cho mọi phiên và cả khi trả lời câu hỏi đang chờ. */
 export function useAgentModel(): ModelPicker {
@@ -102,6 +106,10 @@ export function AgentComposer({
   const resendEdited = useAgentStore((s) => s.resendEdited)
   const cancel = useAgentStore((s) => s.cancel)
   const busy = useAgentStore((s) => s.isStreaming)
+  const steer = useAgentStore((s) => s.steer)
+  const steers = useAgentStore((s) => s.steers)
+  const withdrawSteer = useAgentStore((s) => s.withdrawSteer)
+  const resendSteer = useAgentStore((s) => s.resendSteer)
   const mode = useAgentStore((s) => s.mode)
   const setMode = useAgentStore((s) => s.setMode)
   const pendingQuestion = useAgentStore((s) => s.pending.find((item) => item.kind === 'question'))
@@ -113,6 +121,8 @@ export function AgentComposer({
   const [confirming, setConfirming] = useState<number | null>(null)
   const [skipNextTime, setSkipNextTime] = useState(false)
   const ready = draft.trim() !== '' && model.selection !== null
+  // A message typed while the turn runs carries only text: no chips, mode or model of its own.
+  const steering = busy && !edit
   const key = edit ? draftKey : undefined
   const setDraft = (text: string) => store.setDraft(text, key)
   const setImplicitAdded = (added: boolean) => store.setImplicitAdded(added, key)
@@ -154,6 +164,10 @@ export function AgentComposer({
 
   const submit = async (): Promise<void> => {
     const text = draft.trim()
+    if (steering) {
+      if (text) await steer(text)
+      return
+    }
     if (!text || busy || !model.selection) return
     if (edit) {
       const state = useAgentStore.getState()
@@ -251,6 +265,13 @@ export function AgentComposer({
         />
       )}
       {!edit && <EditedChaptersBar onOpenTarget={onOpenTarget} />}
+      {!edit && (
+        <SteerList
+          steers={steers}
+          onWithdraw={(steerId) => void withdrawSteer(steerId)}
+          onResend={(item) => void resendSteer(item, model.selection ?? undefined)}
+        />
+      )}
       {/* biome-ignore lint/a11y/noStaticElementInteractions: Ctrl+/ mở picker từ mọi control trong khung. */}
       <div
         onKeyDown={onFrameKeyDown}
@@ -289,7 +310,7 @@ export function AgentComposer({
           onKeyDown={onKeyDown}
           rows={2}
           className="min-h-[38px] max-h-[160px] resize-none border-0 bg-transparent px-1.5 py-1 text-body-sm leading-normal text-default hover:bg-transparent focus:outline-none focus-visible:outline-none placeholder:text-muted"
-          placeholder={placeholder ?? COMPOSER_PLACEHOLDERS[mode]}
+          placeholder={steering ? STEER_PLACEHOLDER : (placeholder ?? COMPOSER_PLACEHOLDERS[mode])}
         />
         {(model.loadError ?? model.modelNotice) && (
           <p role="alert" className="m-0 px-1 py-0.5 text-body-xs text-error">
@@ -309,6 +330,7 @@ export function AgentComposer({
             workId={active.workId}
             taken={taken}
             count={attachments.length}
+            disabled={steering}
             onPick={(attachment) => {
               addAttachment(attachment)
               focusInput()
@@ -316,6 +338,7 @@ export function AgentComposer({
           />
           <Button
             variant="ghost"
+            disabled={steering}
             onClick={() => setMode(mode === 'agent' ? 'ask' : 'agent')}
             title={
               mode === 'agent'
@@ -341,6 +364,7 @@ export function AgentComposer({
             suggestions={model.suggestions}
             onAddCustom={model.addCustomModel}
             onOpenSettings={openModelList}
+            disabled={steering}
           />
           <span className="flex-1" />
           {edit && (
@@ -352,6 +376,17 @@ export function AgentComposer({
             >
               Hủy
             </Button>
+          )}
+          {steering && draft.trim() !== '' && (
+            <CompactButton
+              variant="dark"
+              round
+              aria-label="Gửi thêm vào lượt đang chạy"
+              title="Gửi thêm (Enter)"
+              icon={<ArrowUpIcon size={12} />}
+              onClick={() => void submit()}
+              className="size-[22px] !min-h-[22px] !min-w-[22px] shrink-0 p-0"
+            />
           )}
           {busy ? (
             <CompactButton

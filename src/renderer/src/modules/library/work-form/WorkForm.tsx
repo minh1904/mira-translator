@@ -11,6 +11,7 @@ import { TextareaField } from '../../../components/ui/Field'
 import { TextField } from '../../../components/ui/Field'
 import { CoverPicker } from '../catalog/CoverPicker'
 import { languageMeta, languages } from '../catalog/works'
+import { GenreChips, StoryProfileFields } from './StoryProfileFields'
 import { emptyWorkForm, type WorkFormValues } from './workFormValues'
 
 const languageOptions = (Object.keys(languages) as SourceLanguage[]).map((value) => ({
@@ -171,14 +172,22 @@ export function WorkForm({
         onChange={(event) => set('author', event.target.value)}
       />
 
+      <GenreChips
+        genre={values.genre}
+        onChange={(genre) => set('genre', genre)}
+        disabled={submitting}
+      />
+
       <TextField
-        label="Thể loại / bối cảnh (tùy chọn)"
-        hint="Ví dụ: tiên hiệp, cổ đại. Giúp AI chọn xưng hô và giọng văn."
+        label="Thể loại khác (tùy chọn)"
+        hint="Chip ở trên được ghi vào đây; gõ thêm thể loại hay ghi chú nếu cần. Giúp AI chọn xưng hô và giọng văn."
         value={values.genre}
         maxLength={TITLE_MAX}
         error={fieldErrors.genre}
         onChange={(event) => set('genre', event.target.value)}
       />
+
+      <StoryProfileFields values={values} set={set} disabled={submitting} />
 
       <TextareaField
         label="Mô tả (tùy chọn)"

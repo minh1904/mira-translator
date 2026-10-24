@@ -13,6 +13,9 @@ function initialValues(work: Work, cover: string | null): WorkFormValues {
     originalTitle: work.originalTitle ?? '',
     author: work.author ?? '',
     genre: work.genre ?? '',
+    setting: work.setting ?? '',
+    settingsExtra: work.settingsExtra ?? [],
+    culture: work.culture ?? '',
     description: work.description ?? '',
     cover
   }

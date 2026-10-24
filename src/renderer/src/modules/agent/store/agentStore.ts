@@ -14,6 +14,8 @@ import type {
   AgentSendInput,
   AgentSessionDetailView,
   AgentSessionView,
+  AgentSteer,
+  AgentSteerEvent,
   AgentStreamEvent,
   AgentToolCallView,
   AgentTurnView
@@ -104,6 +106,8 @@ export interface AgentState {
   editedChapters: AgentEditedChapter[]
   /** Why undoing a row failed, by `workId:chapterId`; cleared when the row is acted on again. */
   editConflicts: Record<string, string>
+  /** Messages typed while a turn ran that still wait, or that came back to the user. */
+  steers: AgentSteer[]
   /** Answer elements of the session's turns, as Main stored them. */
   parts: AgentResponsePart[]
   /** Tool calls of the session by id, subagent calls included; events update them live. */
@@ -130,6 +134,8 @@ export interface AgentState {
    * command edited in place).
    */
   setDraft: (text: string, draftKey?: string) => void
+  /** Adds text after what is already typed, on a new line; the draft is never overwritten. */
+  appendDraft: (text: string, draftKey?: string) => void
   /** Adds or dims the suggested chip of the draft. */
   setImplicitAdded: (added: boolean, draftKey?: string) => void
   /** Dismisses or restores the chip of the open work for the session the draft belongs to. */
@@ -188,6 +194,19 @@ export interface AgentState {
   continueAfter: (turn: AgentTurnView, modelSelection?: SendModel) => Promise<boolean>
   loadToolCallDetail: (toolCallId: string) => Promise<void>
   cancel: (turnId?: string) => Promise<void>
+  /**
+   * Sends what the user typed while the turn runs as a steer message; the draft stays when Main
+   * refuses it (the turn just ended, or five already wait).
+   */
+  steer: (text: string) => Promise<boolean>
+  /** Withdraws a waiting message, or drops one that came back. */
+  withdrawSteer: (steerId: string) => Promise<void>
+  /**
+   * Sends a message that came back as a new turn, or, while a turn waits for an answer, puts it in
+   * the composer, since only that answer can carry on the waiting turn.
+   */
+  resendSteer: (steer: AgentSteer, modelSelection?: SendModel) => Promise<boolean>
+  handleSteerEvent: (event: AgentSteerEvent) => void
   undo: (operationId: string) => Promise<void>
   handleStreamEvent: (event: AgentStreamEvent) => void
   listenCoordinator: () => () => void
@@ -386,7 +405,8 @@ export const useAgentStore = create<AgentState>((set, get) => {
         pending: detail.pending,
         permissionLevel: detail.session.permissionLevel,
         sessionApprovals: detail.sessionApprovals,
-        editedChapters: detail.editedChapters
+        editedChapters: detail.editedChapters,
+        steers: detail.steers ?? []
       }
     })
     const state = get()
@@ -411,6 +431,7 @@ export const useAgentStore = create<AgentState>((set, get) => {
     sessionApprovals: [],
     editedChapters: [],
     editConflicts: {},
+    steers: [],
     parts: [],
     toolCalls: {},
     toolCallDetails: {},
@@ -444,6 +465,7 @@ export const useAgentStore = create<AgentState>((set, get) => {
           activities: {},
           operations: {},
           pending: [],
+          steers: [],
           permissionLevel: session?.permissionLevel ?? 'default',
           sessionApprovals: []
         })
@@ -528,6 +550,11 @@ export const useAgentStore = create<AgentState>((set, get) => {
     setDraft: (text, draftKey) => {
       const key = draftKey ?? get().activeSessionId ?? NEW_CHAT
       set((s) => ({ drafts: { ...s.drafts, [key]: text } }))
+    },
+    appendDraft: (text, draftKey) => {
+      const key = draftKey ?? get().activeSessionId ?? NEW_CHAT
+      const draft = get().drafts[key]
+      get().setDraft(draft ? `${draft}\n${text}` : text, key)
     },
     clearDraft: (draftKey) =>
       set((s) => {
@@ -753,6 +780,74 @@ export const useAgentStore = create<AgentState>((set, get) => {
       await get().refresh()
     },
 
+    steer: async (text) => {
+      const state = get()
+      const api = bridge()
+      const turnId = state.streamingTurnId
+      const sessionId = state.activeSessionId
+      if (!api?.turn?.steer || !turnId || !sessionId) return false
+      set({ lastError: null })
+      const res = await api.turn.steer({
+        sessionId,
+        turnId,
+        clientCommandId: crypto.randomUUID(),
+        text
+      })
+      if (!res.ok) {
+        set({ lastError: res.error.message })
+        return false
+      }
+      get().handleSteerEvent({ sessionId, steer: res.value })
+      set((s) => {
+        const drafts = { ...s.drafts }
+        delete drafts[sessionId]
+        return { drafts }
+      })
+      return true
+    },
+
+    withdrawSteer: async (steerId) => {
+      const api = bridge()
+      const sessionId = get().activeSessionId
+      if (!api?.turn?.withdrawSteer || !sessionId) return
+      const res = await api.turn.withdrawSteer(steerId)
+      if (res.ok) get().handleSteerEvent({ sessionId, steer: res.value })
+      else set({ lastError: res.error.message })
+    },
+
+    resendSteer: async (steer, modelSelection) => {
+      const state = get()
+      const sessionId = state.activeSessionId
+      if (!sessionId) return false
+      if (state.pending.length > 0 || state.isStreaming) {
+        // A waiting turn takes only its own answer; the text goes to the composer to be sent later.
+        const draft = state.drafts[sessionId]?.trim()
+        get().setDraft(draft ? `${draft}\n${steer.text}` : steer.text)
+        await get().withdrawSteer(steer.id)
+        return true
+      }
+      const turn = state.turns.find((item) => item.id === steer.turnId)
+      const sent = await get().send(steer.text, {
+        keepDraft: true,
+        ...(turn ? { context: turn.context, mode: turn.mode } : {}),
+        ...(modelSelection ? { modelSelection } : {})
+      })
+      if (sent) await get().withdrawSteer(steer.id)
+      return sent
+    },
+
+    handleSteerEvent: ({ sessionId, steer }) => {
+      if (get().activeSessionId !== sessionId) return
+      const shown = steer.state === 'pending' || steer.state === 'returned'
+      set((s) => ({
+        steers: shown
+          ? upsertList(s.steers, [steer]).sort((a, b) => a.createdAt - b.createdAt || a.seq - b.seq)
+          : s.steers.filter((item) => item.id !== steer.id)
+      }))
+      // A delivered message becomes a part of the turn and a forwarded one a new turn: read them back.
+      if (steer.state === 'delivered' || steer.state === 'forwarded') void get().refresh()
+    },
+
     undo: async (operationId: string) => {
       const api = bridge()
       if (!api?.operations?.undo) return
@@ -878,6 +973,7 @@ export const useAgentStore = create<AgentState>((set, get) => {
         sessionApprovals: [],
         editedChapters: [],
         editConflicts: {},
+        steers: [],
         parts: [],
         toolCalls: {},
         toolCallDetails: {},
@@ -927,11 +1023,13 @@ export const useAgentStore = create<AgentState>((set, get) => {
     })
 
     const unbindStream = api.onStreamEvent?.((ev) => get().handleStreamEvent(ev))
+    const unbindSteer = api.onSteerChanged?.((ev) => get().handleSteerEvent(ev))
 
     return () => {
       unbindIntent?.()
       unbindChanged?.()
       unbindStream?.()
+      unbindSteer?.()
     }
   }
 })

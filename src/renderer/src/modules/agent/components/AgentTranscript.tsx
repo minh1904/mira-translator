@@ -6,7 +6,7 @@ import type {
   AgentTurnView,
   ResolvedTarget
 } from '../../../../../shared/contracts/agent'
-import { isEmptyTurn } from '../../../../../shared/contracts/agentEmptyTurn'
+import { offersContinue } from '../../../../../shared/contracts/agentEmptyTurn'
 import { EmptyState } from '../../../components/ui/EmptyState'
 import { useAgentStore } from '../store/agentStore'
 import { useAgentModel } from './AgentComposer'
@@ -15,6 +15,7 @@ import { MarkdownPart } from './MarkdownPart'
 import { OperationCard } from './OperationCard'
 import { PendingActionCard } from './PendingActionCard'
 import { ThinkingPart } from './ThinkingPart'
+import { TodoCard } from './TodoCard'
 import { ToolCallRow } from './ToolCallRow'
 import { TurnRequest } from './TurnRequest'
 import { TurnFooter } from './TurnFooter'
@@ -158,6 +159,17 @@ export function AgentTranscript({ onOpenTarget, className }: AgentTranscriptProp
         </p>
       )
     }
+    if (item.kind === 'todo') return <TodoCard key={item.key} items={item.items} />
+    if (item.kind === 'steer') {
+      return (
+        <div key={item.key} className="flex flex-col items-end gap-0.5">
+          <span className="px-1 text-label-xs text-muted">Gửi thêm khi đang chạy</span>
+          <p className="selectable m-0 max-w-[90%] whitespace-pre-wrap wrap-anywhere rounded-md bg-muted px-2.5 py-1.5 text-body-sm leading-normal text-default">
+            {item.text}
+          </p>
+        </div>
+      )
+    }
     const { call } = item
     return (
       <div key={item.key} className="flex flex-col gap-1">
@@ -221,11 +233,11 @@ export function AgentTranscript({ onOpenTarget, className }: AgentTranscriptProp
             !streaming && !waiting && turn.status !== 'queued' && turn.status !== 'running'
           const isLast = turnIndex === turns.length - 1
           const hasText = items.some((item) => item.kind === 'text')
-          // Only the newest turn can be carried on, and only when it gave the user nothing.
+          // Only the newest turn can be carried on: when it gave the user nothing or hit a limit.
           const canContinue =
             isLast &&
             turn.status === 'completed' &&
-            isEmptyTurn({
+            offersContinue({
               parts: parts.filter((part) => part.turnId === turn.id),
               toolCalls: Object.values(toolCalls).filter((call) => call.turnId === turn.id)
             })

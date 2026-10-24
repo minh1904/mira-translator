@@ -44,3 +44,35 @@ describe('buildPatch', () => {
     expect(buildPatch(base, { ...base, sourceLang: 'ja' })).toEqual({})
   })
 })
+
+describe('buildPatch: bối cảnh và văn hóa', () => {
+  it('chỉ gửi giá trị đổi, và đổi về "tự suy" gửi null', () => {
+    expect(buildPatch(base, { ...base, setting: 'court' })).toEqual({ setting: 'court' })
+    expect(buildPatch(base, { ...base, culture: 'ja' })).toEqual({ culture: 'ja' })
+    expect(buildPatch({ ...base, setting: 'court', culture: 'zh' }, { ...base })).toEqual({
+      setting: null,
+      culture: null
+    })
+  })
+
+  it('"không dùng bảng" gửi nguyên giá trị none', () => {
+    expect(buildPatch(base, { ...base, setting: 'none' })).toEqual({ setting: 'none' })
+  })
+
+  it('bối cảnh phụ gửi cả danh sách khi đổi, kể cả khi bỏ hết', () => {
+    const before = { ...base, setting: 'court' as const, settingsExtra: ['cultivation' as const] }
+    expect(buildPatch(before, { ...before, settingsExtra: ['cultivation', 'game'] })).toEqual({
+      settingsExtra: ['cultivation', 'game']
+    })
+    expect(buildPatch(before, { ...before, settingsExtra: [] })).toEqual({ settingsExtra: [] })
+    expect(buildPatch(before, { ...before })).toEqual({})
+  })
+
+  it('bỏ bối cảnh chính kèm bỏ bối cảnh phụ trong cùng một bản vá', () => {
+    const before = { ...base, setting: 'court' as const, settingsExtra: ['cultivation' as const] }
+    expect(buildPatch(before, { ...before, setting: '', settingsExtra: [] })).toEqual({
+      setting: null,
+      settingsExtra: []
+    })
+  })
+})

@@ -194,6 +194,56 @@ describe('AgentTranscript', () => {
     expect(wrote).not.toContain('>Tiếp tục<')
   })
 
+  it('offers Tiếp tục under a turn that answered and wrote but stopped on a limit', () => {
+    const notice = 'Lượt dừng vì chạm giới hạn: Đã dùng hết 15 vòng của lượt.'
+    const html = render({
+      turns: [turn()],
+      parts: [
+        part(1, { kind: 'tool_call', toolCallId: 'c1' }),
+        part(2, { id: 'p2', text: 'Đã dịch chương 1, còn chương 2.' }),
+        part(3, { id: 'p3', round: 0, kind: 'progress', text: notice })
+      ],
+      toolCalls: { c1: call({ name: 'translate_chapter' }) }
+    })
+    expect(html).toContain(notice)
+    expect(html.match(/>Tiếp tục</g)).toHaveLength(1)
+  })
+
+  it('draws the stored step list as a checklist card in place of its tool rows', () => {
+    const todos = (status: string) => ({ todos: [{ content: 'Dịch chương 2', status }] })
+    const html = render({
+      turns: [turn()],
+      parts: [
+        part(1, { kind: 'tool_call', toolCallId: 'w1' }),
+        part(2, { id: 'p2', round: 2, kind: 'tool_call', toolCallId: 'w2' }),
+        part(3, { id: 'p3', round: 3, text: 'Xong.' })
+      ],
+      toolCalls: {
+        w1: call({ id: 'w1', name: 'todo_list', args: todos('in_progress') }),
+        w2: call({ id: 'w2', round: 2, name: 'todo_list', args: todos('completed') })
+      }
+    })
+    expect(html.match(/aria-label="Danh sách bước"/g)).toHaveLength(1)
+    expect(html).toContain('Đã xong: ')
+    expect(html).not.toContain('Đang đọc danh sách tác phẩm')
+  })
+
+  it('draws a steer message after the calls of its round and before the next round', () => {
+    const html = render({
+      turns: [turn()],
+      parts: [
+        part(1, { kind: 'tool_call', toolCallId: 'c1' }),
+        part(2, { id: 'p2', kind: 'steer', text: 'bỏ qua chương 4' }),
+        part(3, { id: 'p3', round: 2, text: 'Đã bỏ chương 4.' })
+      ],
+      toolCalls: { c1: call() }
+    })
+    const at = (needle: string) => html.indexOf(needle)
+    expect(at('Gửi thêm khi đang chạy')).toBeGreaterThan(at('Đã đọc danh sách tác phẩm'))
+    expect(at('bỏ qua chương 4')).toBeGreaterThan(at('Gửi thêm khi đang chạy'))
+    expect(at('Đã bỏ chương 4.')).toBeGreaterThan(at('bỏ qua chương 4'))
+  })
+
   it('hides Tiếp tục while the turn is still running', () => {
     const html = render({
       turns: [turn({ status: 'running', answer: '' })],

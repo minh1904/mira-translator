@@ -36,7 +36,7 @@ export function TurnFooter({
   error: string | null
   isLast: boolean
   onRetry(): void
-  /** Offered when the turn ended without a reply; sends "Tiếp tục" in the same session. */
+  /** Offered when the turn ended without a reply or on a limit; sends "Tiếp tục" in the same session. */
   onContinue?: () => void
 }): JSX.Element {
   const [copied, setCopied] = useState(false)

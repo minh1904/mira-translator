@@ -1,4 +1,5 @@
 import { create } from 'zustand'
+import type { AgentOperation } from '../../../../../shared/contracts/agent'
 import type {
   AgentTaskChanged,
   AgentTaskCommand,
@@ -10,6 +11,8 @@ import { registerStoreReset } from '../../../lib/testing/resetStores'
 
 export interface TaskState {
   tasks: AgentTaskSummary[]
+  /** Recent AI runs, chat and task alike; the Activity screen lists the chat ones. */
+  operations: AgentOperation[]
   /** Item lists of the tasks a person expanded; refreshed with the list. */
   details: Record<string, AgentTaskDetailView>
   /** Quality warnings of the expanded tasks, computed by Main when read. */
@@ -23,7 +26,7 @@ export interface TaskState {
   collapse: (taskId: string) => void
   control: (taskId: string, command: AgentTaskCommand, itemId?: string) => Promise<void>
   /** Steers the task from a chapter on with a full instruction; announces where it really starts. */
-  steer: (taskId: string, chapterNumber: number, text: string) => Promise<boolean>
+  steer: (taskId: string, chapter: number | { chapterId: string }, text: string) => Promise<boolean>
   /** Ignores one warning for the paragraph's current text, then refetches the warnings. */
   dismiss: (taskId: string, itemId: string, finding: QaFinding, reason?: string) => Promise<void>
   /** Subscribes to `agentTaskChanged` and refetches; returns the unsubscribe. */
@@ -46,6 +49,31 @@ export const TASK_STATE_LABELS: Record<AgentTaskSummary['state'], string> = {
   failed: 'Lỗi'
 }
 
+const OPERATION_LIMIT = 200
+/** Chat runs raise no task event, so the list is read when it is this old, not on every task event. */
+const OPERATIONS_MAX_AGE_MS = 5000
+/** Task events that arrive together become one refetch: the first at once, the rest after this wait. */
+const COALESCE_MS = 500
+
+let operationsAt = 0
+let lastEventRefresh = 0
+let trailing: ReturnType<typeof setTimeout> | null = null
+
+function refreshSoon(refresh: () => Promise<void>): void {
+  const wait = lastEventRefresh + COALESCE_MS - Date.now()
+  if (wait <= 0) {
+    lastEventRefresh = Date.now()
+    void refresh()
+    return
+  }
+  if (trailing) return
+  trailing = setTimeout(() => {
+    trailing = null
+    lastEventRefresh = Date.now()
+    void refresh()
+  }, wait)
+}
+
 let listeners = 0
 let unbind: (() => void) | null = null
 
@@ -58,6 +86,7 @@ let refreshSeq = 0
 
 export const useTaskStore = create<TaskState>((set, get) => ({
   tasks: [],
+  operations: [],
   details: {},
   quality: {},
   load: 'idle',
@@ -75,6 +104,9 @@ export const useTaskStore = create<TaskState>((set, get) => ({
       set({ load: 'failed', lastError: res.error.message })
       return
     }
+    const stale = Date.now() - operationsAt > OPERATIONS_MAX_AGE_MS
+    const ran = stale ? await window.mira?.agent?.operations?.list(OPERATION_LIMIT) : undefined
+    if (ran?.ok) operationsAt = Date.now()
     const details: Record<string, AgentTaskDetailView> = {}
     const quality: Record<string, TaskQualityView> = {}
     for (const taskId of Object.keys(get().details)) {
@@ -84,7 +116,13 @@ export const useTaskStore = create<TaskState>((set, get) => ({
       if (warnings.ok) quality[taskId] = warnings.value
     }
     if (mine !== refreshSeq) return
-    set({ tasks: res.value.tasks, details, quality, load: 'ready' })
+    set({
+      tasks: res.value.tasks,
+      operations: ran?.ok ? ran.value : get().operations,
+      details,
+      quality,
+      load: 'ready'
+    })
   },
 
   expand: async (taskId) => {
@@ -120,14 +158,16 @@ export const useTaskStore = create<TaskState>((set, get) => ({
     await get().refresh()
   },
 
-  steer: async (taskId, chapterNumber, text) => {
+  steer: async (taskId, chapter, text) => {
     const api = bridge()
     if (!api) return false
     set({ lastError: null })
     const res = await api.steer({
       taskId,
       clientCommandId: crypto.randomUUID(),
-      chapterNumber,
+      ...(typeof chapter === 'number'
+        ? { chapterNumber: chapter }
+        : { chapterId: chapter.chapterId }),
       change: { kind: 'instruction', text }
     })
     if (res.ok) {
@@ -166,7 +206,7 @@ export const useTaskStore = create<TaskState>((set, get) => ({
               announcement: `Tác vụ dịch ${before.workTitle}: ${TASK_STATE_LABELS[event.state]}.`
             })
           }
-          void get().refresh()
+          refreshSoon(get().refresh)
         }) ?? null
     }
     return () => {
@@ -174,12 +214,26 @@ export const useTaskStore = create<TaskState>((set, get) => ({
       if (listeners === 0) {
         unbind?.()
         unbind = null
+        if (trailing) clearTimeout(trailing)
+        trailing = null
+        lastEventRefresh = 0
       }
     }
   },
 
-  reset: () =>
-    set({ tasks: [], details: {}, quality: {}, load: 'idle', lastError: null, announcement: '' })
+  reset: () => {
+    operationsAt = 0
+    lastEventRefresh = 0
+    set({
+      tasks: [],
+      operations: [],
+      details: {},
+      quality: {},
+      load: 'idle',
+      lastError: null,
+      announcement: ''
+    })
+  }
 }))
 
 registerStoreReset(() => useTaskStore.getState().reset())

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { AgentOperation } from '../../../../../shared/contracts/agent'
-import { operationMessage } from './OperationLog'
+import { operationMessage } from './activity'
 
 const operation = (patch: Partial<AgentOperation>): AgentOperation => ({
   id: 'op',

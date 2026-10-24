@@ -108,7 +108,7 @@ export function WorkDetailScreen({
           ]}
         />
       </TopBarTitle>
-      <div className="mx-auto flex max-w-[960px] flex-col gap-5 px-6 py-6">
+      <div className="mx-auto flex max-w-[1240px] flex-col gap-5 px-6 py-6">
         {saved && (
           <Alert tone="success" onDismiss={() => setSaved(null)}>
             {saved}
@@ -155,6 +155,8 @@ export function WorkDetailScreen({
             onWork: detail.applyWork,
             onOpenChapter: (chapterId) => onOpenChapter(workId, chapterId),
             addChapterSignal,
+            workTitle: work.title,
+            chapterCount: work.chapterCount,
             onExportChapters: (ids) => {
               setExportSelection(ids)
               setExportOpen(true)

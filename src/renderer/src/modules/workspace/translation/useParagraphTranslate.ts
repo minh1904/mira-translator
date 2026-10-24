@@ -270,7 +270,7 @@ export function useParagraphTranslate(
         }
         if (batch.contextChanged) {
           setContextNotice(
-            'Glossary, nhân vật hoặc xưng hô đã đổi sau khi lập kế hoạch. Lượt này vẫn dùng ' +
+            'Glossary, nhân vật, xưng hô hoặc bối cảnh truyện đã đổi sau khi lập kế hoạch. Lượt này vẫn dùng ' +
               'ngữ cảnh lúc bắt đầu; lập kế hoạch lại để áp dụng thay đổi.'
           )
         }

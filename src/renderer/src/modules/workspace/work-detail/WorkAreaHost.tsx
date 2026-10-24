@@ -90,6 +90,7 @@ export function WorkAreaHost({
         {areas.map((area) => (
           <TabsTab key={area.id} value={area.id} className="shrink-0">
             {area.label}
+            {area.Badge && <area.Badge workId={areaProps.workId} />}
             {area.soon && (
               <span className="ml-1.5 rounded-sm bg-selected px-1 py-px text-body-xs text-default">
                 {SOON_LABEL}

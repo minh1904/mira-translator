@@ -46,6 +46,8 @@ export interface AddContextPickerProps {
   /** How many chips the user added; at the limit the picker says so and adds nothing. */
   count: number
   onPick(attachment: AgentAttachment): void
+  /** Off while a turn runs: a message typed then carries no context of its own. */
+  disabled?: boolean
 }
 
 /**
@@ -58,7 +60,8 @@ export function AddContextPicker({
   workId,
   taken,
   count,
-  onPick
+  onPick,
+  disabled = false
 }: AddContextPickerProps): JSX.Element {
   const input = useRef<HTMLInputElement>(null)
   const [query, setQuery] = useState('')
@@ -110,6 +113,7 @@ export function AddContextPicker({
   return (
     <Popover.Root open={open} onOpenChange={onOpenChange}>
       <Popover.Trigger
+        disabled={disabled}
         title="Thêm ngữ cảnh (Ctrl+/)"
         render={
           <CompactButton

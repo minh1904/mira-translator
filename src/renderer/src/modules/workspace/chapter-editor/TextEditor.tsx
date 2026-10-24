@@ -62,7 +62,9 @@ const theme = EditorView.theme({
   },
   '.cm-scroller::-webkit-scrollbar': { display: 'none' },
   '.cm-content': { padding: '12px 0', caretColor: 'var(--mira-text)' },
-  '.cm-line': { padding: '0 8px' },
+  // Mỗi dòng là một đoạn: cách đoạn và căn đều như trang đọc truyện; dòng trống không cộng thêm khoảng
+  '.cm-line': { padding: '0 8px var(--mira-space-xs)', textAlign: 'justify' },
+  '.cm-line:has(> br:only-child)': { paddingBottom: '0' },
   '&.cm-focused .cm-selectionBackground, .cm-selectionBackground': {
     backgroundColor: 'var(--mira-text-selection)'
   }

@@ -3,6 +3,7 @@ import type {
   AgentActivity,
   AgentOperation,
   AgentSessionDetailView,
+  AgentSteer,
   AgentStreamEvent,
   AgentTurnView
 } from '../../../../../shared/contracts/agent'
@@ -68,6 +69,7 @@ const detail = (patch: Partial<AgentSessionDetailView> = {}): AgentSessionDetail
   session,
   turns: [],
   editedChapters: [],
+  steers: [],
   activities: [],
   operations: [],
   pending: [],
@@ -495,5 +497,117 @@ describe('agentStore', () => {
     expect(await useAgentStore.getState().retry(empty, model)).toBe(true)
     expect(useAgentStore.getState().drafts.s1).toBe('đang gõ dở')
     expect(useAgentStore.getState().composer.s1?.attachments).toEqual([attachment])
+  })
+})
+
+describe('agentStore steer messages', () => {
+  beforeEach(() => resetAllStores())
+  afterEach(() => {
+    ;(globalThis as unknown as { window?: unknown }).window = undefined
+  })
+
+  const steerRow = (patch: Partial<AgentSteer> = {}): AgentSteer => ({
+    id: 'm1',
+    turnId: 't1',
+    seq: 1,
+    text: 'chỉ chương 3',
+    state: 'pending',
+    deliveredRound: null,
+    forwardedTurnId: null,
+    createdAt: 20,
+    updatedAt: 20,
+    ...patch
+  })
+
+  it('sends what is typed into the running turn and clears the draft', async () => {
+    const api = bridge(async () => ({ ok: true, value: detail({ turns: [turn()] }) }))
+    const steer = vi.fn(async () => ({ ok: true, value: steerRow() }))
+    Object.assign(api.turn, { steer })
+    await useAgentStore.getState().selectSession('s1')
+    useAgentStore.getState().setDraft('chỉ chương 3')
+    expect(await useAgentStore.getState().steer('chỉ chương 3')).toBe(true)
+    expect(steer).toHaveBeenCalledWith(
+      expect.objectContaining({ sessionId: 's1', turnId: 't1', text: 'chỉ chương 3' })
+    )
+    expect(useAgentStore.getState().steers.map((s) => s.id)).toEqual(['m1'])
+    expect(useAgentStore.getState().drafts.s1).toBeUndefined()
+  })
+
+  it('keeps the draft and says why when Main refuses the message', async () => {
+    const api = bridge(async () => ({ ok: true, value: detail({ turns: [turn()] }) }))
+    Object.assign(api.turn, {
+      steer: vi.fn(async () => ({
+        ok: false,
+        error: { code: 'conflict', message: 'Lượt đã kết thúc; hãy gửi thành lệnh mới.' }
+      }))
+    })
+    await useAgentStore.getState().selectSession('s1')
+    useAgentStore.getState().setDraft('thêm')
+    expect(await useAgentStore.getState().steer('thêm')).toBe(false)
+    expect(useAgentStore.getState().drafts.s1).toBe('thêm')
+    expect(useAgentStore.getState().lastError).toContain('kết thúc')
+  })
+
+  it('follows events: shows waiting and returned messages, drops the rest and reads back delivery', async () => {
+    const api = bridge(async () => ({ ok: true, value: detail({ turns: [turn()] }) }))
+    await useAgentStore.getState().selectSession('s1')
+    const store = useAgentStore.getState()
+    store.handleSteerEvent({ sessionId: 's1', steer: steerRow() })
+    store.handleSteerEvent({ sessionId: 'other', steer: steerRow({ id: 'm9' }) })
+    expect(useAgentStore.getState().steers.map((s) => s.id)).toEqual(['m1'])
+    const reads = api.sessions.get.mock.calls.length
+    store.handleSteerEvent({
+      sessionId: 's1',
+      steer: steerRow({ state: 'delivered', deliveredRound: 2, updatedAt: 21 })
+    })
+    expect(useAgentStore.getState().steers).toEqual([])
+    await flush()
+    expect(api.sessions.get.mock.calls.length).toBeGreaterThan(reads)
+  })
+
+  it('puts a returned message in the composer while a turn waits for an answer', async () => {
+    const api = bridge(async () => ({
+      ok: true,
+      value: detail({
+        turns: [turn({ status: 'waiting_user' })],
+        steers: [steerRow({ state: 'returned' })],
+        pending: [
+          {
+            turnId: 't1',
+            toolCallId: 'c1',
+            argsDigest: 'd',
+            name: 'translate_chapter',
+            kind: 'approve'
+          } as never
+        ]
+      })
+    }))
+    const withdrawSteer = vi.fn(async () => ({
+      ok: true,
+      value: steerRow({ state: 'withdrawn', updatedAt: 22 })
+    }))
+    Object.assign(api.turn, { withdrawSteer })
+    await useAgentStore.getState().selectSession('s1')
+    const [returned] = useAgentStore.getState().steers
+    expect(await useAgentStore.getState().resendSteer(returned!)).toBe(true)
+    expect(useAgentStore.getState().drafts.s1).toBe('chỉ chương 3')
+    expect(api.turn.send).not.toHaveBeenCalled()
+    expect(withdrawSteer).toHaveBeenCalledWith('m1')
+    expect(useAgentStore.getState().steers).toEqual([])
+  })
+})
+
+describe('appendDraft', () => {
+  beforeEach(() => resetAllStores())
+
+  it('puts text after what is typed and never overwrites it', () => {
+    useAgentStore.getState().setDraft('đang gõ dở')
+    useAgentStore.getState().appendDraft('Tác vụ dịch gặp lỗi.')
+    expect(useAgentStore.getState().drafts[NEW_CHAT]).toBe('đang gõ dở\nTác vụ dịch gặp lỗi.')
+  })
+
+  it('is just the text when the composer is empty', () => {
+    useAgentStore.getState().appendDraft('Dịch chương 1 đến chương 12.')
+    expect(useAgentStore.getState().drafts[NEW_CHAT]).toBe('Dịch chương 1 đến chương 12.')
   })
 })

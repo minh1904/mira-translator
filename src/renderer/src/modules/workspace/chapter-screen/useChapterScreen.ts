@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import type { ChapterItem } from '../../../../../shared/contracts/chapters'
 import type { WorkSummary } from '../../../../../shared/contracts/library'
 import type { TextRecord } from '../../../../../shared/contracts/text'
+import { onAgentWorkUpdate } from '@renderer/modules/agent/public'
 import { describe } from '../../library/public'
 import { toWork, type Work } from '../../library/public'
 import { describeChapterError } from '../work-detail/useChapters'
@@ -106,6 +107,31 @@ export function useChapterScreen(
       if (ticket === latest.current) apply(result)
     })
   }, [fetchAll, apply])
+
+  // Only the work and chapter details refetch: the texts may hold edits the editor has not saved.
+  useEffect(
+    () =>
+      onAgentWorkUpdate(async () => {
+        const [work, chapters] = await Promise.all([
+          window.mira.works.get(workId),
+          window.mira.chapters.list(workId)
+        ])
+        if (work.ok) changed.current(work.value)
+        const chapter = chapters.ok
+          ? chapters.value.chapters.find((item) => item.id === chapterId)
+          : undefined
+        setData((current) =>
+          current
+            ? {
+                ...current,
+                ...(work.ok ? { work: toWork(work.value) } : {}),
+                ...(chapter ? { chapter: { ...current.chapter, title: chapter.title } } : {})
+              }
+            : current
+        )
+      }),
+    [workId, chapterId]
+  )
 
   const takeSource = useCallback(
     async (record: TextRecord, replaced: boolean): Promise<void> => {

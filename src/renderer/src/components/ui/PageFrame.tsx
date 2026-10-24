@@ -4,6 +4,14 @@ import { SOON_LABEL } from '../../lib/mockFeatures'
 import { cn } from '../../lib/cn'
 import { TopBarTitle } from './TopBarActions'
 
+export type PageWidth = 'default' | 'wide' | 'full'
+
+const PAGE_WIDTH: Record<PageWidth, string> = {
+  default: 'max-w-[1080px]',
+  wide: 'max-w-[1240px]',
+  full: 'max-w-[1600px]'
+}
+
 /**
  * Khung trang ứng dụng từ thanh bên: hiển thị tiêu đề trên thanh trên cùng, các nút ở đầu cột nội
  * dung căn giữa. Thuộc tính `soon` đánh dấu trang chỉ là giao diện minh họa sắp có.
@@ -14,6 +22,7 @@ export function PageFrame({
   actions,
   soon = false,
   wide = false,
+  width = wide ? 'wide' : 'default',
   className,
   children
 }: {
@@ -21,8 +30,10 @@ export function PageFrame({
   note?: ReactNode
   actions?: ReactNode
   soon?: boolean
-  /** Trang dạng bảng hoặc chia hai cột sử dụng độ rộng 1240px thay vì 1080px. */
+  /** Viết tắt của `width="wide"`. */
   wide?: boolean
+  /** Độ rộng tối đa của nội dung: 1080px, 1240px (bảng, hai cột) hoặc 1600px (bảng rộng trên màn 1920). */
+  width?: PageWidth
   className?: string
   children: ReactNode
 }): JSX.Element {
@@ -40,13 +51,7 @@ export function PageFrame({
       >
         {title}
       </TopBarTitle>
-      <div
-        className={cn(
-          'mx-auto flex flex-col gap-lg px-xl py-xl',
-          wide ? 'max-w-[1240px]' : 'max-w-[1080px]',
-          className
-        )}
-      >
+      <div className={cn('mx-auto flex flex-col gap-lg px-xl py-xl', PAGE_WIDTH[width], className)}>
         {actions && (
           <div data-slot="page-actions" className="flex flex-wrap items-center justify-end gap-xs">
             {actions}

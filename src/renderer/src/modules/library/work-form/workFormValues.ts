@@ -1,4 +1,9 @@
-import type { SourceLanguage, WorkPatch } from '../../../../../shared/contracts/library'
+import type { CultureId, SettingId } from '../../../../../shared/contracts/addressing/types'
+import type {
+  SourceLanguage,
+  WorkPatch,
+  WorkSetting
+} from '../../../../../shared/contracts/library'
 
 export interface WorkFormValues {
   title: string
@@ -6,6 +11,11 @@ export interface WorkFormValues {
   originalTitle: string
   author: string
   genre: string
+  /** Bối cảnh chính: '' là tự suy theo thể loại, 'none' là không dùng bảng xưng hô. */
+  setting: WorkSetting | ''
+  settingsExtra: SettingId[]
+  /** Văn hóa gốc của câu chuyện; '' là tự suy theo ngôn ngữ gốc. */
+  culture: CultureId | ''
   description: string
   /** Ảnh bìa dưới dạng data URL JPEG, hoặc null nếu không có. */
   cover: string | null
@@ -17,6 +27,9 @@ export const emptyWorkForm: WorkFormValues = {
   originalTitle: '',
   author: '',
   genre: '',
+  setting: '',
+  settingsExtra: [],
+  culture: '',
   description: '',
   cover: null
 }
@@ -30,6 +43,11 @@ export function buildPatch(before: WorkFormValues, after: WorkFormValues): WorkP
     if (after[key] === before[key]) continue
     patch[key] = after[key].trim() === '' ? null : after[key]
   }
+  if (after.setting !== before.setting) patch.setting = after.setting === '' ? null : after.setting
+  if (after.settingsExtra.join(',') !== before.settingsExtra.join(',')) {
+    patch.settingsExtra = after.settingsExtra
+  }
+  if (after.culture !== before.culture) patch.culture = after.culture === '' ? null : after.culture
   if (after.cover !== before.cover) patch.cover = after.cover
   return patch
 }

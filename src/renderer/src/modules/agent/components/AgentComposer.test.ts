@@ -9,15 +9,17 @@ import { renderToStaticMarkup } from 'react-dom/server'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type {
   AgentAttachment,
-  AgentContextSearchGroup
+  AgentContextSearchGroup,
+  AgentSteer
 } from '../../../../../shared/contracts/agent'
 import { resetAllStores } from '../../../lib/testing/resetStores'
 import { useAgentStore } from '../store/agentStore'
 import { pickerRows } from './AddContextPicker'
-import { AgentComposer } from './AgentComposer'
+import { AgentComposer, STEER_PLACEHOLDER } from './AgentComposer'
 import { commandHistory, historyStep } from './commandHistory'
 import { attachmentKey, type ComposerChip } from './composeContext'
 import { ContextChipRow, type ContextChipRowProps } from './ContextChipRow'
+import { SteerList } from './SteerList'
 
 const chapter13: AgentAttachment = {
   kind: 'chapter',
@@ -197,5 +199,73 @@ describe('AgentComposer', () => {
     expect(historyStep(2, 1, 'down')).toBeNull()
     expect(historyStep(2, null, 'down')).toBeNull()
     expect(historyStep(0, null, 'up')).toBeNull()
+  })
+})
+
+describe('AgentComposer while a turn runs', () => {
+  beforeEach(() => resetAllStores())
+
+  const running = (draft: string) => {
+    useAgentStore.setState({
+      activeSessionId: 's1',
+      isStreaming: true,
+      streamingTurnId: 't1',
+      drafts: { s1: draft }
+    })
+  }
+
+  it('offers to send the typed text into the turn, before Stop, with only text allowed', () => {
+    running('chỉ chương 3')
+    const html = render(createElement(AgentComposer))
+    expect(html).toContain(`placeholder="${STEER_PLACEHOLDER}"`)
+    const send = html.indexOf('aria-label="Gửi thêm vào lượt đang chạy"')
+    expect(send).toBeGreaterThan(-1)
+    expect(send).toBeLessThan(html.indexOf('aria-label="Dừng lượt đang chạy"'))
+    // The + picker, the mode and the model are off: a steer message carries no context of its own.
+    expect(html).toMatch(
+      /aria-label="Thêm ngữ cảnh"[^>]*disabled|disabled[^>]*aria-label="Thêm ngữ cảnh"/
+    )
+    const mode = html.indexOf('>Agent<')
+    expect(html.slice(html.lastIndexOf('<button', mode), mode)).toContain('disabled')
+  })
+
+  it('shows only Stop while the turn runs and nothing is typed', () => {
+    running('')
+    const html = render(createElement(AgentComposer))
+    expect(html).not.toContain('Gửi thêm vào lượt đang chạy')
+    expect(html).toContain('aria-label="Dừng lượt đang chạy"')
+  })
+})
+
+describe('SteerList', () => {
+  const steer = (patch: Partial<AgentSteer>): AgentSteer => ({
+    id: 'm1',
+    turnId: 't1',
+    seq: 1,
+    text: 'chỉ chương 3',
+    state: 'pending',
+    deliveredRound: null,
+    forwardedTurnId: null,
+    createdAt: 1,
+    updatedAt: 1,
+    ...patch
+  })
+
+  it('withdraws a waiting message and sends or drops one that came back', () => {
+    const onWithdraw = vi.fn()
+    const onResend = vi.fn()
+    const back = steer({ id: 'm2', text: 'bỏ chương 4', state: 'returned' })
+    const tree = expand(SteerList({ steers: [steer({}), back], onWithdraw, onResend }))
+    const click = (label: string) =>
+      (findAll(tree, (p) => p['aria-label'] === label)[0]!.onClick as () => void)()
+    click('Rút lại: chỉ chương 3')
+    click('Gửi: bỏ chương 4')
+    click('Bỏ: bỏ chương 4')
+    expect(onWithdraw.mock.calls).toEqual([['m1'], ['m2']])
+    expect(onResend).toHaveBeenCalledWith(back)
+  })
+
+  it('draws nothing without messages', () => {
+    expect(SteerList({ steers: [], onWithdraw: vi.fn(), onResend: vi.fn() })).toBeNull()
   })
 })

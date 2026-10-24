@@ -1,3 +1,4 @@
+import { ActivityTabBadge } from '@renderer/modules/agent/public'
 import { ChaptersArea } from './ChaptersArea'
 import { ContextAreaMock } from './ContextAreaMock'
 import { JobsArea } from './JobsArea'
@@ -29,8 +30,16 @@ export const sourcesArea: WorkArea = {
 
 export const jobsArea: WorkArea = {
   id: 'jobs-area',
-  label: 'Tác vụ',
-  render: (props) => <JobsArea workId={props.workId} onOpenChapter={props.onOpenChapter} />
+  label: 'Hoạt động',
+  Badge: ActivityTabBadge,
+  render: (props) => (
+    <JobsArea
+      workId={props.workId}
+      workTitle={props.workTitle}
+      chapterCount={props.chapterCount}
+      onOpenChapter={props.onOpenChapter}
+    />
+  )
 }
 
 export const workAreas: ReadonlyArray<WorkArea> = [chaptersArea, contextArea, sourcesArea, jobsArea]

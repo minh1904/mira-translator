@@ -12,7 +12,7 @@ import { ConfirmDialog, type ConfirmRequest } from '../../../components/ui/Confi
 import { Disclosure } from '../../../components/ui/Disclosure'
 import { EmptyState } from '../../../components/ui/EmptyState'
 import { Select } from '../../../components/ui/Select'
-import { QuestionForm } from '../../agent/components/QuestionCard'
+import { QuestionForm } from '@renderer/modules/agent/public'
 
 /** A context question as the shared question card shows it: one choice, the default picked already. */
 export function asAgentQuestion(

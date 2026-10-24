@@ -11,6 +11,8 @@ const areaProps: WorkAreaProps = {
   onWork: () => undefined,
   onOpenChapter: () => undefined,
   addChapterSignal: 0,
+  workTitle: 'Truyện',
+  chapterCount: 3,
   onExportChapters: () => {}
 }
 

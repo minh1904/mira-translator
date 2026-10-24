@@ -3,6 +3,7 @@ import type {
   AgentToolCallView,
   AgentTurnView
 } from '../../../../../shared/contracts/agent'
+import { type AgentTodoItem, TODO_LIST, todosOf } from '../../../../../shared/contracts/agentTodo'
 import type { LiveRound } from '../store/agentStore'
 
 /** One element of a turn's answer as the transcript draws it, in the order it happened. */
@@ -11,6 +12,10 @@ export type TurnItem =
   | { kind: 'text'; key: string; text: string; live: boolean }
   | { kind: 'tool'; key: string; call: AgentToolCallView }
   | { kind: 'progress'; key: string; text: string }
+  /** What the user typed while the turn ran, where it went in. */
+  | { kind: 'steer'; key: string; text: string }
+  /** The turn's step list: one card where it was first written, holding the latest write. */
+  | { kind: 'todo'; key: string; items: AgentTodoItem[] }
 
 /**
  * The answer of a turn: the parts Main stored, then the rounds still streaming (their reasoning, text
@@ -51,6 +56,8 @@ export function turnItems(input: {
         text: part.text,
         live: false
       })
+    } else if (part.kind === 'steer') {
+      items.push({ kind: 'steer', key: `steer:${part.id}`, text: part.text })
     } else {
       items.push({ kind: 'progress', key: `progress:${part.id}`, text: part.text })
     }
@@ -89,7 +96,23 @@ export function turnItems(input: {
       items.push({ kind: 'tool', key: `tool:${call.id}`, call })
     }
   }
-  return items
+  return withTodoCard(turn.id, items)
+}
+
+/** Successful todo_list calls of the turn fold into one card; a failed or running call stays a row. */
+function withTodoCard(turnId: string, items: TurnItem[]): TurnItem[] {
+  const done = (item: TurnItem) =>
+    item.kind === 'tool' && item.call.name === TODO_LIST && item.call.state === 'completed'
+  const writes = items.flatMap((item) => {
+    const list = item.kind === 'tool' && done(item) ? todosOf(item.call.args) : null
+    return list ? [{ item, list }] : []
+  })
+  if (writes.length === 0) return items
+  const latest = writes[writes.length - 1].list
+  return items.flatMap((item): TurnItem[] => {
+    if (item === writes[0].item) return [{ kind: 'todo', key: `todo:${turnId}`, items: latest }]
+    return done(item) ? [] : [item]
+  })
 }
 
 /** The calls a subagent made under `parentId`, in order. */

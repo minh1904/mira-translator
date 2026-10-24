@@ -37,7 +37,7 @@ interface NavEntry {
 const MAIN: NavEntry[] = [
   { page: 'home', label: 'Trang chủ', icon: Home2Icon },
   { page: 'library', label: 'Thư viện', icon: LibraryIcon },
-  { page: 'jobs', label: 'Tác vụ', icon: ChecklistMinimalisticIcon },
+  { page: 'jobs', label: 'Hoạt động', icon: ChecklistMinimalisticIcon },
   { page: 'updates', label: 'Cập nhật', icon: FeedIcon },
   { page: 'sources', label: 'Nguồn', icon: CompassIcon }
 ]

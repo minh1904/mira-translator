@@ -73,6 +73,7 @@ describe('assistant surfaces', () => {
       pending: [],
       sessionApprovals: [],
       editedChapters: [],
+      steers: [],
       // Main always sends the answer as a part, rebuilt for turns stored before parts existed.
       parts: [
         {
@@ -112,6 +113,7 @@ describe('assistant surfaces', () => {
       pending: [],
       sessionApprovals: [],
       editedChapters: [],
+      steers: [],
       parts: [],
       toolCalls: []
     })
@@ -141,6 +143,7 @@ describe('assistant surfaces', () => {
       operations: [],
       sessionApprovals: [],
       editedChapters: [],
+      steers: [],
       parts: [],
       toolCalls: [],
       pending: [

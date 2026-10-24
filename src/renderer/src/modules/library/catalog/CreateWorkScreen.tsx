@@ -19,6 +19,9 @@ function toCreateInput(values: WorkFormValues): CreateWorkInput {
     ...(values.originalTitle.trim() !== '' && { originalTitle: values.originalTitle }),
     ...(values.author.trim() !== '' && { author: values.author }),
     ...(values.genre.trim() !== '' && { genre: values.genre }),
+    ...(values.setting !== '' && { setting: values.setting }),
+    ...(values.settingsExtra.length > 0 && { settingsExtra: values.settingsExtra }),
+    ...(values.culture !== '' && { culture: values.culture }),
     ...(values.description.trim() !== '' && { description: values.description }),
     ...(values.cover !== null && { cover: values.cover })
   }

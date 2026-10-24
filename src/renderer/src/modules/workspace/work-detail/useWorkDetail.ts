@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { WorkPatch, WorkSummary } from '../../../../../shared/contracts/library'
 import type { Result } from '../../../../../shared/contracts/result'
+import { onAgentWorkUpdate } from '@renderer/modules/agent/public'
 import { CoverImageError, fileToCoverDataUrl } from '../../library/public'
 import { describe } from '../../library/public'
 import { toWork, type Work } from '../../library/public'
@@ -79,6 +80,8 @@ export function useWorkDetail(
       if (ticket === latest.current) apply(result)
     })
   }, [workId, apply])
+
+  useEffect(() => onAgentWorkUpdate(() => void reload()), [reload])
 
   const update = useCallback(
     async (patch: WorkPatch): Promise<Result<Work>> => {

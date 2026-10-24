@@ -1,5 +1,7 @@
 import { useEffect } from 'react'
 import type { LeaveGuardRegistry } from '../chapter-editor/leaveGuard'
+import { onAgentWorkUpdate } from '@renderer/modules/agent/public'
+import { useLibraryStore } from '../../library/public'
 import { useAiChatStore } from '../store/aiChatStore'
 import { useChapterStore } from '../store/chapterStore'
 import { useWorkspaceStore } from '../store/workspaceStore'
@@ -27,6 +29,16 @@ export function useWorkspaceLifecycle(registry: LeaveGuardRegistry): void {
       window.mira?.agent?.coordinator.onTargetChanged((event) => {
         const chapters = useChapterStore.getState()
         if (chapters.workId === event.target.workId) void chapters.reload()
+      }),
+    []
+  )
+
+  // update_work changes work details and titles outside the editor: the work and chapter lists refetch.
+  useEffect(
+    () =>
+      onAgentWorkUpdate(() => {
+        void useChapterStore.getState().reload()
+        void useLibraryStore.getState().reload()
       }),
     []
   )
