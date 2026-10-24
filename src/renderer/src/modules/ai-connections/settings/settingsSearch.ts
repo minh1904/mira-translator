@@ -60,6 +60,11 @@ export const STATIC_INDEX: SettingsIndexEntry[] = [
     location: { group: 'appearance', page: 'general', key: 'theme' }
   },
   {
+    title: 'Xác nhận 18 tuổi',
+    description: 'Truy cập nguồn R18 (なろう R18, Akatsuki) hoặc thu hồi xác nhận',
+    location: { group: 'sources', page: 'general', key: 'age-confirmation' }
+  },
+  {
     title: 'Phiên bản',
     description: 'Phiên bản Mira và nền tảng',
     location: { group: 'about', page: 'general', key: 'version' }

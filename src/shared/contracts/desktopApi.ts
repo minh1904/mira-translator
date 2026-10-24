@@ -104,6 +104,9 @@ import type {
   SourceCatalogGetInput,
   SourceCatalogDownloadInput,
   SourceCatalogDownloadRangeInput,
+  SourceCatalogDownloadCancelInput,
+  SourceDownloadSummary,
+  SourceAgeSetInput,
   SourceCatalogDownloadResult,
   SourceCatalogItem,
   SourceCatalogListInput,
@@ -437,7 +440,9 @@ export interface SourcesApi {
     list(input: SourceCatalogListInput): Promise<Result<SourceCatalogPage>>
     get(input: SourceCatalogGetInput): Promise<Result<SourceCatalogItem>>
     download(input: SourceCatalogDownloadInput): Promise<Result<SourceCatalogDownloadResult>>
-    downloadRange(input: SourceCatalogDownloadRangeInput): Promise<Result<void>>
+    downloadRange(input: SourceCatalogDownloadRangeInput): Promise<Result<SourceDownloadSummary>>
+    /** Hủy tác vụ tải đang chạy của bản raw; chương đã tải xong được giữ. */
+    downloadCancel(input: SourceCatalogDownloadCancelInput): Promise<Result<{ cancelled: boolean }>>
     reorderBySource(input: SourceCatalogReorderInput): Promise<Result<{ reorderedCount: number }>>
     onDownloadProgress(listener: (progress: SourceDownloadProgress) => void): () => void
   }
@@ -463,6 +468,10 @@ export interface SourcesApi {
   }
   registry: {
     list(input?: SourceRegistryListInput): Promise<Result<{ sources: SourceDescriptor[] }>>
+  }
+  age: {
+    get(): Promise<Result<{ confirmed: boolean }>>
+    set(input: SourceAgeSetInput): Promise<Result<{ confirmed: boolean }>>
   }
 }
 

@@ -37,6 +37,23 @@ export interface SyncProgressUpdate {
   totalCount: number | null
 }
 
+function lastCompleteFingerprint(db: Db, bindingId: string): string | null {
+  const row = db
+    .prepare(
+      `SELECT stats_json FROM source_sync_run
+       WHERE binding_id = ? AND state = 'completed' AND catalog_complete = 1
+       ORDER BY started_at DESC, id DESC LIMIT 1`
+    )
+    .get<{ stats_json: string }>(bindingId)
+  if (!row) return null
+  try {
+    const stats = JSON.parse(row.stats_json) as { fingerprint?: unknown }
+    return typeof stats.fingerprint === 'string' ? stats.fingerprint : null
+  } catch {
+    return null
+  }
+}
+
 export class SourceSyncService {
   private readonly activeRuns = new Map<string, ActiveSync>()
 
@@ -69,7 +86,8 @@ export class SourceSyncService {
     bindingId: string,
     now: number,
     newId: () => string,
-    onProgress?: (progress: SyncProgressUpdate) => void
+    onProgress?: (progress: SyncProgressUpdate) => void,
+    options: { full?: boolean } = {}
   ): Promise<StoredSyncRun> {
     const binding = getSourceBinding(db, bindingId)
     if (!binding) {
@@ -114,6 +132,32 @@ export class SourceSyncService {
         binding.remoteWorkId,
         binding.languageTag
       )
+
+      let fingerprint: string | null = null
+      if (adapter.getUpdateFingerprint) {
+        fingerprint = await adapter.getUpdateFingerprint(
+          { remoteWorkId: binding.remoteWorkId },
+          { signal: controller.signal, now: () => new Date(now) }
+        )
+        if (!options.full && fingerprint === lastCompleteFingerprint(db, bindingId)) {
+          updateSyncRun(db, {
+            id: runId,
+            state: 'completed',
+            catalogComplete: true,
+            finishedAt: now,
+            statsJson: JSON.stringify({ unchanged: true, fingerprint })
+          })
+          updateSourceBinding(db, {
+            ...binding,
+            lastValidSyncAt: now,
+            lastAttemptAt: now,
+            consecutiveFailures: 0,
+            updatedAt: now
+          })
+          onProgress?.({ runId, bindingId, phase: 'done', processedCount: 0, totalCount: 0 })
+          return getSyncRun(db, runId)!
+        }
+      }
 
       const runtime = new AdapterRuntime(adapter)
       const page = await runtime.getCatalog(
@@ -192,7 +236,7 @@ export class SourceSyncService {
               remoteUrl: item.url ?? null,
               chapterId: null, // Note: NOT linked to chapter automatically!
               ordinalKey: String(item.order).padStart(6, '0'),
-              volumeTitle: null,
+              volumeTitle: item.volumeTitle ?? null,
               title: item.title,
               kind: 'chapter',
               publishedAt: null,
@@ -214,6 +258,7 @@ export class SourceSyncService {
               remoteUrl: item.url ?? prior.remoteUrl,
               title: item.title,
               ordinalKey: String(item.order).padStart(6, '0'),
+              volumeTitle: item.volumeTitle ?? prior.volumeTitle,
               accessState: item.access,
               lastSeenAt: now,
               missingStreak: item.missingStreak,
@@ -262,7 +307,9 @@ export class SourceSyncService {
           statsJson: JSON.stringify({
             totalItems: diffResult.items.length,
             addedCount,
-            eventsCount: diffResult.events.length
+            eventsCount: diffResult.events.length,
+            // Only a complete catalog may vouch for "unchanged" on the next check.
+            fingerprint: page.complete ? fingerprint : null
           })
         })
       })
@@ -292,11 +339,13 @@ export class SourceSyncService {
       }
 
       const message = err instanceof Error ? err.message : String(err)
+      // Broker and source access errors carry a code the UI can act on (e.g. age confirmation).
+      const code = (err as { code?: unknown }).code
       updateSyncRun(db, {
         id: runId,
         state: 'failed',
         finishedAt: now,
-        failureKind: 'adapter_error',
+        failureKind: typeof code === 'string' ? code : 'adapter_error',
         failureMessage: message
       })
       updateSourceBinding(db, {

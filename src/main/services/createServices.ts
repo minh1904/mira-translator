@@ -8,6 +8,7 @@ import { GlossaryService } from './context/glossaryService'
 import { ContextExtractionService } from './context/contextExtractionService'
 import type { LibraryStore } from './library/library'
 import { createSourceServices, type SourceServices } from '../sources/sourceServices'
+import { readAgeConfirmed } from '../infra/storage/agePreference'
 import {
   createAiSession,
   getAiSession,
@@ -171,7 +172,9 @@ export function createServices({
     now: () => library.appNow()
   })
   const glossary = new GlossaryService(library, () => library.appNow())
-  const sources = createSourceServices(library, crypto)
+  const sources = createSourceServices(library, crypto, {
+    ageConfirmed: () => readAgeConfirmed(library.appDb)
+  })
   const agentRegistry = new CapabilityRegistry()
   for (const capability of defaultReadCapabilities) agentRegistry.register(capability)
   const agentRepository = new AgentRepository(library.appDb)

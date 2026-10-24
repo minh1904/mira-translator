@@ -8,9 +8,9 @@ import { SourceSyncService } from './syncService'
 import { SourceRegistry } from './registry'
 import { createSingleFileAdapter } from './singleFileAdapter'
 import { createFolderAdapter } from './folderAdapter'
-import { createKakuyomuAdapter, kakuyomuManifest, KAKUYOMU_SOURCE_ID } from './kakuyomu/adapter'
-import { NetworkBroker, type NetworkBrokerPolicy } from './broker'
-import type { NovelSourceAdapter } from './domain'
+import { NetworkBroker } from './broker'
+import type { CatalogItem, ChapterPage, NovelSourceAdapter, WorkInfo } from './domain'
+import { NETWORK_SOURCES, findNetworkSource, type NetworkSource } from './networkSources'
 import { AdapterRuntime } from './runtime'
 
 export interface SourceServices {
@@ -21,21 +21,23 @@ export interface SourceServices {
   auth: AuthProfileService
   registry: SourceRegistry
   preview: (input: { sourceId: string; remoteWorkId: string; languageTag?: string }) => Promise<{
-    title: string
-    languageTag: string
-    items: import('./domain').CatalogItem[]
+    work: WorkInfo
+    items: CatalogItem[]
   }>
-  getChapter: (input: {
-    sourceId: string
-    remoteWorkId: string
-    remoteChapterId: string
-    languageTag?: string
-  }) => Promise<import('./domain').ChapterPage>
+  getChapter: (
+    input: {
+      sourceId: string
+      remoteWorkId: string
+      remoteChapterId: string
+      languageTag?: string
+    },
+    signal?: AbortSignal
+  ) => Promise<ChapterPage>
 }
 
 export interface SourceServicesOptions {
-  allowUnreleased?: boolean
-  resolveBroker?: (policy: NetworkBrokerPolicy) => NetworkBroker
+  /** Whether the user confirmed being 18+; gates age-cookie origins of R18 sources. */
+  ageConfirmed?: () => boolean
 }
 
 export function createSourceServices(
@@ -47,7 +49,27 @@ export function createSourceServices(
   const catalog = new SourceCatalogService()
   const content = new SourceContentService()
   const auth = new AuthProfileService(crypto)
-  let kakuyomuAdapter: NovelSourceAdapter | null = null
+  const networkAdapters = new Map<string, NovelSourceAdapter>()
+
+  const networkAdapter = (source: NetworkSource): NovelSourceAdapter => {
+    const cached = networkAdapters.get(source.manifest.sourceId)
+    if (cached) return cached
+    const policy = source.manifest.networkPolicy!
+    const adapter = source.createAdapter(
+      new NetworkBroker({
+        allowedOrigins: policy.origins,
+        allowNetwork: true,
+        minIntervalMs: policy.minIntervalMs,
+        maxRedirects: policy.maxRedirects,
+        maxResponseBytes: policy.maxResponseBytes,
+        requestTimeoutMs: policy.requestTimeoutMs,
+        ageCookies: policy.ageCookies,
+        ageConfirmed: () => options.ageConfirmed?.() === true
+      })
+    )
+    networkAdapters.set(source.manifest.sourceId, adapter)
+    return adapter
+  }
 
   const resolveAdapter = async (
     adapterId: string,
@@ -62,77 +84,53 @@ export function createSourceServices(
       const folderPath = remoteWorkId.replace(/^folder:/, '')
       return await createFolderAdapter(folderPath, languageTag)
     }
-    if (adapterId === KAKUYOMU_SOURCE_ID) {
-      if (kakuyomuAdapter) return kakuyomuAdapter
-      const networkPolicy = kakuyomuManifest.networkPolicy!
-      const broker =
-        options.resolveBroker?.({
-          allowedOrigins: networkPolicy.origins,
-          allowNetwork: kakuyomuManifest.releaseGate === 'open' || options.allowUnreleased === true,
-          minIntervalMs: networkPolicy.minIntervalMs,
-          maxRedirects: networkPolicy.maxRedirects,
-          maxResponseBytes: networkPolicy.maxResponseBytes,
-          requestTimeoutMs: networkPolicy.requestTimeoutMs
-        }) ??
-        new NetworkBroker({
-          allowedOrigins: networkPolicy.origins,
-          allowNetwork: kakuyomuManifest.releaseGate === 'open' || options.allowUnreleased === true,
-          minIntervalMs: networkPolicy.minIntervalMs,
-          maxRedirects: networkPolicy.maxRedirects,
-          maxResponseBytes: networkPolicy.maxResponseBytes,
-          requestTimeoutMs: networkPolicy.requestTimeoutMs
-        })
-      kakuyomuAdapter = createKakuyomuAdapter(broker)
-      return kakuyomuAdapter
-    }
+    const network = findNetworkSource(adapterId)
+    if (network) return networkAdapter(network)
     throw new Error(`Adapter ${adapterId} is not installed or supported`)
   }
 
   const sync = new SourceSyncService(resolveAdapter)
 
   // Builtin registry
-  const registry = new SourceRegistry(
-    [
-      {
-        manifestVersion: 1,
-        sourceId: 'mira.single-file',
-        displayName: 'Tệp văn bản',
-        nativeNames: [],
-        aliases: ['file', 'txt', 'md'],
-        domains: [],
-        countryCode: 'ZZ',
-        languageTags: ['en', 'zh-Hans', 'zh-Hant', 'ja', 'ko'],
-        capabilities: ['identify', 'work', 'catalog', 'chapter'],
-        adapterVersion: '1.0.0',
-        apiVersion: '1.0.0',
-        dataVersion: 1,
-        auth: 'none',
-        origin: { kind: 'builtin' },
-        limits: { maxPages: 1, pageSize: 1, timeoutMs: 10000 },
-        health: 'healthy'
-      },
-      {
-        manifestVersion: 1,
-        sourceId: 'mira.folder',
-        displayName: 'Thư mục tệp',
-        nativeNames: [],
-        aliases: ['folder', 'directory'],
-        domains: [],
-        countryCode: 'ZZ',
-        languageTags: ['en', 'zh-Hans', 'zh-Hant', 'ja', 'ko'],
-        capabilities: ['identify', 'work', 'catalog', 'chapter'],
-        adapterVersion: '1.0.0',
-        apiVersion: '1.0.0',
-        dataVersion: 1,
-        auth: 'none',
-        origin: { kind: 'builtin' },
-        limits: { maxPages: 1, pageSize: 10000, timeoutMs: 30000 },
-        health: 'healthy'
-      },
-      kakuyomuManifest
-    ],
-    { allowUnreleased: options.allowUnreleased }
-  )
+  const registry = new SourceRegistry([
+    {
+      manifestVersion: 1,
+      sourceId: 'mira.single-file',
+      displayName: 'Tệp văn bản',
+      nativeNames: [],
+      aliases: ['file', 'txt', 'md'],
+      domains: [],
+      countryCode: 'ZZ',
+      languageTags: ['en', 'zh-Hans', 'zh-Hant', 'ja', 'ko'],
+      capabilities: ['identify', 'work', 'catalog', 'chapter'],
+      adapterVersion: '1.0.0',
+      apiVersion: '1.0.0',
+      dataVersion: 1,
+      auth: 'none',
+      origin: { kind: 'builtin' },
+      limits: { maxPages: 1, pageSize: 1, timeoutMs: 10000 },
+      health: 'healthy'
+    },
+    {
+      manifestVersion: 1,
+      sourceId: 'mira.folder',
+      displayName: 'Thư mục tệp',
+      nativeNames: [],
+      aliases: ['folder', 'directory'],
+      domains: [],
+      countryCode: 'ZZ',
+      languageTags: ['en', 'zh-Hans', 'zh-Hant', 'ja', 'ko'],
+      capabilities: ['identify', 'work', 'catalog', 'chapter'],
+      adapterVersion: '1.0.0',
+      apiVersion: '1.0.0',
+      dataVersion: 1,
+      auth: 'none',
+      origin: { kind: 'builtin' },
+      limits: { maxPages: 1, pageSize: 10000, timeoutMs: 30000 },
+      health: 'healthy'
+    },
+    ...NETWORK_SOURCES.map((source) => source.manifest)
+  ])
 
   const preview = async (input: {
     sourceId: string
@@ -159,21 +157,24 @@ export function createSourceServices(
     if (!catalog.complete || !catalog.exhausted) {
       throw new Error('Nguồn trả về danh mục chưa đầy đủ; Mira không thể tạo bản raw an toàn')
     }
-    return { title: work.title, languageTag: work.languageTag, items: catalog.items }
+    return { work, items: catalog.items }
   }
 
-  const getChapter = async (input: {
-    sourceId: string
-    remoteWorkId: string
-    remoteChapterId: string
-    languageTag?: string
-  }) => {
+  const getChapter = async (
+    input: {
+      sourceId: string
+      remoteWorkId: string
+      remoteChapterId: string
+      languageTag?: string
+    },
+    signal?: AbortSignal
+  ) => {
     const adapter = await resolveAdapter(
       input.sourceId,
       input.remoteWorkId,
       input.languageTag ?? 'ja'
     )
-    return new AdapterRuntime(adapter).getChapter(input)
+    return new AdapterRuntime(adapter).getChapter(input, signal)
   }
 
   return {

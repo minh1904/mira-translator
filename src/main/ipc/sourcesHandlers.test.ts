@@ -302,11 +302,116 @@ describe('Sources IPC handlers', () => {
     })
     expect(res.ok).toBe(true)
     if (res.ok) {
-      expect((res.value as any).downloadedCount).toBe(2)
+      expect(res.value).toMatchObject({ state: 'completed', downloaded: 2, failed: [] })
     }
+    expect(
+      await handlers['sources:catalog:download-cancel']({ workId: work.id, bindingId: 'b1' })
+    ).toEqual({ ok: true, value: { cancelled: false } })
     const chapters = library.listChapters(work.id)
     expect(chapters.map((c) => c.title)).toEqual(['Chương 1', 'Chương 2'])
 
+    library.close()
+  })
+
+  it('identifies a network URL and stores the previewed catalog when the binding is created', async () => {
+    const { library, work, handlers, sources } = setup()
+    const identified = await handlers['sources:bindings:identify']({
+      workId: work.id,
+      candidate: 'https://kakuyomu.jp/works/123/episodes/9'
+    })
+    expect(identified).toMatchObject({
+      ok: true,
+      value: {
+        source: { sourceId: 'mira.jp.kakuyomu', adult: false },
+        remoteWorkId: '123',
+        canonicalUrl: 'https://kakuyomu.jp/works/123',
+        inputRemoteChapterId: '9'
+      }
+    })
+
+    let previews = 0
+    sources.preview = async () => {
+      previews++
+      return {
+        work: { remoteWorkId: '123', title: 'Truyện', languageTag: 'ja', author: 'Tác giả' },
+        items: [
+          {
+            remoteChapterId: '9',
+            title: 'Tập 1',
+            order: 1,
+            access: 'public',
+            volumeTitle: '第一章'
+          },
+          { remoteChapterId: '10', title: 'Tập 2', order: 2, access: 'public' }
+        ]
+      }
+    }
+    const preview = await handlers['sources:bindings:preview-create']({
+      workId: work.id,
+      sourceId: 'mira.jp.kakuyomu',
+      remoteWorkId: '123'
+    })
+    expect(preview).toMatchObject({ ok: true, value: { author: 'Tác giả', totalCount: 2 } })
+    if (!preview.ok) return
+
+    const created = await handlers['sources:bindings:create']({
+      workId: work.id,
+      sourceId: 'mira.jp.kakuyomu',
+      remoteWorkId: '123',
+      languageTag: 'ja',
+      label: 'Kakuyomu',
+      role: 'primary',
+      expectedPreviewId: (preview.value as { previewId: string }).previewId
+    })
+    expect(created.ok).toBe(true)
+    if (!created.ok) return
+    const catalog = await handlers['sources:catalog:list']({
+      workId: work.id,
+      bindingId: (created.value as SourceBinding).id
+    })
+    expect(
+      catalog.ok && (catalog.value as SourceCatalogPage).items.map((item) => item.title)
+    ).toEqual(['Tập 1', 'Tập 2'])
+    expect(previews).toBe(1)
+    library.withWork(work.id, (db) => {
+      const events = db
+        .prepare('SELECT COUNT(*) AS n FROM source_update_event')
+        .get<{ n: number }>()
+      expect(events?.n).toBe(0)
+    })
+    library.close()
+  })
+
+  it('stops an R18 check with age_verification_required once the confirmation is revoked', async () => {
+    const dir = tempDir()
+    const library = LibraryStore.open({ dataDir: dir, now: () => 1000 })
+    const work = library.create({ title: 'R18', sourceLang: 'ja' })
+    let confirmed = true
+    const sources = createSourceServices(library, mockCrypto, { ageConfirmed: () => confirmed })
+    const handlers = createLibraryHandlers(
+      library,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      sources
+    )
+    library.withWork(work.id, (db) => {
+      db.exec(`
+        INSERT INTO source_binding (id, adapter_id, adapter_version, remote_work_id, language_tag, label, enabled, is_primary, created_at, updated_at)
+        VALUES ('b18', 'mira.jp.syosetu.r18', '1.0.0', 'n5678cd', 'ja', 'R18', 1, 1, 1000, 1000);
+      `)
+    })
+    confirmed = false
+    const run = await handlers['sources:sync:start']({ workId: work.id, bindingId: 'b18' })
+    expect(run).toMatchObject({
+      ok: true,
+      value: { state: 'failed', failure: { code: 'age_verification_required' } }
+    })
     library.close()
   })
 })

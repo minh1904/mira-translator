@@ -16,7 +16,8 @@ const mockDescriptors: SourceDescriptor[] = [
     languageTags: ['zh-Hans'],
     capabilities: ['identify', 'catalog', 'chapter'],
     access: 'account',
-    health: { state: 'healthy', checkedAt: 1728500000000, message: null }
+    health: { state: 'healthy', checkedAt: 1728500000000, message: null },
+    adult: false
   },
   {
     sourceId: 'mira.syosetu',
@@ -28,7 +29,8 @@ const mockDescriptors: SourceDescriptor[] = [
     languageTags: ['ja'],
     capabilities: ['identify', 'catalog', 'chapter'],
     access: 'public',
-    health: { state: 'degraded', checkedAt: 1728500000000, message: 'Rate limit' }
+    health: { state: 'degraded', checkedAt: 1728500000000, message: 'Rate limit' },
+    adult: false
   },
   {
     sourceId: 'mira.novelpia',
@@ -40,7 +42,8 @@ const mockDescriptors: SourceDescriptor[] = [
     languageTags: ['ko'],
     capabilities: ['identify', 'catalog'],
     access: 'subscription',
-    health: { state: 'inconclusive', checkedAt: null, message: null }
+    health: { state: 'inconclusive', checkedAt: null, message: null },
+    adult: false
   },
   {
     sourceId: 'mira.folder',
@@ -52,7 +55,8 @@ const mockDescriptors: SourceDescriptor[] = [
     languageTags: ['en', 'zh-Hans', 'ja', 'ko', 'vi'],
     capabilities: ['identify', 'catalog', 'chapter'],
     access: 'local',
-    health: { state: 'healthy', checkedAt: null, message: null }
+    health: { state: 'healthy', checkedAt: null, message: null },
+    adult: false
   },
   {
     sourceId: 'mira.broken-source',
@@ -64,7 +68,8 @@ const mockDescriptors: SourceDescriptor[] = [
     languageTags: ['zh-Hans'],
     capabilities: ['catalog'],
     access: 'public',
-    health: { state: 'broken', checkedAt: 1728500000000, message: 'Parser broken' }
+    health: { state: 'broken', checkedAt: 1728500000000, message: 'Parser broken' },
+    adult: false
   }
 ]
 

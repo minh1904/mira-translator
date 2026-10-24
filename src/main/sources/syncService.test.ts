@@ -223,4 +223,38 @@ describe('SourceSyncService', () => {
 
     db.close()
   })
+
+  it('skips the catalog when the update fingerprint is unchanged unless a full check is asked', async () => {
+    const { db } = setupDb()
+    let idCounter = 1
+    const newId = () => `id-${idCounter++}`
+    let catalogReads = 0
+    const adapter: NovelSourceAdapter = {
+      manifest: createTestManifest('test.adapter'),
+      async getUpdateFingerprint() {
+        return '1|2026-10-01'
+      },
+      async getCatalog() {
+        catalogReads++
+        return {
+          remoteWorkId: 'remote-1',
+          items: [{ remoteChapterId: 'ch-1', title: 'Chương 1', order: 1, access: 'public' }],
+          exhausted: true,
+          complete: true
+        }
+      }
+    }
+    const service = new SourceSyncService(async () => adapter)
+
+    await service.startSync(db, 'b1', 1000, newId)
+    const unchanged = await service.startSync(db, 'b1', 2000, newId)
+    expect(unchanged.state).toBe('completed')
+    expect(JSON.parse(unchanged.statsJson ?? '{}')).toMatchObject({ unchanged: true })
+    expect(catalogReads).toBe(1)
+
+    await service.startSync(db, 'b1', 3000, newId, undefined, { full: true })
+    expect(catalogReads).toBe(2)
+    expect(listUpdateEvents(db, 'b1')).toHaveLength(1)
+    db.close()
+  })
 })

@@ -23,7 +23,8 @@ const descriptor = {
   languageTags: ['ko', 'fr-CA'],
   capabilities: ['identify', 'metadata', 'catalog', 'chapter'],
   access: 'local',
-  health: { state: 'healthy', checkedAt: 1, message: null }
+  health: { state: 'healthy', checkedAt: 1, message: null },
+  adult: false
 } as const
 
 const manifest = {
@@ -230,7 +231,8 @@ describe('source IPC contracts', () => {
       countryCode: 'JP',
       languageTags: ['ja'],
       access: 'public',
-      health: { state: 'unchecked', checkedAt: null, message: null }
+      health: { state: 'unchecked', checkedAt: null, message: null },
+      adult: false
     }
     expect(
       v.is(sourceBindingIdentifyResultSchema, {

@@ -22,6 +22,7 @@ export type NetworkBrokerErrorCode =
   | 'private_address_blocked'
   | 'network_disabled'
   | 'auth_handle_invalid'
+  | 'age_verification_required'
 
 export class NetworkBrokerError extends Error {
   constructor(
@@ -84,6 +85,10 @@ export interface NetworkBrokerPolicy {
   maxRedirects?: number
   maxResponseBytes?: number
   requestTimeoutMs?: number
+  /** Fixed age-confirmation cookie per origin (manifest `ageCookies`). */
+  ageCookies?: Record<string, string>
+  /** Whether the user confirmed being 18+; read on every request so revoking takes effect at once. */
+  ageConfirmed?: () => boolean
 }
 
 let nextAllowedRequestAt = 0
@@ -142,10 +147,21 @@ export class NetworkBroker {
       )
     }
 
+    // An R18 source (one that declares age cookies) sends nothing, not even API calls, before confirmation.
+    if (this.policy.ageCookies && this.policy.ageConfirmed?.() !== true) {
+      throw new NetworkBrokerError(
+        'age_verification_required',
+        'Nguồn R18: cần xác nhận đủ 18 tuổi trước khi truy cập'
+      )
+    }
+
     const maxRedirects = this.policy.maxRedirects ?? 5
     const maxBytes = this.policy.maxResponseBytes ?? 8 * 1024 * 1024
     const timeoutMs = this.policy.requestTimeoutMs ?? 15_000
     const headers = new Headers(req.headers)
+    if (headers.has('cookie')) {
+      throw new NetworkBrokerError('auth_handle_invalid', 'adapters cannot set cookies')
+    }
     for (const name of ['authorization', 'cookie', 'proxy-authorization', 'host', 'connection']) {
       headers.delete(name)
     }
@@ -155,6 +171,10 @@ export class NetworkBroker {
       if (!isAllowed(url)) {
         throw new NetworkBrokerError('origin_not_allowed', 'redirect origin is not allowed')
       }
+      // Only the cookie declared for this exact origin; response cookies are never kept.
+      headers.delete('cookie')
+      const ageCookie = this.policy.ageCookies?.[url.origin]
+      if (ageCookie !== undefined) headers.set('cookie', ageCookie)
       const records = isIP(url.hostname)
         ? [{ address: url.hostname, family: isIP(url.hostname) }]
         : await lookup(url.hostname, { all: true, verbatim: true })

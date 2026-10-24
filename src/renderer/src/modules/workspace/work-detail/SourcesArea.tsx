@@ -13,6 +13,7 @@ import { EmptyState } from '../../../components/ui/EmptyState'
 import { ProgressBar } from '../../../components/ui/ProgressBar'
 import { Input } from '../../../components/ui/Input'
 import { ICON } from '../../../components/ui/icon'
+import { MenuItem, MenuPopup, MenuRoot, MenuTrigger } from '../../../components/ui/DropdownMenu'
 import { cn } from '../../../lib/cn'
 import { LanguageMark, useLibraryStore } from '../../library/public'
 import type { SourceLanguage } from '../../library/public'
@@ -21,7 +22,8 @@ import { useChapterStore } from '../store/chapterStore'
 import type {
   SourceBinding,
   SourceCatalogItem,
-  SourceCatalogPage
+  SourceCatalogPage,
+  SourceDownloadSummary
 } from '../../../../../shared/contracts/sources'
 import { AddRawDialog } from './AddRawDialog'
 
@@ -36,7 +38,36 @@ const ADAPTER_NAMES: Record<string, string> = {
   'builtin.folder': 'Thư mục tệp',
   'mira.single-file': 'Tệp văn bản',
   'builtin.single-file': 'Tệp văn bản',
-  'mira.jp.kakuyomu': 'カクヨム (Kakuyomu)'
+  'mira.jp.kakuyomu': 'カクヨム (Kakuyomu)',
+  'mira.jp.syosetu': '小説家になろう (Syosetu)',
+  'mira.jp.syosetu.r18': 'ノクターン・ムーンライト (Syosetu R18)',
+  'mira.jp.akatsuki': '暁 (Akatsuki)'
+}
+
+const LOCAL_SOURCES = new Set([
+  'mira.folder',
+  'builtin.folder',
+  'mira.single-file',
+  'builtin.single-file'
+])
+/** Sources whose quick check trusts an API that can lag; they offer a full check. */
+const API_CHECKED_SOURCES = new Set(['mira.jp.syosetu', 'mira.jp.syosetu.r18'])
+
+/** One line for the range-download result: counts, then the titles that need attention. */
+export function describeDownloadSummary(summary: SourceDownloadSummary): string {
+  const head =
+    summary.state === 'cancelled'
+      ? 'Đã hủy tải.'
+      : summary.state === 'stopped'
+        ? `Đã dừng: ${summary.stopReason ?? 'nguồn tạm thời không truy cập được'}.`
+        : 'Đã tải xong.'
+  const parts = [`${head} Đã tải ${summary.downloaded} chương`]
+  if (summary.skipped > 0) parts.push(`bỏ qua ${summary.skipped}`)
+  if (summary.empty.length > 0) parts.push(`rỗng: ${summary.empty.join(', ')}`)
+  if (summary.failed.length > 0) {
+    parts.push(`lỗi: ${summary.failed.map((f) => `${f.title} (${f.message})`).join(', ')}`)
+  }
+  return parts.join('; ')
 }
 
 export function SourcesArea({ workId, initialBindings, onWork }: SourcesAreaProps): JSX.Element {
@@ -53,6 +84,8 @@ export function SourcesArea({ workId, initialBindings, onWork }: SourcesAreaProp
   const [downloadingId, setDownloadingId] = useState<string | null>(null)
   const [rangeInput, setRangeInput] = useState('')
   const [downloadingRange, setDownloadingRange] = useState(false)
+  const [downloadSummary, setDownloadSummary] = useState<string | null>(null)
+  const [syncNotice, setSyncNotice] = useState<string | null>(null)
   const [downloadProgress, setDownloadProgress] = useState<{
     current: number
     total: number
@@ -153,6 +186,7 @@ export function SourcesArea({ workId, initialBindings, onWork }: SourcesAreaProp
     if (!window.mira?.sources?.catalog || !rangeInput.trim()) return
     setDownloadingRange(true)
     setCatalogError(null)
+    setDownloadSummary(null)
     try {
       const res = await window.mira.sources.catalog.downloadRange({
         workId,
@@ -163,7 +197,9 @@ export function SourcesArea({ workId, initialBindings, onWork }: SourcesAreaProp
         setCatalogError(res.error.message)
       } else {
         setRangeInput('')
+        setDownloadSummary(describeDownloadSummary(res.value))
         void notifyChaptersChanged()
+        void loadCatalog(bindingId)
       }
     } catch {
       setCatalogError('Không thể thực hiện tải dải chương.')
@@ -250,8 +286,18 @@ export function SourcesArea({ workId, initialBindings, onWork }: SourcesAreaProp
     }
   }
 
-  // Kích hoạt đồng bộ thủ công
-  const handleStartSync = async (bindingId: string): Promise<void> => {
+  const openCatalog = (bindingId: string): void => {
+    setCatalogBindingId(bindingId)
+    setCatalogItems([])
+    setCatalogCursor(null)
+    setCatalogExhausted(false)
+    setDownloadSummary(null)
+    void loadCatalog(bindingId)
+  }
+
+  // Kích hoạt đồng bộ thủ công; `full` bỏ qua bước so dấu cập nhật của API
+  const handleStartSync = async (bindingId: string, full = false): Promise<void> => {
+    setSyncNotice(null)
     if (typeof window !== 'undefined' && window.mira?.sources?.sync) {
       setActiveSync({
         bindingId,
@@ -261,8 +307,19 @@ export function SourcesArea({ workId, initialBindings, onWork }: SourcesAreaProp
         total: 100
       })
       try {
-        const res = await window.mira.sources.sync.start({ workId, bindingId })
+        const res = await window.mira.sources.sync.start({ workId, bindingId, full })
         if (res.ok) {
+          if (res.value.failure?.code === 'age_verification_required') {
+            setSyncNotice(
+              'Nguồn R18: bật “Đã xác nhận đủ 18 tuổi” trong Cài đặt › Nguồn truyện rồi kiểm tra lại.'
+            )
+          } else if (res.value.failure && res.value.failure.code !== 'cancelled') {
+            setSyncNotice(res.value.failure.message)
+          } else if (res.value.unchanged) {
+            setSyncNotice(
+              'Không có thay đổi theo API của nguồn. API có thể trễ khoảng 2 giờ; chọn “Kiểm tra kỹ” để đọc lại toàn bộ mục lục.'
+            )
+          }
           void reloadBindings()
         }
       } finally {
@@ -357,6 +414,12 @@ export function SourcesArea({ workId, initialBindings, onWork }: SourcesAreaProp
             value={activeSync.total > 0 ? (activeSync.processed / activeSync.total) * 100 : 50}
           />
         </div>
+      )}
+
+      {syncNotice && (
+        <p role="status" className="m-0 text-body-sm text-subtle">
+          {syncNotice}
+        </p>
       )}
 
       {/* List of raw bindings */}
@@ -454,18 +517,30 @@ export function SourcesArea({ workId, initialBindings, onWork }: SourcesAreaProp
                     >
                       Kiểm tra
                     </Button>
-                    {binding.sourceId === 'mira.jp.kakuyomu' && (
+                    {API_CHECKED_SOURCES.has(binding.sourceId) && (
+                      <MenuRoot>
+                        <MenuTrigger
+                          render={
+                            <Button variant="ghost" aria-label="Tùy chọn kiểm tra">
+                              …
+                            </Button>
+                          }
+                        />
+                        <MenuPopup align="start">
+                          <MenuItem onClick={() => void handleStartSync(binding.id, true)}>
+                            Kiểm tra kỹ (đọc toàn bộ mục lục)
+                          </MenuItem>
+                        </MenuPopup>
+                      </MenuRoot>
+                    )}
+                    {!LOCAL_SOURCES.has(binding.sourceId) && (
                       <Button
                         variant="outline"
                         onClick={() => {
                           if (catalogBindingId === binding.id) {
                             setCatalogBindingId(null)
                           } else {
-                            setCatalogBindingId(binding.id)
-                            setCatalogItems([])
-                            setCatalogCursor(null)
-                            setCatalogExhausted(false)
-                            void loadCatalog(binding.id)
+                            openCatalog(binding.id)
                           }
                         }}
                       >
@@ -493,14 +568,33 @@ export function SourcesArea({ workId, initialBindings, onWork }: SourcesAreaProp
                           onChange={(e) => setRangeInput(e.target.value)}
                           disabled={downloadingRange}
                         />
-                        <Button
-                          variant="outline"
-                          disabled={downloadingRange || !rangeInput.trim()}
-                          onClick={() => void handleDownloadRange(binding.id)}
-                        >
-                          {downloadingRange ? 'Đang gửi…' : 'Tải dải chương'}
-                        </Button>
+                        {downloadingRange ? (
+                          <Button
+                            variant="outline"
+                            onClick={() =>
+                              void window.mira?.sources?.catalog?.downloadCancel({
+                                workId,
+                                bindingId: binding.id
+                              })
+                            }
+                          >
+                            Hủy tải
+                          </Button>
+                        ) : (
+                          <Button
+                            variant="outline"
+                            disabled={!rangeInput.trim()}
+                            onClick={() => void handleDownloadRange(binding.id)}
+                          >
+                            Tải dải chương
+                          </Button>
+                        )}
                       </div>
+                      {downloadSummary && (
+                        <p role="status" className="m-0 text-body-xs text-subtle">
+                          {downloadSummary}
+                        </p>
+                      )}
                       {downloadProgress && (
                         <div className="flex flex-col gap-2xs pt-2xs">
                           <div className="flex items-center justify-between text-body-xs text-subtle">
@@ -527,7 +621,7 @@ export function SourcesArea({ workId, initialBindings, onWork }: SourcesAreaProp
                       </p>
                     ) : catalogItems.length === 0 ? (
                       <p className="m-0 text-body-sm text-subtle">
-                        Chưa có danh mục. Nhấn “Kiểm tra” để đồng bộ danh sách chương trước.
+                        Danh mục trống. Nhấn “Kiểm tra” để đọc lại danh sách chương từ nguồn.
                       </p>
                     ) : (
                       <ul className="m-0 flex list-none flex-col gap-2xs p-0">
@@ -589,6 +683,8 @@ export function SourcesArea({ workId, initialBindings, onWork }: SourcesAreaProp
         workId={workId}
         onBindingCreated={(newBinding) => {
           setBindings((prev) => [...prev, newBinding])
+          // Bản raw từ URL đã có danh mục lưu lúc xem trước; mở ngay để tải chương.
+          if (!LOCAL_SOURCES.has(newBinding.sourceId)) openCatalog(newBinding.id)
         }}
       />
 

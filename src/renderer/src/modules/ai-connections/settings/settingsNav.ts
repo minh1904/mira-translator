@@ -23,6 +23,7 @@ export const SETTINGS_GROUPS = [
     ]
   },
   { id: 'appearance', label: 'Giao diện', pages: [{ id: 'general', label: 'Chung' }] },
+  { id: 'sources', label: 'Nguồn truyện', pages: [{ id: 'general', label: 'Chung' }] },
   { id: 'about', label: 'Về Mira', pages: [{ id: 'general', label: 'Phiên bản' }] }
 ] as const
 

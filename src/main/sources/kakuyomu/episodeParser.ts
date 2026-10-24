@@ -1,6 +1,6 @@
-import { createHash } from 'node:crypto'
 import { parse } from 'parse5'
-import { isElement, isText, walk, attr, type ChildNode } from './traverse'
+import { inlineText, sha256 } from '../html'
+import { isElement, walk, attr, type ChildNode } from './traverse'
 
 export const EPISODE_NORMALIZATION_VERSION = 1 as const
 export const EPISODE_BODY_SELECTOR = 'widget-episodeBody js-episode-body'
@@ -65,7 +65,7 @@ export function parseKakuyomuEpisode(html: string): EpisodeParseResult {
   )
   for (const para of parasElements) {
     if (!isElement(para)) continue
-    const text = extractParagraphText(para.childNodes)
+    const text = inlineText(para.childNodes)
     paragraphs.push(text)
   }
 
@@ -81,39 +81,4 @@ export function parseKakuyomuEpisode(html: string): EpisodeParseResult {
     normalizationVersion: EPISODE_NORMALIZATION_VERSION,
     access: 'public'
   }
-}
-
-function extractParagraphText(nodes: ChildNode[]): string {
-  const parts: string[] = []
-  for (const node of nodes) {
-    if (isText(node)) {
-      parts.push(node.value)
-    } else if (isElement(node)) {
-      switch (node.tagName) {
-        case 'ruby': {
-          // Extract readable text: kanji text, skip <rt>
-          let rubyText = ''
-          for (const child of node.childNodes) {
-            if (isText(child)) rubyText += child.value
-            else if (isElement(child) && child.tagName !== 'rt' && child.tagName !== 'rp') {
-              rubyText += extractParagraphText(child.childNodes)
-            }
-            // skip <rt> (reading)
-          }
-          parts.push(rubyText)
-          break
-        }
-        case 'br':
-          parts.push('\n')
-          break
-        default:
-          parts.push(extractParagraphText(node.childNodes))
-      }
-    }
-  }
-  return parts.join('')
-}
-
-function sha256(text: string): string {
-  return createHash('sha256').update(text, 'utf8').digest('hex')
 }

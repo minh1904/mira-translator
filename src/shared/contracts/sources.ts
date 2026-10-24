@@ -90,7 +90,9 @@ export const sourceDescriptorSchema = v.strictObject({
   languageTags: v.pipe(v.array(sourceLanguageSchema), v.minLength(1), v.maxLength(50)),
   capabilities: v.pipe(v.array(sourceCapabilitySchema), v.maxLength(SOURCE_CAPABILITIES.length)),
   access: sourceAccessKindSchema,
-  health: sourceHealthSchema
+  health: sourceHealthSchema,
+  /** R18 source: preview and requests need the user's age confirmation. */
+  adult: v.boolean()
 })
 export type SourceDescriptor = v.InferOutput<typeof sourceDescriptorSchema>
 
@@ -241,6 +243,7 @@ export const sourceSyncFailureSchema = v.strictObject({
   code: v.picklist([
     'cancelled',
     'login_required',
+    'age_verification_required',
     'manual_intervention_required',
     'temporarily_unavailable',
     'parser_broken',
@@ -271,7 +274,9 @@ export const sourceSyncRunSchema = v.strictObject({
   totalCount: v.nullable(nonNegativeIntegerSchema),
   failure: v.nullable(sourceSyncFailureSchema),
   startedAt: nullableTimestampSchema,
-  finishedAt: nullableTimestampSchema
+  finishedAt: nullableTimestampSchema,
+  /** The source's update evidence matched the last complete check, so the catalog was not read. */
+  unchanged: v.optional(v.boolean())
 })
 export type SourceSyncRun = v.InferOutput<typeof sourceSyncRunSchema>
 
@@ -333,6 +338,24 @@ export const sourceCatalogDownloadRangeInputSchema = v.strictObject({
 export type SourceCatalogDownloadRangeInput = v.InferInput<
   typeof sourceCatalogDownloadRangeInputSchema
 >
+export const sourceCatalogDownloadCancelInputSchema = v.strictObject({
+  workId: sourceOpaqueIdSchema,
+  bindingId: sourceOpaqueIdSchema
+})
+export type SourceCatalogDownloadCancelInput = v.InferInput<
+  typeof sourceCatalogDownloadCancelInputSchema
+>
+export const sourceDownloadSummarySchema = v.strictObject({
+  /** `stopped`: the source became unavailable or needs age confirmation; the rest was not tried. */
+  state: v.picklist(['completed', 'cancelled', 'stopped'] as const),
+  downloaded: nonNegativeIntegerSchema,
+  /** Already downloaded or not public, so not requested. */
+  skipped: nonNegativeIntegerSchema,
+  empty: v.array(nonEmptyText('Tên chương', 1000)),
+  failed: v.array(v.strictObject({ title: nonEmptyText('Tên chương', 1000), message: v.string() })),
+  stopReason: v.nullable(v.string())
+})
+export type SourceDownloadSummary = v.InferOutput<typeof sourceDownloadSummarySchema>
 
 export const sourceCatalogPageSchema = v.strictObject({
   items: v.array(sourceCatalogItemSchema),
@@ -376,6 +399,8 @@ export const sourceBindingPreviewSchema = v.strictObject({
   title: nonEmptyText('Tên tác phẩm', 1000),
   author: v.nullable(nonEmptyText('Tác giả', 1000)),
   description: v.nullable(v.pipe(v.string(), v.maxLength(20_000))),
+  /** Site within the source, e.g. Nocturne for an R18 Syosetu work. */
+  siteName: v.optional(v.nullable(nonEmptyText('Tên site', 200))),
   languageTag: sourceLanguageSchema,
   totalCount: nonNegativeIntegerSchema,
   matchedCount: nonNegativeIntegerSchema,
@@ -413,7 +438,9 @@ export const sourceBindingDeleteInputSchema = v.strictObject({
 
 export const sourceSyncStartInputSchema = v.strictObject({
   workId: sourceOpaqueIdSchema,
-  bindingId: sourceOpaqueIdSchema
+  bindingId: sourceOpaqueIdSchema,
+  /** Read the whole catalog even when the source's cheap update check reports no change. */
+  full: v.optional(v.boolean())
 })
 export const sourceSyncCancelInputSchema = v.strictObject({ runId: sourceOpaqueIdSchema })
 export const sourceSyncStatusInputSchema = v.strictObject({ runId: sourceOpaqueIdSchema })
@@ -470,6 +497,8 @@ export type SourceSyncCancelInput = v.InferInput<typeof sourceSyncCancelInputSch
 export type SourceSyncStatusInput = v.InferInput<typeof sourceSyncStatusInputSchema>
 export type SourceSyncProgress = v.InferOutput<typeof sourceSyncProgressSchema>
 export const sourceDownloadProgressSchema = v.strictObject({
+  workId: sourceOpaqueIdSchema,
+  bindingId: sourceOpaqueIdSchema,
   current: nonNegativeIntegerSchema,
   total: nonNegativeIntegerSchema,
   itemTitle: v.string()
@@ -492,3 +521,7 @@ export const sourceRegistryListInputSchema = v.optional(
   {}
 )
 export type SourceRegistryListInput = v.InferInput<typeof sourceRegistryListInputSchema>
+
+/** The user's 18+ confirmation that gates R18 sources; stored as an application preference. */
+export const sourceAgeSetInputSchema = v.strictObject({ confirmed: v.boolean() })
+export type SourceAgeSetInput = v.InferInput<typeof sourceAgeSetInputSchema>

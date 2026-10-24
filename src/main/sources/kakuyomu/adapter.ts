@@ -7,6 +7,8 @@ import type {
   SourceManifest
 } from '../domain'
 import type { NetworkBroker } from '../broker'
+import { fetchText } from '../http'
+import type { NetworkSource } from '../networkSources'
 import { identifyKakuyomu } from './identify'
 import { parseKakuyomuWorkPage } from './parser'
 import { parseKakuyomuEpisode } from './episodeParser'
@@ -32,7 +34,6 @@ export const kakuyomuManifest: SourceManifest = {
   origin: { kind: 'builtin' },
   limits: { maxPages: 10, pageSize: 100, timeoutMs: 15000 },
   health: 'unchecked',
-  releaseGate: 'open',
   networkPolicy: {
     origins: [KAKUYOMU_ORIGIN],
     minIntervalMs: 1000,
@@ -65,16 +66,9 @@ export function createKakuyomuAdapter(broker: NetworkBroker): NovelSourceAdapter
   return {
     manifest: kakuyomuManifest,
 
-    async identify(input: { value: string }, _context: AdapterContext) {
-      const result = identifyKakuyomu(input.value)
-      if (!result) return null
-      return { remoteWorkId: result.remoteWorkId }
-    },
-
     async getWork(input: { remoteWorkId: string }, context: AdapterContext) {
       const url = `${KAKUYOMU_ORIGIN}/works/${input.remoteWorkId}`
-      const response = await broker.request({ url, method: 'GET', signal: context.signal })
-      const html = new TextDecoder('utf-8').decode(response.body)
+      const html = await fetchText(broker, url, context.signal)
       const nextDataJson = extractNextDataJson(html)
       if (!nextDataJson) {
         throw new Error('Không tìm thấy dữ liệu __NEXT_DATA__ trên trang tác phẩm Kakuyomu')
@@ -86,7 +80,8 @@ export function createKakuyomuAdapter(broker: NetworkBroker): NovelSourceAdapter
       return {
         remoteWorkId: input.remoteWorkId,
         title: parsed.workMeta.title,
-        languageTag: 'ja'
+        languageTag: 'ja',
+        author: parsed.workMeta.author ?? undefined
       }
     },
 
@@ -95,8 +90,7 @@ export function createKakuyomuAdapter(broker: NetworkBroker): NovelSourceAdapter
       context: AdapterContext
     ): Promise<CatalogPage> {
       const url = `${KAKUYOMU_ORIGIN}/works/${input.remoteWorkId}`
-      const response = await broker.request({ url, method: 'GET', signal: context.signal })
-      const html = new TextDecoder('utf-8').decode(response.body)
+      const html = await fetchText(broker, url, context.signal)
       const nextDataJson = extractNextDataJson(html)
       if (!nextDataJson) {
         return {
@@ -120,8 +114,7 @@ export function createKakuyomuAdapter(broker: NetworkBroker): NovelSourceAdapter
       context: AdapterContext
     ): Promise<ChapterPage> {
       const url = `${KAKUYOMU_ORIGIN}/works/${input.remoteWorkId}/episodes/${input.remoteChapterId}`
-      const response = await broker.request({ url, method: 'GET', signal: context.signal })
-      const html = new TextDecoder('utf-8').decode(response.body)
+      const html = await fetchText(broker, url, context.signal)
       const parsed = parseKakuyomuEpisode(html)
       if (parsed.access === 'login_required') {
         throw new Error('Chương yêu cầu đăng nhập trên Kakuyomu')
@@ -138,4 +131,11 @@ export function createKakuyomuAdapter(broker: NetworkBroker): NovelSourceAdapter
       }
     }
   }
+}
+
+export const kakuyomuSource: NetworkSource = {
+  manifest: kakuyomuManifest,
+  identify: identifyKakuyomu,
+  canonicalUrl: (remoteWorkId) => `${KAKUYOMU_ORIGIN}/works/${remoteWorkId}`,
+  createAdapter: createKakuyomuAdapter
 }

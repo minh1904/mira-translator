@@ -33,7 +33,8 @@ export interface SourceManifest {
   origin: { kind: 'builtin' } | { kind: 'package'; packageName: string }
   limits: { maxPages: number; pageSize: number; timeoutMs: number }
   health?: SourceHealth
-  releaseGate?: 'open' | 'closed'
+  /** R18 source: requests need the user's age confirmation. */
+  adult?: boolean
   networkPolicy?: {
     origins: string[]
     minIntervalMs: number
@@ -43,7 +44,27 @@ export interface SourceManifest {
     maxResponseBytes: number
     requestTimeoutMs: number
     operationRequestBudget: number
+    /** Extra pause the download task takes after every `every` chapters. */
+    burstPause?: { every: number; ms: number }
+    /** Fixed age-confirmation cookie per origin, sent only after the user confirmed their age. */
+    ageCookies?: Record<string, string>
   }
+}
+
+export interface SourceIdentity {
+  remoteWorkId: string
+  canonicalUrl: string
+  inputRemoteChapterId?: string
+}
+
+export interface WorkInfo {
+  remoteWorkId: string
+  title: string
+  languageTag: string
+  author?: string
+  description?: string
+  /** Site name shown next to the source, e.g. Nocturne for an R18 Syosetu work. */
+  siteName?: string
 }
 
 export interface CatalogItem {
@@ -51,6 +72,8 @@ export interface CatalogItem {
   title: string
   order: number
   url?: string
+  /** Chapter group heading (章) the episode sits under. */
+  volumeTitle?: string
   access: AccessState
   contentHash?: string
   payloadHash?: string
@@ -80,14 +103,20 @@ export interface AdapterContext {
 
 export interface NovelSourceAdapter {
   manifest: SourceManifest
+  /** Local (folder/file) adapters only; network sources identify URLs offline via `NetworkSource`. */
   identify?: (
     input: { value: string },
     context: AdapterContext
   ) => Promise<{ remoteWorkId: string } | null>
-  getWork?: (
+  getWork?: (input: { remoteWorkId: string }, context: AdapterContext) => Promise<WorkInfo>
+  /**
+   * Cheap evidence of remote change (e.g. episode count + last update from an API). A sync whose
+   * fingerprint equals the last complete run's skips reading the catalog.
+   */
+  getUpdateFingerprint?: (
     input: { remoteWorkId: string },
     context: AdapterContext
-  ) => Promise<{ remoteWorkId: string; title: string; languageTag: string }>
+  ) => Promise<string>
   getCatalog?: (
     input: { remoteWorkId: string; cursor?: string },
     context: AdapterContext

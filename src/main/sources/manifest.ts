@@ -74,12 +74,6 @@ export function validateManifest(manifest: SourceManifest): SourceManifest {
     'invalid timeout'
   )
   requireCondition(manifest.health === undefined || HEALTH.has(manifest.health), 'invalid health')
-  requireCondition(
-    manifest.releaseGate === undefined ||
-      manifest.releaseGate === 'open' ||
-      manifest.releaseGate === 'closed',
-    'invalid release gate'
-  )
   if (manifest.networkPolicy !== undefined) {
     requireCondition(
       Array.isArray(manifest.networkPolicy.origins) && manifest.networkPolicy.origins.length > 0,
@@ -95,6 +89,21 @@ export function validateManifest(manifest: SourceManifest): SourceManifest {
         manifest.networkPolicy.maxConcurrency > 0,
       'invalid maxConcurrency'
     )
+    const pause = manifest.networkPolicy.burstPause
+    requireCondition(
+      pause === undefined ||
+        (Number.isSafeInteger(pause.every) &&
+          pause.every > 0 &&
+          Number.isSafeInteger(pause.ms) &&
+          pause.ms >= 0),
+      'invalid burstPause'
+    )
+    for (const origin of Object.keys(manifest.networkPolicy.ageCookies ?? {})) {
+      requireCondition(
+        manifest.networkPolicy.origins.includes(origin),
+        'ageCookies origin is not declared'
+      )
+    }
   }
   return manifest
 }

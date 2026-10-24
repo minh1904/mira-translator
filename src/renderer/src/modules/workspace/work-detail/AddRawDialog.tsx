@@ -12,7 +12,11 @@ import { Button } from '../../../components/ui/Button'
 import { TextField } from '../../../components/ui/Field'
 import { Select } from '../../../components/ui/Select'
 import { ICON } from '../../../components/ui/icon'
-import type { SourceBinding, SourceBindingPreview } from '../../../../../shared/contracts/sources'
+import type {
+  SourceBinding,
+  SourceBindingIdentifyResult,
+  SourceBindingPreview
+} from '../../../../../shared/contracts/sources'
 
 export interface AddRawDialogProps {
   open: boolean
@@ -44,6 +48,43 @@ const SOURCE_KINDS = [
     icon: <GlobeIcon size={ICON.md} />
   }
 ]
+
+/** Sites the URL tab understands; shown under the URL field. */
+export const SUPPORTED_SITES = [
+  'kakuyomu.jp',
+  'ncode.syosetu.com',
+  'novel18.syosetu.com (R18)',
+  'www.akatsuki-novels.com (R18)'
+]
+
+/** One-time 18+ confirmation shown before previewing an R18 source; stored as an app preference. */
+export function AgeConfirmation({
+  sourceName,
+  onConfirm,
+  disabled
+}: {
+  sourceName: string
+  onConfirm: () => void
+  disabled?: boolean
+}): JSX.Element {
+  return (
+    <div className="flex flex-col gap-sm rounded-sm border border-warning bg-warning/10 p-md">
+      <div className="flex items-center gap-xs text-warning">
+        <DangerTriangleIcon size={ICON.sm} />
+        <span className="text-label-sm font-medium">Nguồn R18: {sourceName}</span>
+      </div>
+      <p className="m-0 text-body-xs text-default">
+        Nguồn này có tác phẩm dành cho người lớn. Mira chỉ truy cập sau khi bạn xác nhận đủ 18 tuổi;
+        xác nhận được lưu trong ứng dụng và có thể thu hồi trong Cài đặt.
+      </p>
+      <div>
+        <Button variant="solid" onClick={onConfirm} disabled={disabled}>
+          Tôi đã đủ 18 tuổi
+        </Button>
+      </div>
+    </div>
+  )
+}
 
 const LANGUAGE_OPTIONS = [
   { value: 'ja', label: 'Tiếng Nhật (ja)' },
@@ -77,6 +118,7 @@ export function AddRawDialog({
   const [step, setStep] = useState<'select' | 'preview' | 'config'>('select')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [ageGate, setAgeGate] = useState<SourceBindingIdentifyResult | null>(null)
 
   // Kết quả xem trước — dùng kiểu đầy đủ cho URL, kiểu đơn giản cho file/folder
   const [previewResult, setPreviewResult] = useState<{
@@ -88,6 +130,8 @@ export function AddRawDialog({
     // Thêm cho URL preview
     title?: string
     author?: string | null
+    siteName?: string | null
+    adult?: boolean
     warnings?: string[]
     sample?: Array<{ remoteChapterId: string; title: string; position: number }>
     canonicalUrl?: string | null
@@ -107,6 +151,7 @@ export function AddRawDialog({
     setLoading(false)
     setError(null)
     setPreviewResult(null)
+    setAgeGate(null)
   }
 
   const handleClose = (): void => {
@@ -202,43 +247,14 @@ export function AddRawDialog({
           return
         }
 
-        // Bước 2: preview-create
-        const previewRes = await window.mira.sources.bindings.previewCreate({
-          workId,
-          sourceId: identified.source.sourceId,
-          remoteWorkId: identified.remoteWorkId,
-          canonicalUrl: identified.canonicalUrl,
-          inputRemoteChapterId: identified.inputRemoteChapterId ?? null
-        })
-
-        if (!previewRes.ok) {
-          // Giữ input khi retry
-          setError(
-            previewRes.error.message || 'Không thể xem trước tác phẩm này. Vui lòng thử lại.'
-          )
-          return
+        if (identified.source.adult) {
+          const age = await window.mira.sources.age.get()
+          if (!age.ok || !age.value.confirmed) {
+            setAgeGate(identified)
+            return
+          }
         }
-
-        const p = previewRes.value as SourceBindingPreview
-        setPreviewResult({
-          previewId: p.previewId,
-          totalCount: p.totalCount,
-          matchedCount: p.matchedCount,
-          unmatchedCount: p.unmatchedCount,
-          errorCount: p.errorCount,
-          title: p.title,
-          author: p.author,
-          warnings: p.warnings,
-          sample: p.sample,
-          canonicalUrl: p.canonicalUrl,
-          inputRemoteChapterId: p.inputRemoteChapterId,
-          sourceId: p.sourceId,
-          remoteWorkId: p.remoteWorkId
-        })
-        if (!label && p.title) setLabel(p.title)
-        // URL source ngôn ngữ thường là ja
-        if (p.languageTag) setLanguageTag(p.languageTag)
-        setStep('preview')
+        await previewIdentified(identified)
       } else {
         // Mock cho môi trường kiểm thử
         setPreviewResult({
@@ -266,6 +282,66 @@ export function AddRawDialog({
     } finally {
       setLoading(false)
     }
+  }
+
+  const handleConfirmAge = async (): Promise<void> => {
+    if (!ageGate) return
+    setError(null)
+    setLoading(true)
+    try {
+      const res = await window.mira.sources.age.set({ confirmed: true })
+      if (!res.ok) {
+        setError(res.error.message || 'Không lưu được xác nhận tuổi')
+        return
+      }
+      const identified = ageGate
+      setAgeGate(null)
+      await previewIdentified(identified)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Lỗi khi xem trước URL')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  // Bước 2: preview-create cho nguồn đã nhận diện
+  const previewIdentified = async (identified: SourceBindingIdentifyResult): Promise<void> => {
+    const previewRes = await window.mira.sources.bindings.previewCreate({
+      workId,
+      sourceId: identified.source.sourceId,
+      remoteWorkId: identified.remoteWorkId,
+      canonicalUrl: identified.canonicalUrl,
+      inputRemoteChapterId: identified.inputRemoteChapterId ?? null
+    })
+
+    if (!previewRes.ok) {
+      // Giữ input khi retry
+      setError(previewRes.error.message || 'Không thể xem trước tác phẩm này. Vui lòng thử lại.')
+      return
+    }
+
+    const p = previewRes.value as SourceBindingPreview
+    setPreviewResult({
+      previewId: p.previewId,
+      totalCount: p.totalCount,
+      matchedCount: p.matchedCount,
+      unmatchedCount: p.unmatchedCount,
+      errorCount: p.errorCount,
+      title: p.title,
+      author: p.author,
+      siteName: p.siteName ?? null,
+      adult: identified.source.adult,
+      warnings: p.warnings,
+      sample: p.sample,
+      canonicalUrl: p.canonicalUrl,
+      inputRemoteChapterId: p.inputRemoteChapterId,
+      sourceId: p.sourceId,
+      remoteWorkId: p.remoteWorkId
+    })
+    if (!label && p.title) setLabel(p.title)
+    // URL source ngôn ngữ thường là ja
+    if (p.languageTag) setLanguageTag(p.languageTag)
+    setStep('preview')
   }
 
   const handlePreview = kind === 'url' ? handlePreviewUrl : handlePreviewFilePath
@@ -420,13 +496,21 @@ export function AddRawDialog({
                   onChange={(e) => {
                     setUrlValue(e.target.value)
                     setError(null)
+                    setAgeGate(null)
                   }}
-                  placeholder="https://kakuyomu.jp/works/1234567890"
+                  placeholder="https://ncode.syosetu.com/n1234ab/"
                 />
                 <span className="text-body-xs text-muted">
                   Paste URL trang tác phẩm hoặc tập chương. Mira sẽ nhận diện nguồn và xem trước
-                  danh mục trước khi xác nhận.
+                  danh mục trước khi xác nhận. Hỗ trợ: {SUPPORTED_SITES.join(', ')}.
                 </span>
+                {ageGate && (
+                  <AgeConfirmation
+                    sourceName={ageGate.source.displayName}
+                    onConfirm={() => void handleConfirmAge()}
+                    disabled={loading}
+                  />
+                )}
               </div>
             ) : (
               <div className="flex flex-col gap-xs">
@@ -463,8 +547,18 @@ export function AddRawDialog({
             {/* Tiêu đề/tác giả cho URL preview */}
             {kind === 'url' && previewResult.title && (
               <div className="rounded-sm border border-default bg-muted p-md">
-                <div className="text-label-md font-semibold text-default">
-                  {previewResult.title}
+                <div className="flex items-center gap-xs text-label-md font-semibold text-default">
+                  <span>{previewResult.title}</span>
+                  {previewResult.adult && (
+                    <span className="rounded-xs bg-error/15 px-1 py-0.5 text-body-2xs text-error">
+                      R18
+                    </span>
+                  )}
+                  {previewResult.siteName && (
+                    <span className="text-body-xs font-normal text-muted">
+                      {previewResult.siteName}
+                    </span>
+                  )}
                 </div>
                 {previewResult.author && (
                   <div className="mt-2xs text-body-xs text-muted">{previewResult.author}</div>

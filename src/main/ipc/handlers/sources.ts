@@ -9,6 +9,8 @@ import {
   sourceCatalogGetInputSchema,
   sourceCatalogDownloadInputSchema,
   sourceCatalogDownloadRangeInputSchema,
+  sourceCatalogDownloadCancelInputSchema,
+  sourceAgeSetInputSchema,
   sourceCatalogReorderInputSchema,
   sourceCatalogListInputSchema,
   sourceSyncCancelInputSchema,
@@ -21,6 +23,7 @@ import {
   sourceUpdatesListInputSchema,
   type SourceCatalogItem,
   type SourceBindingIdentifyResult,
+  type SourceDescriptor,
   type SourceSyncRun,
   type SourceUpdateEvent
 } from '../../../shared/contracts/sources'
@@ -39,7 +42,10 @@ import {
 import { segment } from '../../../shared/segmentation/segmenter'
 import { parseRangeString } from '../../../shared/text/rangeParser'
 import { StorageError } from '../../infra/storage/errors'
-import { identifyKakuyomu } from '../../sources/kakuyomu/identify'
+import { readAgeConfirmed, writeAgeConfirmed } from '../../infra/storage/agePreference'
+import type { CatalogItem, SourceManifest, WorkInfo } from '../../sources/domain'
+import { SourceDownloadService } from '../../sources/downloadService'
+import { findNetworkSource, identifyNetworkUrl } from '../../sources/networkSources'
 import { createAsyncHandler, createHandler, createSinkHandler } from '../handler'
 import { sourcesOf, type AreaHandlers, type HandlerDeps } from './deps'
 
@@ -65,7 +71,9 @@ function storedToContractCatalogItem(s: StoredCatalogItem): SourceCatalogItem {
 }
 
 function storedToContractSyncRun(s: StoredSyncRun): SourceSyncRun {
+  const unchanged = s.statsJson?.includes('"unchanged":true') === true
   return {
+    ...(unchanged ? { unchanged } : {}),
     id: s.id,
     bindingId: s.bindingId,
     trigger: s.trigger === 'import' ? 'manual' : s.trigger,
@@ -80,6 +88,7 @@ function storedToContractSyncRun(s: StoredSyncRun): SourceSyncRun {
           code: ([
             'cancelled',
             'login_required',
+            'age_verification_required',
             'manual_intervention_required',
             'temporarily_unavailable',
             'parser_broken',
@@ -118,9 +127,36 @@ function storedToContractUpdateEvent(s: StoredUpdateEvent): SourceUpdateEvent {
   }
 }
 
+function toDescriptor(manifest: SourceManifest): SourceDescriptor {
+  return {
+    sourceId: manifest.sourceId,
+    displayName: manifest.displayName,
+    nativeName: manifest.nativeNames[0] ?? null,
+    aliases: manifest.aliases,
+    domains: manifest.domains,
+    countryCode: (manifest.countryCode === 'ZZ'
+      ? null
+      : manifest.countryCode) as SourceDescriptor['countryCode'],
+    languageTags: manifest.languageTags as SourceDescriptor['languageTags'],
+    capabilities: manifest.capabilities as SourceDescriptor['capabilities'],
+    access:
+      manifest.origin.kind === 'builtin'
+        ? 'local'
+        : manifest.auth === 'none'
+          ? 'public'
+          : 'account',
+    health: {
+      state: (manifest.health ?? 'healthy') as SourceDescriptor['health']['state'],
+      checkedAt: null,
+      message: null
+    },
+    adult: manifest.adult === true
+  }
+}
+
 export function sourcesHandlers(deps: HandlerDeps): AreaHandlers<'sources'> {
   const sources = () => sourcesOf(deps)
-  const activeDownloads = new Set<string>()
+  const downloads = new SourceDownloadService()
   const urlPreviews = new Map<
     string,
     {
@@ -129,8 +165,42 @@ export function sourcesHandlers(deps: HandlerDeps): AreaHandlers<'sources'> {
       remoteWorkId: string
       canonicalUrl: string
       expiresAt: number
+      work: WorkInfo
+      items: CatalogItem[]
     }
   >()
+
+  /** Creates the Mira chapter for a catalog item and maps it; removes the chapter if saving fails. */
+  const saveDownloadedChapter = (workId: string, item: StoredCatalogItem, text: string) => {
+    const targetPos = deps.library.withWork(workId, (db) =>
+      computeTargetPosition(db, item.bindingId, item.ordinalKey)
+    )
+    const { chapter } = deps.library.createChapterAt(workId, targetPos, item.title)
+    try {
+      deps.library.saveText(
+        workId,
+        chapter.id,
+        'source',
+        text,
+        0,
+        segment(text, deps.library.get(workId).sourceLang)
+      )
+      deps.library.withWork(workId, (db) => {
+        sources().catalog.mapChapter(db, item.id, chapter.id)
+      })
+    } catch (error) {
+      deps.library.deleteChapter(workId, chapter.id)
+      throw error
+    }
+    return chapter.id
+  }
+
+  const enabledBinding = (workId: string, bindingId: string) =>
+    deps.library.withWork(workId, (db) => {
+      const binding = listSourceBindings(db).find((candidate) => candidate.id === bindingId)
+      if (!binding || !binding.enabled) throw new StorageError('validation', 'Nguồn đã bị tắt')
+      return binding
+    })
 
   return {
     'sources:catalog:list': createHandler(sourceCatalogListInputSchema, (input) => {
@@ -166,26 +236,19 @@ export function sourcesHandlers(deps: HandlerDeps): AreaHandlers<'sources'> {
 
     'sources:catalog:download': createAsyncHandler(
       sourceCatalogDownloadInputSchema,
-      async (input) => {
-        const key = `${input.workId}:${input.itemId}`
-        if (activeDownloads.has(key)) throw new StorageError('conflict', 'Chương đang được tải')
-        activeDownloads.add(key)
-        try {
-          const { item, binding } = deps.library.withWork(input.workId, (db) => {
+      async (input) =>
+        downloads.runSingle(`${input.workId}:${input.itemId}`, async () => {
+          const item = deps.library.withWork(input.workId, (db) => {
             const item = sources().catalog.get(db, input.itemId)
             if (!item) throw new StorageError('not_found', 'Chương trong danh mục không tồn tại')
-            const binding = listSourceBindings(db).find(
-              (candidate) => candidate.id === item.bindingId
-            )
-            if (!binding || !binding.enabled)
-              throw new StorageError('validation', 'Nguồn đã bị tắt')
             if (item.chapterId)
               throw new StorageError('conflict', 'Chương này đã được tải vào Mira')
             if (item.accessState !== 'public') {
               throw new StorageError('validation', 'Chương này hiện không thể tải công khai')
             }
-            return { item, binding }
+            return item
           })
+          const binding = enabledBinding(input.workId, item.bindingId)
           const page = await sources().getChapter({
             sourceId: binding.adapterId,
             remoteWorkId: binding.remoteWorkId,
@@ -193,32 +256,11 @@ export function sourcesHandlers(deps: HandlerDeps): AreaHandlers<'sources'> {
             languageTag: binding.languageTag
           })
           if (!page.text.trim()) throw new StorageError('validation', 'Nguồn trả về chương rỗng')
-
-          const targetPos = deps.library.withWork(input.workId, (db) =>
-            computeTargetPosition(db, item.bindingId, item.ordinalKey)
-          )
-          const { chapter } = deps.library.createChapterAt(input.workId, targetPos, item.title)
-          try {
-            deps.library.saveText(
-              input.workId,
-              chapter.id,
-              'source',
-              page.text,
-              0,
-              segment(page.text, deps.library.get(input.workId).sourceLang)
-            )
-            deps.library.withWork(input.workId, (db) => {
-              sources().catalog.mapChapter(db, item.id, chapter.id)
-            })
-          } catch (error) {
-            deps.library.deleteChapter(input.workId, chapter.id)
-            throw error
+          return {
+            chapterId: saveDownloadedChapter(input.workId, item, page.text),
+            title: item.title
           }
-          return { chapterId: chapter.id, title: item.title }
-        } finally {
-          activeDownloads.delete(key)
-        }
-      }
+        })
     ),
 
     'sources:catalog:download-range': createSinkHandler(
@@ -228,74 +270,60 @@ export function sourcesHandlers(deps: HandlerDeps): AreaHandlers<'sources'> {
         if (positions.length === 0) {
           throw new StorageError('validation', 'Dải chương không hợp lệ')
         }
-
-        const candidateItems = deps.library.withWork(input.workId, (db) => {
-          const binding = listSourceBindings(db).find((b) => b.id === input.bindingId)
-          if (!binding || !binding.enabled) throw new StorageError('validation', 'Nguồn đã bị tắt')
-          const allItems = listCatalogItems(db, input.bindingId)
+        const binding = enabledBinding(input.workId, input.bindingId)
+        const items = deps.library.withWork(input.workId, (db) => {
           const posSet = new Set(positions)
-          return allItems.filter(
+          return listCatalogItems(db, input.bindingId).filter(
             (it) =>
               it.accessState === 'public' &&
               !it.chapterId &&
               posSet.has(Number.parseInt(it.ordinalKey, 10) || 0)
           )
         })
-
-        let downloadedCount = 0
-        for (let i = 0; i < candidateItems.length; i++) {
-          const item = candidateItems[i]
-          try {
-            sink.send(EVENT_CHANNELS.sourcesDownloadProgress, {
-              workId: input.workId,
-              bindingId: input.bindingId,
-              current: i + 1,
-              total: candidateItems.length,
-              title: item.title
-            })
-          } catch {
-            // sink is best-effort
-          }
-
-          const { binding } = deps.library.withWork(input.workId, (db) => {
-            const binding = listSourceBindings(db).find((b) => b.id === item.bindingId)
-            if (!binding) throw new StorageError('not_found', 'Không tìm thấy nguồn')
-            return { binding }
-          })
-
-          const page = await sources().getChapter({
-            sourceId: binding.adapterId,
-            remoteWorkId: binding.remoteWorkId,
-            remoteChapterId: item.remoteChapterId,
-            languageTag: binding.languageTag
-          })
-          if (!page.text.trim()) continue
-
-          const targetPos = deps.library.withWork(input.workId, (db) =>
-            computeTargetPosition(db, item.bindingId, item.ordinalKey)
-          )
-          const { chapter } = deps.library.createChapterAt(input.workId, targetPos, item.title)
-          try {
-            deps.library.saveText(
-              input.workId,
-              chapter.id,
-              'source',
-              page.text,
-              0,
-              segment(page.text, deps.library.get(input.workId).sourceLang)
-            )
-            deps.library.withWork(input.workId, (db) => {
-              sources().catalog.mapChapter(db, item.id, chapter.id)
-            })
-            downloadedCount++
-          } catch (error) {
-            deps.library.deleteChapter(input.workId, chapter.id)
-            throw error
-          }
-        }
-
-        return { downloadedCount, totalAttempted: candidateItems.length }
+        return downloads.runTask(
+          `${input.workId}:${input.bindingId}`,
+          `${input.workId}:`,
+          items,
+          {
+            isDone: (item) =>
+              deps.library.withWork(
+                input.workId,
+                (db) => sources().catalog.get(db, item.id)?.chapterId != null
+              ),
+            fetchText: async (item, signal) =>
+              (
+                await sources().getChapter(
+                  {
+                    sourceId: binding.adapterId,
+                    remoteWorkId: binding.remoteWorkId,
+                    remoteChapterId: item.remoteChapterId,
+                    languageTag: binding.languageTag
+                  },
+                  signal
+                )
+              ).text,
+            save: (item, text) => {
+              saveDownloadedChapter(input.workId, item, text)
+            },
+            onProgress: (current, total, item) => {
+              if (sink.isDestroyed()) return
+              sink.send(EVENT_CHANNELS.sourcesDownloadProgress, {
+                workId: input.workId,
+                bindingId: input.bindingId,
+                current,
+                total,
+                itemTitle: item.title
+              })
+            }
+          },
+          findNetworkSource(binding.adapterId)?.manifest.networkPolicy?.burstPause
+        )
       }
+    ),
+
+    'sources:catalog:download-cancel': createHandler(
+      sourceCatalogDownloadCancelInputSchema,
+      (input) => ({ cancelled: downloads.cancel(`${input.workId}:${input.bindingId}`) })
     ),
 
     'sources:catalog:reorder-by-source': createHandler(sourceCatalogReorderInputSchema, (input) => {
@@ -311,41 +339,15 @@ export function sourcesHandlers(deps: HandlerDeps): AreaHandlers<'sources'> {
     }),
 
     'sources:bindings:identify': createHandler(sourceBindingIdentifyInputSchema, (input) => {
-      const manifest = sources().registry.findByUrl(input.candidate)
+      const match = identifyNetworkUrl(input.candidate)
+      if (!match) return null
+      const manifest = sources().registry.get(match.source.manifest.sourceId)
       if (!manifest || !manifest.capabilities.includes('identify')) return null
-
-      const identity =
-        manifest.sourceId === 'mira.jp.kakuyomu' ? identifyKakuyomu(input.candidate) : null
-      if (!identity) return null
-
       const result: SourceBindingIdentifyResult = {
-        source: {
-          sourceId: manifest.sourceId,
-          displayName: manifest.displayName,
-          nativeName: manifest.nativeNames[0] ?? null,
-          aliases: manifest.aliases,
-          domains: manifest.domains,
-          countryCode: (manifest.countryCode === 'ZZ'
-            ? null
-            : manifest.countryCode) as SourceBindingIdentifyResult['source']['countryCode'],
-          languageTags:
-            manifest.languageTags as SourceBindingIdentifyResult['source']['languageTags'],
-          capabilities: manifest.capabilities,
-          access:
-            manifest.origin.kind === 'builtin'
-              ? 'local'
-              : manifest.auth === 'none'
-                ? 'public'
-                : 'account',
-          health: {
-            state: manifest.health ?? 'healthy',
-            checkedAt: null,
-            message: null
-          }
-        },
-        remoteWorkId: identity.remoteWorkId,
-        canonicalUrl: identity.canonicalUrl,
-        inputRemoteChapterId: identity.inputRemoteChapterId ?? null
+        source: toDescriptor(manifest),
+        remoteWorkId: match.identity.remoteWorkId,
+        canonicalUrl: match.identity.canonicalUrl,
+        inputRemoteChapterId: match.identity.inputRemoteChapterId ?? null
       }
       return result
     }),
@@ -353,23 +355,26 @@ export function sourcesHandlers(deps: HandlerDeps): AreaHandlers<'sources'> {
     'sources:bindings:preview-create': createAsyncHandler(
       sourceBindingPreviewCreateInputSchema,
       async (input) => {
-        if (input.sourceId === 'mira.jp.kakuyomu') {
+        const network = findNetworkSource(input.sourceId)
+        if (network) {
           for (const [id, pending] of urlPreviews) {
             if (pending.expiresAt < deps.library.appNow()) urlPreviews.delete(id)
           }
-          const preview = await sources().preview({
+          const { work, items } = await sources().preview({
             sourceId: input.sourceId,
             remoteWorkId: input.remoteWorkId
           })
           const previewId = deps.library.newAppId()
           const expiresAt = deps.library.appNow() + 10 * 60_000
-          const canonicalUrl = `https://kakuyomu.jp/works/${input.remoteWorkId}`
+          const canonicalUrl = network.canonicalUrl(input.remoteWorkId)
           urlPreviews.set(previewId, {
             workId: input.workId,
             sourceId: input.sourceId,
             remoteWorkId: input.remoteWorkId,
             canonicalUrl,
-            expiresAt
+            expiresAt,
+            work,
+            items
           })
           return {
             previewId,
@@ -379,16 +384,17 @@ export function sourcesHandlers(deps: HandlerDeps): AreaHandlers<'sources'> {
             remoteWorkId: input.remoteWorkId,
             canonicalUrl,
             inputRemoteChapterId: input.inputRemoteChapterId ?? null,
-            title: preview.title,
-            author: null,
-            description: null,
-            languageTag: preview.languageTag,
-            totalCount: preview.items.length,
-            matchedCount: preview.items.length,
+            title: work.title,
+            author: work.author ?? null,
+            description: work.description ?? null,
+            siteName: work.siteName ?? null,
+            languageTag: work.languageTag,
+            totalCount: items.length,
+            matchedCount: items.length,
             unmatchedCount: 0,
             errorCount: 0,
             warnings: [],
-            sample: preview.items.slice(0, 20).map((item) => ({
+            sample: items.slice(0, 20).map((item) => ({
               remoteChapterId: item.remoteChapterId,
               title: item.title || item.remoteChapterId,
               position: item.order
@@ -411,7 +417,7 @@ export function sourcesHandlers(deps: HandlerDeps): AreaHandlers<'sources'> {
     'sources:bindings:create': createHandler(sourceBindingCreateInputSchema, (input) => {
       const preview = urlPreviews.get(input.expectedPreviewId)
       if (
-        input.sourceId === 'mira.jp.kakuyomu' &&
+        findNetworkSource(input.sourceId) !== undefined &&
         (!preview ||
           preview.expiresAt < deps.library.appNow() ||
           preview.workId !== input.workId ||
@@ -420,15 +426,23 @@ export function sourcesHandlers(deps: HandlerDeps): AreaHandlers<'sources'> {
       ) {
         throw new StorageError('validation', 'Bản xem trước URL đã hết hạn hoặc không khớp')
       }
-      const binding = deps.library.withWork(input.workId, (db) => {
-        return sources().bindings.createBinding(
-          db,
-          input.workId,
-          { ...input, canonicalUrl: preview?.canonicalUrl ?? null },
-          deps.library.appNow(),
-          () => deps.library.newAppId()
-        )
-      })
+      const binding = deps.library.withWork(input.workId, (db) =>
+        db.transaction(() => {
+          const now = deps.library.appNow()
+          const newId = () => deps.library.newAppId()
+          const created = sources().bindings.createBinding(
+            db,
+            input.workId,
+            { ...input, canonicalUrl: preview?.canonicalUrl ?? null },
+            now,
+            newId
+          )
+          if (preview) {
+            sources().catalog.saveInitialSnapshot(db, created.id, preview.items, now, newId)
+          }
+          return created
+        })
+      )
       if (preview) urlPreviews.delete(input.expectedPreviewId)
       return binding
     }),
@@ -462,7 +476,8 @@ export function sourcesHandlers(deps: HandlerDeps): AreaHandlers<'sources'> {
             if (!sink.isDestroyed()) {
               sink.send(EVENT_CHANNELS.sourceSyncProgress, progress)
             }
-          }
+          },
+          { full: input.full }
         )
         return storedToContractSyncRun(run)
       })
@@ -608,28 +623,17 @@ export function sourcesHandlers(deps: HandlerDeps): AreaHandlers<'sources'> {
     'sources:registry:list': createHandler(sourceRegistryListInputSchema, (input) => {
       const manifests = sources().registry.query(input ?? {})
       return {
-        sources: manifests.map((manifest) => ({
-          sourceId: manifest.sourceId,
-          displayName: manifest.displayName,
-          nativeName: manifest.nativeNames[0] ?? null,
-          aliases: manifest.aliases,
-          domains: manifest.domains,
-          countryCode: (manifest.countryCode === 'ZZ' ? null : manifest.countryCode) as any,
-          languageTags: manifest.languageTags as any,
-          capabilities: manifest.capabilities as any,
-          access:
-            manifest.origin.kind === 'builtin'
-              ? 'local'
-              : manifest.auth === 'none'
-                ? 'public'
-                : 'account',
-          health: {
-            state: (manifest.health ?? 'healthy') as any,
-            checkedAt: null,
-            message: null
-          }
-        }))
+        sources: manifests.map(toDescriptor)
       }
+    }),
+
+    'sources:age:get': createHandler(null, () => ({
+      confirmed: readAgeConfirmed(deps.library.appDb)
+    })),
+
+    'sources:age:set': createHandler(sourceAgeSetInputSchema, (input) => {
+      writeAgeConfirmed(deps.library.appDb, input.confirmed)
+      return { confirmed: input.confirmed }
     })
   }
 }

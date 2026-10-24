@@ -93,6 +93,7 @@ import type {
   SourceCatalogDownloadResult,
   SourceDescriptor,
   SourceDownloadProgress,
+  SourceDownloadSummary,
   SourceSyncProgress,
   SourceSyncRun,
   SourceUpdatesPage
@@ -465,7 +466,13 @@ const desktopApi: DesktopApi = {
           Result<SourceCatalogDownloadResult>
         >,
       downloadRange: (input) =>
-        ipcRenderer.invoke(CHANNELS.sourcesCatalogDownloadRange, input) as Promise<Result<void>>,
+        ipcRenderer.invoke(CHANNELS.sourcesCatalogDownloadRange, input) as Promise<
+          Result<SourceDownloadSummary>
+        >,
+      downloadCancel: (input) =>
+        ipcRenderer.invoke(CHANNELS.sourcesCatalogDownloadCancel, input) as Promise<
+          Result<{ cancelled: boolean }>
+        >,
       reorderBySource: (input) =>
         ipcRenderer.invoke(CHANNELS.sourcesCatalogReorderBySource, input) as Promise<
           Result<{ reorderedCount: number }>
@@ -528,6 +535,12 @@ const desktopApi: DesktopApi = {
         ipcRenderer.invoke(CHANNELS.sourcesRegistryList, input) as Promise<
           Result<{ sources: SourceDescriptor[] }>
         >
+    },
+    age: {
+      get: () =>
+        ipcRenderer.invoke(CHANNELS.sourcesAgeGet) as Promise<Result<{ confirmed: boolean }>>,
+      set: (input) =>
+        ipcRenderer.invoke(CHANNELS.sourcesAgeSet, input) as Promise<Result<{ confirmed: boolean }>>
     }
   },
   agent: {

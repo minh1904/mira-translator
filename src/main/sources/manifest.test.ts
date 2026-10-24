@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import type { SourceManifest } from './domain'
 import { ManifestValidationError, validateManifest } from './manifest'
+import { NETWORK_SOURCES } from './networkSources'
 import { SourceRegistry } from './registry'
 
 const baseManifest: SourceManifest = {
@@ -69,51 +70,24 @@ describe('adapter manifests and registry', () => {
     expect(registry.findByUrl('https://novel.example.kr/work/1')?.sourceId).toBe('mira.korean')
   })
 
-  it('enforces release gate masking for closed adapters and allows opt-in in tests (Task 8.1)', () => {
-    const closedKakuyomu: SourceManifest = {
-      manifestVersion: 1,
-      sourceId: 'mira.jp.kakuyomu',
-      displayName: 'Kakuyomu',
-      nativeNames: ['カクヨム'],
-      aliases: ['kakuyomu'],
-      domains: ['kakuyomu.jp'],
-      adapterVersion: '1.0.0',
-      apiVersion: '1.0.0',
-      dataVersion: 1,
-      countryCode: 'JP',
-      languageTags: ['ja'],
-      capabilities: ['identify', 'work', 'catalog', 'chapter'],
-      auth: 'none',
-      origin: { kind: 'builtin' },
-      limits: { maxPages: 10, pageSize: 100, timeoutMs: 15000 },
-      health: 'unchecked',
-      releaseGate: 'closed',
-      networkPolicy: {
-        origins: ['https://kakuyomu.jp'],
-        minIntervalMs: 1000,
-        maxConcurrency: 1,
-        maxRedirects: 5,
-        maxAttempts: 3,
-        maxResponseBytes: 5_000_000,
-        requestTimeoutMs: 15000,
-        operationRequestBudget: 20
-      }
+  it('validates every shipped network source manifest', () => {
+    const registry = new SourceRegistry(NETWORK_SOURCES.map((source) => source.manifest))
+    for (const source of NETWORK_SOURCES) {
+      expect(registry.get(source.manifest.sourceId)?.capabilities).toContain('catalog')
     }
+  })
 
-    // Default production registry
-    const prodRegistry = new SourceRegistry([closedKakuyomu])
-    expect(prodRegistry.get('mira.jp.kakuyomu')?.capabilities).toEqual([])
-    expect(prodRegistry.query({ capability: 'catalog' })).toHaveLength(0)
-    expect(prodRegistry.findByUrl('https://kakuyomu.jp/works/123')?.capabilities).toEqual([])
-
-    // Test registry with allowUnreleased: true
-    const testRegistry = new SourceRegistry([closedKakuyomu], { allowUnreleased: true })
-    expect(testRegistry.get('mira.jp.kakuyomu')?.capabilities).toEqual([
-      'identify',
-      'work',
-      'catalog',
-      'chapter'
-    ])
-    expect(testRegistry.query({ capability: 'catalog' })).toHaveLength(1)
+  it('rejects a bad burst pause and an age cookie for an undeclared origin', () => {
+    const base = NETWORK_SOURCES[0].manifest
+    const policy = base.networkPolicy!
+    expect(() =>
+      validateManifest({ ...base, networkPolicy: { ...policy, burstPause: { every: 0, ms: 10 } } })
+    ).toThrow('invalid burstPause')
+    expect(() =>
+      validateManifest({
+        ...base,
+        networkPolicy: { ...policy, ageCookies: { 'https://other.example': 'over18=yes' } }
+      })
+    ).toThrow('ageCookies origin is not declared')
   })
 })
