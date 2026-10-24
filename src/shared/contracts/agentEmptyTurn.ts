@@ -4,7 +4,9 @@ export const AGENT_WRITE_TOOLS = [
   'edit_translation',
   'undo_operation',
   'create_translation_task',
-  'steer_translation_task'
+  'steer_translation_task',
+  'answer_context_questions',
+  'set_work_conventions'
 ] as const
 
 /** Progress message Main stores at the end of a turn that gave the user nothing. */

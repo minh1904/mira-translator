@@ -209,8 +209,11 @@ describe('reviseEntry', () => {
     ).toBe('user_edited')
     expect(getContextEntry(db, edited.id)?.target).toBe('Gaizel')
     expect(JSON.parse(blocked(edited.id)![0]!.detail!)).toMatchObject({
-      fields: { target: 'Geizel' },
-      reason: 'user_edited'
+      kind: 'revision',
+      title: 'AI đề xuất đổi bản dịch "Gaizel" → "Geizel"',
+      options: ['Áp cho cả truyện', 'Giữ nguyên'],
+      default: 'Giữ nguyên',
+      proposal: { kind: 'correction', fields: { target: 'Geizel' } }
     })
 
     const team = createContextEntry(db, {

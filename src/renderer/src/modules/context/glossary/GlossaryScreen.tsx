@@ -21,6 +21,13 @@ import { CompactButton } from '../../../components/ui/CompactButton'
 import { ICON } from '../../../components/ui/icon'
 import { EmptyState } from '../../../components/ui/EmptyState'
 import { SearchInput } from '../../../components/ui/Input'
+import { ButtonGroup } from '../../../components/ui/ButtonGroup'
+import {
+  ContextQuestionsView,
+  QuestionsConfirm,
+  useContextQuestions,
+  WorkConventionsPanel
+} from './ContextQuestions'
 import { EntryHistoryDialog } from './EntryHistoryDialog'
 import { DeleteGlossaryDialog, EditGlossaryDialog, ImportNamesDialog } from './GlossaryDialogs'
 import { useGlossary } from './useGlossary'
@@ -42,6 +49,8 @@ export function reviewFlagLabel(flag: ReviewFlag): string {
   if (flag.code === 'family_mismatch') return 'Lệch khuôn với thuật ngữ cùng họ'
   if (flag.code === 'short_alias') return `Dạng ngắn "${flag.detail ?? ''}" dễ khớp nhầm`
   if (flag.code === 'revision_suggested') return 'AI đề xuất sửa, chưa áp'
+  if (flag.code === 'merge_suggested') return 'Có thể trùng một mục khác'
+  if (flag.code === 'gender_uncertain') return 'Giới tính chưa chắc'
   return 'Mở lại vì có bằng chứng mới'
 }
 
@@ -80,9 +89,11 @@ function ReviewDetails({
 
 export interface GlossaryScreenProps {
   workId: string
+  /** Opens on the "Cần xem" list, as the link from a task's detail does. */
+  initialView?: 'all' | 'review'
 }
 
-export function GlossaryScreen({ workId }: GlossaryScreenProps): JSX.Element {
+export function GlossaryScreen({ workId, initialView = 'all' }: GlossaryScreenProps): JSX.Element {
   const {
     entries,
     loading,
@@ -93,8 +104,11 @@ export function GlossaryScreen({ workId }: GlossaryScreenProps): JSX.Element {
     updateEntry,
     deleteEntry,
     importNames,
-    reviewInfo
+    reviewInfo,
+    reload
   } = useGlossary({ workId })
+  const [view, setView] = useState<'all' | 'review'>(initialView)
+  const questions = useContextQuestions(workId, () => void reload())
 
   const [chapters, setChapters] = useState<ChapterItem[]>([])
   const [editingEntry, setEditingEntry] = useState<ContextEntryItem | null | 'new'>(null)
@@ -133,6 +147,15 @@ export function GlossaryScreen({ workId }: GlossaryScreenProps): JSX.Element {
       {/* Thanh công cụ trên cùng */}
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex flex-wrap items-center gap-2">
+          <ButtonGroup
+            label="Hiển thị"
+            value={view}
+            options={[
+              { value: 'all', label: 'Tất cả' },
+              { value: 'review', label: `Cần xem (${questions.questions.length})` }
+            ]}
+            onChange={(value) => setView(value === 'review' ? 'review' : 'all')}
+          />
           <SearchInput
             label="Tìm kiếm thuật ngữ"
             value={query}
@@ -158,117 +181,135 @@ export function GlossaryScreen({ workId }: GlossaryScreenProps): JSX.Element {
 
       {error && <div className="rounded-sm bg-error/10 p-3 text-body-xs text-error">{error}</div>}
 
-      {/* Danh sách thuật ngữ chính */}
-      <div className="overflow-hidden rounded-sm border border-default bg-surface">
-        <div className="grid grid-cols-[minmax(0,1.5fr)_minmax(0,1.5fr)_110px_minmax(0,1.2fr)_104px] items-center border-b border-default bg-subtle px-3 py-2 text-body-xs font-medium text-subtle">
-          <span>Từ gốc / Biến thể</span>
-          <span>Bản dịch đích</span>
-          <span>Hiệu lực</span>
-          <span>Ghi chú</span>
-          <span className="text-right">Thao tác</span>
-        </div>
+      <WorkConventionsPanel workId={workId} />
+      <QuestionsConfirm
+        confirm={questions.confirm}
+        onClose={() => questions.setConfirm(null)}
+        error={questions.error}
+        onDismissError={() => questions.setError(null)}
+      />
 
-        {loading ? (
-          <div className="py-12 text-center text-body-xs text-subtle">
-            Đang tải danh sách thuật ngữ...
+      {view === 'review' ? (
+        <ContextQuestionsView
+          questions={questions.questions}
+          chapterNumber={chapterNumber}
+          onAnswer={questions.answer}
+        />
+      ) : (
+        <div className="overflow-hidden rounded-sm border border-default bg-surface">
+          <div className="grid grid-cols-[minmax(0,1.5fr)_minmax(0,1.5fr)_110px_minmax(0,1.2fr)_104px] items-center border-b border-default bg-subtle px-3 py-2 text-body-xs font-medium text-subtle">
+            <span>Từ gốc / Biến thể</span>
+            <span>Bản dịch đích</span>
+            <span>Hiệu lực</span>
+            <span>Ghi chú</span>
+            <span className="text-right">Thao tác</span>
           </div>
-        ) : entries.length === 0 ? (
-          <EmptyState
-            icon={<BookBookmarkIcon size={24} />}
-            title={query ? 'Không tìm thấy thuật ngữ nào' : 'Chưa có thuật ngữ nào'}
-            actions={
-              !query ? (
-                <Button variant="light" onClick={() => setEditingEntry('new')}>
-                  Thêm thuật ngữ đầu tiên
-                </Button>
-              ) : undefined
-            }
-          >
-            {query
-              ? 'Thử tìm kiếm với từ khóa khác hoặc xóa bộ lọc.'
-              : 'Thêm thuật ngữ hoặc nhập từ tệp Names.txt để AI tự động áp dụng khi dịch.'}
-          </EmptyState>
-        ) : (
-          <ul className="divide-y divide-default">
-            {entries.map((entry) => (
-              <li
-                key={entry.id}
-                className={cn(
-                  'grid grid-cols-[minmax(0,1.5fr)_minmax(0,1.5fr)_110px_minmax(0,1.2fr)_104px] items-center px-3 py-2.5 text-body-xs transition-colors hover:bg-hover',
-                  entry.status === 'pending' && 'bg-warning/5',
-                  entry.status === 'rejected' && 'opacity-60'
-                )}
-              >
-                {/* Thuật ngữ gốc và biến thể */}
-                <div className="flex flex-col items-start gap-1 pr-2">
-                  <span className="font-semibold text-default">{entry.source}</span>
-                  {entry.aliases.length > 0 && (
-                    <div className="flex flex-wrap gap-1">
-                      {entry.aliases.map((alias) => (
-                        <span
-                          key={alias}
-                          className="rounded-sm bg-subtle px-1 py-px text-body-xs text-subtle border border-default"
-                        >
-                          {alias}
-                        </span>
-                      ))}
-                    </div>
-                  )}
-                  <ReviewDetails info={reviewInfo.get(entry.id)} chapterNumber={chapterNumber} />
-                </div>
 
-                {/* Bản dịch đích và cảnh báo cấm dùng */}
-                <div className="flex flex-col items-start gap-1 pr-2">
-                  <span
-                    className={cn(
-                      'font-medium',
-                      entry.forbidden ? 'text-error line-through' : 'text-default'
+          {loading ? (
+            <div className="py-12 text-center text-body-xs text-subtle">
+              Đang tải danh sách thuật ngữ...
+            </div>
+          ) : entries.length === 0 ? (
+            <EmptyState
+              icon={<BookBookmarkIcon size={24} />}
+              title={query ? 'Không tìm thấy thuật ngữ nào' : 'Chưa có thuật ngữ nào'}
+              actions={
+                !query ? (
+                  <Button variant="light" onClick={() => setEditingEntry('new')}>
+                    Thêm thuật ngữ đầu tiên
+                  </Button>
+                ) : undefined
+              }
+            >
+              {query
+                ? 'Thử tìm kiếm với từ khóa khác hoặc xóa bộ lọc.'
+                : 'Thêm thuật ngữ hoặc nhập từ tệp Names.txt để AI tự động áp dụng khi dịch.'}
+            </EmptyState>
+          ) : (
+            <ul className="divide-y divide-default">
+              {entries.map((entry) => (
+                <li
+                  key={entry.id}
+                  className={cn(
+                    'grid grid-cols-[minmax(0,1.5fr)_minmax(0,1.5fr)_110px_minmax(0,1.2fr)_104px] items-center px-3 py-2.5 text-body-xs transition-colors hover:bg-hover',
+                    entry.status === 'pending' && 'bg-warning/5',
+                    entry.status === 'rejected' && 'opacity-60'
+                  )}
+                >
+                  {/* Thuật ngữ gốc và biến thể */}
+                  <div className="flex flex-col items-start gap-1 pr-2">
+                    <span className="font-semibold text-default">{entry.source}</span>
+                    {entry.aliases.length > 0 && (
+                      <div className="flex flex-wrap gap-1">
+                        {entry.aliases.map((alias) => (
+                          <span
+                            key={alias}
+                            className="rounded-sm bg-subtle px-1 py-px text-body-xs text-subtle border border-default"
+                          >
+                            {alias}
+                          </span>
+                        ))}
+                      </div>
                     )}
-                  >
-                    {entry.target}
-                  </span>
-                  {entry.forbidden && (
-                    <span className="rounded-sm bg-error/10 px-1 py-px text-body-xs font-semibold text-error">
-                      Cấm dùng
+                    <ReviewDetails info={reviewInfo.get(entry.id)} chapterNumber={chapterNumber} />
+                  </div>
+
+                  {/* Bản dịch đích và cảnh báo cấm dùng */}
+                  <div className="flex flex-col items-start gap-1 pr-2">
+                    <span
+                      className={cn(
+                        'font-medium',
+                        entry.forbidden ? 'text-error line-through' : 'text-default'
+                      )}
+                    >
+                      {entry.target}
                     </span>
-                  )}
-                </div>
+                    {entry.forbidden && (
+                      <span className="rounded-sm bg-error/10 px-1 py-px text-body-xs font-semibold text-error">
+                        Cấm dùng
+                      </span>
+                    )}
+                  </div>
 
-                {/* Phạm vi hiệu lực */}
-                <span className="text-body-xs text-subtle">{formatChapterScope(entry)}</span>
+                  {/* Phạm vi hiệu lực */}
+                  <span className="text-body-xs text-subtle">{formatChapterScope(entry)}</span>
 
-                {/* Ghi chú */}
-                <span className="truncate pr-2 text-body-xs text-subtle" title={entry.notes ?? ''}>
-                  {entry.notes || '—'}
-                </span>
+                  {/* Ghi chú */}
+                  <span
+                    className="truncate pr-2 text-body-xs text-subtle"
+                    title={entry.notes ?? ''}
+                  >
+                    {entry.notes || '—'}
+                  </span>
 
-                {/* Các thao tác */}
-                <div className="flex items-center justify-end gap-1">
-                  <CompactButton
-                    icon={<HistoryIcon size={ICON.sm} />}
-                    aria-label="Lịch sử"
-                    title="Lịch sử"
-                    onClick={() => setHistoryEntry(entry)}
-                  />
-                  <CompactButton
-                    icon={<PenNewSquareIcon size={ICON.sm} />}
-                    aria-label="Chỉnh sửa"
-                    title="Chỉnh sửa"
-                    onClick={() => setEditingEntry(entry)}
-                  />
-                  <CompactButton
-                    tone="danger"
-                    icon={<TrashBinMinimalisticIcon size={ICON.sm} />}
-                    aria-label="Xóa thuật ngữ"
-                    title="Xóa thuật ngữ"
-                    onClick={() => setDeletingEntry(entry)}
-                  />
-                </div>
-              </li>
-            ))}
-          </ul>
-        )}
-      </div>
+                  {/* Các thao tác */}
+                  <div className="flex items-center justify-end gap-1">
+                    <CompactButton
+                      icon={<HistoryIcon size={ICON.sm} />}
+                      aria-label="Lịch sử"
+                      title="Lịch sử"
+                      onClick={() => setHistoryEntry(entry)}
+                    />
+                    <CompactButton
+                      icon={<PenNewSquareIcon size={ICON.sm} />}
+                      aria-label="Chỉnh sửa"
+                      title="Chỉnh sửa"
+                      onClick={() => setEditingEntry(entry)}
+                    />
+                    <CompactButton
+                      tone="danger"
+                      icon={<TrashBinMinimalisticIcon size={ICON.sm} />}
+                      aria-label="Xóa thuật ngữ"
+                      title="Xóa thuật ngữ"
+                      onClick={() => setDeletingEntry(entry)}
+                    />
+                  </div>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      )}
 
       {/* Các hộp thoại chức năng */}
       <EditGlossaryDialog

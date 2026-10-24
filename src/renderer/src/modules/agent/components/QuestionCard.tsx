@@ -1,6 +1,7 @@
 import { useState, type JSX, type KeyboardEvent } from 'react'
 import type {
   AgentPendingAction,
+  AgentQuestion,
   AgentQuestionAnswers
 } from '../../../../../shared/contracts/agent'
 import { Button } from '../../../components/ui/Button'
@@ -25,13 +26,40 @@ export interface QuestionCardProps {
   onSkip(): Promise<boolean>
 }
 
+/** Thẻ câu hỏi của Trợ lý phía trên ô nhập (C18): `QuestionForm` nối với pending action của lượt chat. */
+export function QuestionCard({ action, onAnswer, onSkip }: QuestionCardProps): JSX.Element | null {
+  return (
+    <QuestionForm
+      questions={action.questions ?? []}
+      onAnswer={onAnswer}
+      onSkip={action.allowSkip !== false ? onSkip : undefined}
+      pendingCall={action.toolCallId}
+    />
+  )
+}
+
+export interface QuestionFormProps {
+  questions: AgentQuestion[]
+  onAnswer(answers: AgentQuestionAnswers): Promise<boolean>
+  /** Có thì hiện nút "Bỏ qua tất cả". */
+  onSkip?: () => Promise<boolean>
+  label?: string
+  /** Lời gọi công cụ đang chờ, khi thẻ thuộc một lượt chat. */
+  pendingCall?: string
+}
+
 /**
- * Thẻ câu hỏi của Trợ lý phía trên ô nhập (C18), như thẻ câu hỏi của VS Code: từng câu một với bước
+ * Thẻ câu hỏi dùng chung cho chat và màn Từ điển, như thẻ câu hỏi của VS Code: từng câu một với bước
  * i/n, lựa chọn đánh số chọn bằng phím 1–9, đáp án mặc định chọn sẵn, ô nhập câu trả lời khác,
  * Trước/Tiếp và Gửi ở câu cuối (Ctrl+Enter), Bỏ qua tất cả, thu gọn được.
  */
-export function QuestionCard({ action, onAnswer, onSkip }: QuestionCardProps): JSX.Element | null {
-  const questions = action.questions ?? []
+export function QuestionForm({
+  questions,
+  onAnswer,
+  onSkip,
+  label = 'Câu hỏi của Trợ lý',
+  pendingCall
+}: QuestionFormProps): JSX.Element | null {
   const [step, setStep] = useState(0)
   const [draft, setDraft] = useState(() => initialDraft(questions))
   const [collapsed, setCollapsed] = useState(false)
@@ -72,9 +100,9 @@ export function QuestionCard({ action, onAnswer, onSkip }: QuestionCardProps): J
 
   return (
     <section
-      aria-label="Câu hỏi của Trợ lý"
+      aria-label={label}
       aria-keyshortcuts="Control+Enter"
-      data-pending-call={action.toolCallId}
+      data-pending-call={pendingCall}
       onKeyDown={onKeyDown}
       className="flex flex-col gap-1.5 rounded-sm border border-default bg-surface p-2 text-body-xs shadow-xs"
     >
@@ -83,7 +111,7 @@ export function QuestionCard({ action, onAnswer, onSkip }: QuestionCardProps): J
           Câu hỏi {step + 1}/{questions.length}
         </span>
         <span className="flex-1" />
-        {action.allowSkip !== false && (
+        {onSkip && (
           <Button
             variant="ghost"
             loading={sending}

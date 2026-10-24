@@ -712,6 +712,19 @@ CREATE TABLE context_edit_signal (
 );
 `
 
+/**
+ * Translation conventions of the work (change `add-context-questions`): one row per convention the person
+ * set; no row means the default, not settled yet.
+ */
+const version20 = `
+CREATE TABLE work_convention (
+  key TEXT PRIMARY KEY,
+  value TEXT NOT NULL,
+  settled INTEGER NOT NULL CHECK (settled IN (0, 1)),
+  updated_at INTEGER NOT NULL
+);
+`
+
 export const workSchema: SchemaSpec = {
   applicationId: WORK_APPLICATION_ID,
   migrations: [
@@ -829,6 +842,12 @@ export const workSchema: SchemaSpec = {
       foreignKeysOff: true,
       up(db) {
         db.exec(version19)
+      }
+    },
+    {
+      version: 20,
+      up(db) {
+        db.exec(version20)
       }
     }
   ]

@@ -77,6 +77,13 @@ import type {
 } from './glossary'
 import type { ContextEntryHistory } from './glossary'
 import type {
+  AnswerContextQuestionInput,
+  AnswerContextQuestionResult,
+  ContextQuestionView,
+  SetWorkConventionInput,
+  WorkConventions
+} from './contextQuestions'
+import type {
   AddressingComplianceReport,
   AddressingDyadItem,
   AddressingDyadResolved,
@@ -294,6 +301,13 @@ export interface AiAccountsApi {
 export interface GlossaryApi {
   /** Changes of one entry, newest first, and the chapters to translate again after a correction. */
   history(options: { workId: string; entryId: string }): Promise<Result<ContextEntryHistory>>
+  /** Open context questions of the work, most impact first. */
+  questions(workId: string): Promise<Result<ContextQuestionView[]>>
+  answerQuestion(input: AnswerContextQuestionInput): Promise<Result<AnswerContextQuestionResult>>
+  conventions(workId: string): Promise<Result<WorkConventions>>
+  setConvention(
+    input: SetWorkConventionInput
+  ): Promise<Result<{ conventions: WorkConventions; renamed: number; skipped: number }>>
   list(options: {
     workId: string
     kind?: ContextKind

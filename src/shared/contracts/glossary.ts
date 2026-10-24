@@ -34,14 +34,16 @@ export const REVIEW_FLAG_CODES = [
   'reopened',
   'family_mismatch',
   'short_alias',
-  'revision_suggested'
+  'revision_suggested',
+  'merge_suggested',
+  'gender_uncertain'
 ] as const
 export type ReviewFlagCode = (typeof REVIEW_FLAG_CODES)[number]
 
 export interface ReviewFlag {
   code: ReviewFlagCode
   /** `alias_conflict`: the alias form that belongs to another entry; `short_alias`: the short form left off;
-   * `revision_suggested`: the held-back change as JSON (`RevisionSuggestion`). */
+   * `revision_suggested`, `merge_suggested`, `gender_uncertain`: an open `ContextQuestion` as JSON. */
   detail?: string
 }
 

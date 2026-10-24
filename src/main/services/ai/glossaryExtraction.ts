@@ -8,6 +8,7 @@
  *
  * Hàm thuần: không gọi mạng, không đọc tệp. Người gọi gửi `messages` qua kết nối của mình.
  */
+import type { RomanizationStyle } from './romaji'
 import { languageName } from './translate/languageProfiles'
 
 export interface ExtractionChapter {
@@ -55,6 +56,8 @@ export interface ExtractedTerm {
   reason?: string
   /** Nguồn của một mục đã có mà dạng này chỉ là biến thể. */
   alias_of?: string
+  /** Nguồn của một mục đã có mà model nghĩ có thể là cùng thực thể, nhưng không chắc. */
+  same_as?: string
 }
 
 /** Mục đã chốt gửi kèm lô phân loại; model không được đổi. */
@@ -339,11 +342,20 @@ export function parseSweep(text: string): string[] {
     .filter((form) => form.trim() !== '')
 }
 
-/** Chính sách dịch tên theo ngôn ngữ nguồn; mặc định tạm, còn chờ quyết định (xem tài liệu). */
-function namingPolicy(sourceLang: string): string[] {
+const ROMANIZATION_RULE: Record<RomanizationStyle, string> = {
+  hepburn_plain:
+    'phiên romaji Hepburn, thứ tự như bản gốc (họ trước tên), bỏ dấu nguyên âm dài (Ryota, Yuki)',
+  hepburn_macron:
+    'phiên romaji Hepburn, thứ tự như bản gốc (họ trước tên), giữ dấu nguyên âm dài (Ryōta, Yūki)',
+  wapuro:
+    'phiên romaji, thứ tự như bản gốc (họ trước tên), viết nguyên âm dài theo kana (Ryouta, Yuuki)'
+}
+
+/** Chính sách dịch tên theo ngôn ngữ nguồn; tên Nhật theo kiểu phiên âm của tác phẩm. */
+function namingPolicy(sourceLang: string, romanization: RomanizationStyle): string[] {
   if (sourceLang === 'ja') {
     return [
-      '- Tên người Nhật: phiên romaji Hepburn, thứ tự như bản gốc (họ trước tên), bỏ dấu nguyên âm dài (Ryota, Yuki); "reading" ghi cách đọc bằng kana.',
+      `- Tên người Nhật: ${ROMANIZATION_RULE[romanization]}; "reading" ghi cách đọc bằng kana.`,
       '- Tên viết bằng katakana của nhân vật phương Tây hoặc thế giới giả tưởng: khôi phục dạng Latin tự nhiên nhất (ミリィ → Milly); không chắc thì phiên âm sát và ghi rõ trong "note".',
       '- Kỹ năng, phép thuật, vật phẩm, tổ chức: dịch nghĩa sang tiếng Việt; tên riêng trong đó giữ dạng Latin.'
     ]
@@ -408,7 +420,8 @@ export function buildClassifyMessages(
   sourceLang: string,
   candidates: Candidate[],
   known: KnownTerm[] = [],
-  inChunk: KnownInChunk[] = []
+  inChunk: KnownInChunk[] = [],
+  romanization: RomanizationStyle = 'hepburn_plain'
 ): ExtractionMessage[] {
   const lang = languageName(sourceLang)
   const system = [
@@ -421,8 +434,9 @@ export function buildClassifyMessages(
     '- Gom các dạng của cùng một thực thể (tên đầy đủ, tên gọi tắt, tên kèm hậu tố) vào một mục: "source" là dạng đầy đủ nhất, các dạng khác ở "aliases". Chỉ dùng dạng có trong <candidates> hoặc trong câu ngữ cảnh.',
     '- <known> là các mục đã chốt: không đổi, không phân loại lại. Ứng viên chỉ là dạng khác của một mục đã chốt: ghi "alias_of" là "source" của mục đó. Ứng viên cùng họ với mục đã chốt (cùng hậu tố, cùng tiền tố) dịch theo đúng khuôn của mục đó, kể cả cách viết hoa.',
     '- Ứng viên có "reading" là cách đọc tác giả chú bên cạnh; dùng nó khi dịch.',
+    '- Ứng viên có thể là cùng một thực thể với một mục <known> (biệt danh, danh hiệu) nhưng không chắc: vẫn phân loại như mục mới và ghi "same_as" là "source" của mục đó. Chắc chắn thì dùng "alias_of".',
     '- <known_in_chunk> là mục đã có xuất hiện trong khúc này, kèm một câu mới. Chỉ khi câu trong khúc cho thấy rõ mục sai từ đầu (cách đọc, giới tính, thân phận lộ ra) thì trả trong "revisions" một mục "kind": "correction"; khi mục đổi từ một chương (đổi tên, chức danh mới, quan hệ mới) thì "kind": "progression" kèm "fromChapter". Ghi "target", "notes" hay "aliases" mới, và "evidence" là câu nguyên văn kèm số chương. Đổi chỉ trong một cảnh (hồi tưởng, cải trang, nói đùa) không phải revision. Không chắc thì không trả.',
-    ...namingPolicy(sourceLang),
+    ...namingPolicy(sourceLang, romanization),
     '- "gender" chỉ cho "person": male, female hoặc unknown; chỉ ghi male/female khi ngữ cảnh cho thấy rõ.',
     '- "note" chỉ ghi vai trò hay quan hệ đã lộ trong ngữ cảnh được cho; không đoán diễn biến, không tiết lộ thân phận về sau.',
     '- "evidence" trích nguyên văn một câu ngữ cảnh có dạng đó, kèm số chương ("ch3: …"). Không chắc thì "confidence": "thấp".',
@@ -488,8 +502,9 @@ export function parseClassification(text: string): ExtractedTerm[] {
         typeof (term as ExtractedTerm).source === 'string' &&
         (TERM_TYPES as readonly string[]).includes((term as ExtractedTerm).type)
     )
-    .map(({ alias_of, reading, ...term }) => ({
+    .map(({ alias_of, reading, same_as, ...term }) => ({
       ...term,
+      ...(typeof same_as === 'string' && same_as.trim() !== '' ? { same_as: same_as.trim() } : {}),
       ...(typeof alias_of === 'string' && alias_of.trim() !== ''
         ? { alias_of: alias_of.trim() }
         : {}),

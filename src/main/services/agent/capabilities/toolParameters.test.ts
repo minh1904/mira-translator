@@ -3,6 +3,11 @@ import { describe, expect, it } from 'vitest'
 import { AGENT_WRITE_TOOLS } from '../../../../shared/contracts/agentEmptyTurn'
 import type { ConnectionService } from '../../ai/connectionService'
 import type { CapabilityDefinition } from '../types'
+import {
+  answerContextQuestionsCapability,
+  readContextQuestionsCapability,
+  setWorkConventionsCapability
+} from './contextQuestionCapabilities'
 import { defaultReadCapabilities, getWorkOverviewCapability } from './readCapabilities'
 import { createWriteCapabilities } from './writeCapabilities'
 import {
@@ -13,6 +18,9 @@ import {
 
 const write = createWriteCapabilities({ connections: {} as ConnectionService })
 const chatCapabilities: CapabilityDefinition[] = [
+  readContextQuestionsCapability,
+  answerContextQuestionsCapability,
+  setWorkConventionsCapability,
   ...defaultReadCapabilities,
   write.translateChapterCapability,
   write.editTranslationCapability,
@@ -44,6 +52,12 @@ const samples: Record<string, { valid: unknown; invalid: unknown }> = {
   search_work: { valid: { query: 'Lâm' }, invalid: { query: '' } },
   list_glossary: { valid: {}, invalid: null },
   list_addressing: { valid: {}, invalid: null },
+  read_context_questions: { valid: {}, invalid: null },
+  answer_context_questions: {
+    valid: { answers: [{ questionId: 'q1', label: 'Nam' }] },
+    invalid: { answers: [] }
+  },
+  set_work_conventions: { valid: { honorifics: 'keep' }, invalid: { honorifics: 'drop' } },
   translate_chapter: { valid: {}, invalid: { connectionId: 1 } },
   edit_translation: {
     valid: { replacements: [{ sourceId: 's1', text: 'Xin chào' }], expectedRev: 3 },

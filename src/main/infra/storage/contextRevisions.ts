@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto'
-import type { ContextChangeActor, ReviewFlag } from '../../../shared/contracts/glossary'
+import { QUESTION_LABELS } from '../../../shared/contracts/contextQuestions'
+import type { ContextChangeActor } from '../../../shared/contracts/glossary'
 import { recordFieldChanges } from './contextChanges'
 import {
   checkUniqueness,
@@ -9,7 +10,9 @@ import {
   rangeOf,
   touchWork
 } from './contextEntries'
+import { attachQuestion, revisionOptions } from './contextQuestions'
 import { StorageError } from './errors'
+import { readConventions } from './workConventions'
 import type { Db } from './sqlite'
 
 /**
@@ -163,6 +166,14 @@ export interface RevisionSuggestion {
   fromChapterId: string | null
   evidence: RevisionQuote[]
   reason: RevisionBlock
+  /** For a pair of addressing: what changing it from the chapter writes. */
+  dyad?: {
+    sourceCharacterId: string
+    targetCharacterId: string
+    self: string
+    address: string
+    secondPerson: string | null
+  }
 }
 
 /**
@@ -209,20 +220,40 @@ export function revisionBlock(
   return null
 }
 
-/** Adds a `revision_suggested` flag to an entry; the same suggestion twice stays one flag. */
+/**
+ * Leaves a held-back change on the entry as a question (change `add-context-questions`): keep it (the
+ * default, already in effect), apply it to the whole story, or apply it from its chapter. Asking the same
+ * thing twice, or again after an answer, adds nothing.
+ */
 export function flagRevision(db: Db, entryId: string, suggestion: RevisionSuggestion): void {
-  const row = db
-    .prepare('SELECT review_flags FROM context_entry WHERE id = ?')
-    .get<{ review_flags: string }>(entryId)
-  if (!row) return
-  const detail = JSON.stringify(suggestion)
-  const flags = parseFlags(row.review_flags)
-  if (flags.some((flag) => flag.code === 'revision_suggested' && flag.detail === detail)) return
-  const next: ReviewFlag[] = [...flags, { code: 'revision_suggested', detail }]
-  db.prepare('UPDATE context_entry SET review_flags = ? WHERE id = ?').run(
-    JSON.stringify(next),
-    entryId
-  )
+  const entry = getContextEntry(db, entryId)
+  if (!entry) return
+  const n = position(db, suggestion.fromChapterId)
+  const from = n !== null ? ` từ chương ${n + 1}` : ''
+  const fields = suggestion.fields
+  const title = suggestion.dyad
+    ? `AI đề xuất đổi xưng hô thành "${suggestion.dyad.self} / ${suggestion.dyad.address}"${from}`
+    : fields.target
+      ? `AI đề xuất đổi bản dịch "${entry.target}" → "${fields.target}"${from}`
+      : fields.notes
+        ? `AI đề xuất đổi ghi chú thành "${fields.notes}"${from}`
+        : `AI đề xuất thêm dạng viết ${(fields.aliases ?? []).join(', ')}${from}`
+  const { reason: _reason, evidence, ...proposal } = suggestion
+  attachQuestion(db, entryId, {
+    kind: 'revision',
+    title,
+    options: revisionOptions(
+      db,
+      suggestion.kind === 'progression' ? suggestion.fromChapterId : null,
+      !suggestion.dyad
+    ),
+    default: QUESTION_LABELS.keep,
+    fromChapterId: suggestion.fromChapterId,
+    otherEntryId: null,
+    proposal,
+    evidence,
+    runId: null
+  })
 }
 
 /**
@@ -323,6 +354,23 @@ export function reviseEntry(
       now
     )
     touchWork(db, now)
+    // A fix for the whole story leaves translated chapters behind; the work may want to be asked.
+    if (target !== entry.target && readConventions(db).correction_retranslate.value === 'ask') {
+      const chapterIds = affectedChapters(db, entry.id)
+      if (chapterIds.length > 0) {
+        attachQuestion(db, entry.id, {
+          kind: 'retranslate',
+          title: `Bản dịch đổi thành "${target}": dịch lại ${chapterIds.length} chương đã dịch?`,
+          options: [QUESTION_LABELS.retranslate, QUESTION_LABELS.listOnly],
+          default: QUESTION_LABELS.listOnly,
+          fromChapterId: null,
+          otherEntryId: null,
+          proposal: { chapterIds, target },
+          evidence: input.evidence,
+          runId: input.runId ?? null
+        })
+      }
+    }
     return { applied: true, entryId: entry.id, blocked: null }
   })
 }

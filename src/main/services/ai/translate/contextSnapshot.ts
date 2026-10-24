@@ -1,3 +1,4 @@
+import { readConventions } from '../../../infra/storage/workConventions'
 import { createHash } from 'node:crypto'
 import type { AddressingDyadResolved, CharacterItem } from '../../../../shared/contracts/addressing'
 import type { RegisterPresetId } from '../../../../shared/contracts/addressingPresets'
@@ -36,6 +37,11 @@ export interface ContextSnapshot {
    * outside tasks, so the canonical JSON and hash of a plain run stay as they were.
    */
   instruction?: string
+  /**
+   * The work's honorifics convention when it is not the default (change `add-context-questions`), so a
+   * pinned item keeps the one it started with and older snapshots keep their hash.
+   */
+  honorifics?: 'vietnamize'
 }
 
 export interface SnapshotRecord {
@@ -84,7 +90,8 @@ export function promptFromSnapshot(
     register: snapshot.register,
     characters: snapshot.characters,
     previous,
-    ...(snapshot.instruction ? { instruction: snapshot.instruction } : {})
+    ...(snapshot.instruction ? { instruction: snapshot.instruction } : {}),
+    ...(snapshot.honorifics === 'vietnamize' ? { honorifics: { mode: 'localize' as const } } : {})
   }
 }
 
@@ -147,6 +154,9 @@ export function takeContextSnapshot(
     glossary,
     dyads,
     characters,
-    ...(instruction ? { instruction } : {})
+    ...(instruction ? { instruction } : {}),
+    ...(library.withWork(workId, (db) => readConventions(db)).honorifics.value === 'vietnamize'
+      ? { honorifics: 'vietnamize' as const }
+      : {})
   })
 }

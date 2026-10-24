@@ -6,6 +6,7 @@ import {
   readReviewInfo
 } from '../../infra/storage/contextEntries'
 import { listEntryChanges } from '../../infra/storage/contextChanges'
+import { listQuestions } from '../../infra/storage/contextQuestions'
 import { createCharacter, listDyads, setDyad } from '../../infra/storage/addressingEntries'
 import { setupAgent } from '../agent/agentTestKit'
 import type { ExtractionMessage } from '../ai/glossaryExtraction'
@@ -374,6 +375,70 @@ describe('ContextExtractionService: addressing that changes from a chapter', () 
       recipientPronoun: 'Akira',
       fromChapterId: kit.chapters[1]!.id
     })
+  })
+})
+
+describe('ContextExtractionService: questions it leaves', () => {
+  it('a nickname next to a known name is a separate entry with a "may be one" question, and the run goes on', async () => {
+    const kit = setup(
+      [{ source: '翠風', type: 'person', target: 'Thúy Phong' }],
+      ['翠風のシルフィアが現れた。翠風は笑った。'],
+      'ja'
+    )
+    const sylphia = kit.library.withWork(kit.work.id, (db) =>
+      createContextEntry(db, { source: 'シルフィア', target: 'Sylphia' })
+    )
+    const result = await kit.extract([kit.chapters[0]!.id])
+    expect(result.state).toBe('completed')
+    const questions = kit.library.withWork(kit.work.id, (db) => listQuestions(db))
+    expect(questions).toEqual([
+      expect.objectContaining({
+        kind: 'merge',
+        entrySource: '翠風',
+        otherEntryId: sylphia.id,
+        default: 'Hai mục khác nhau',
+        evidence: [expect.objectContaining({ quote: '翠風のシルフィアが現れた。翠風は笑った。' })]
+      })
+    ])
+  })
+
+  it('contradicting gender quotes leave the character unknown with a question holding both', async () => {
+    const lines = [
+      '「少年モルグ、行くぞ」とセラが言った。「モルグ、待って」とセラが言った。',
+      '「彼女、モルグは強い」とセラが言った。'
+    ]
+    const kit = setup([], lines, 'ja', [], {
+      characters: [
+        {
+          source: 'モルグ',
+          gender: 'female',
+          genderEvidence: [
+            'ch1: 「少年モルグ、行くぞ」とセラが言った。',
+            'ch2: 「彼女、モルグは強い」とセラが言った。'
+          ]
+        }
+      ],
+      dyads: [
+        {
+          from: 'セラ',
+          to: 'モルグ',
+          self: 'tôi',
+          address: 'Morg',
+          evidence: ['ch1: 「モルグ、待って」とセラが言った。']
+        }
+      ]
+    })
+    kit.library.withWork(kit.work.id, (db) => {
+      createCharacter(db, { source: 'モルグ', target: 'Morg' })
+      createCharacter(db, { source: 'セラ', target: 'Sera' })
+    })
+    await kit.extract(kit.chapters.map((chapter) => chapter.id))
+    const [question] = kit.library.withWork(kit.work.id, (db) => listQuestions(db))
+    expect(question).toMatchObject({ kind: 'gender', entrySource: 'モルグ', default: 'Không rõ' })
+    expect(question!.evidence.map((quote) => quote.quote)).toEqual([
+      '「少年モルグ、行くぞ」とセラが言った。',
+      '「彼女、モルグは強い」とセラが言った。'
+    ])
   })
 })
 

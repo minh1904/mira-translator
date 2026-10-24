@@ -279,10 +279,54 @@ model nào. Số mục `term` và số alias chỉ đo được khi chạy lại
 
   Có một cờ nhầm: 魔力操作 "Thao tác ma lực" với 魔術学院 "Học viện Ma thuật".
 
+## 9. Câu hỏi ngữ cảnh và quy ước tác phẩm (đã triển khai 2026-10-24, change `add-context-questions`)
+
+Task dịch không dừng chờ người dùng. Chỗ bước trích không chắc thì Mira áp ngay phương án mặc định an toàn, rồi
+gắn một câu hỏi lên mục. Câu hỏi nằm trong `review_flags` của mục, ở dạng một `ContextQuestion` JSON. Mỗi lựa
+chọn ứng với một hành động code, không gọi model.
+
+| Câu hỏi | Khi nào | Mặc định đã áp | Lựa chọn |
+| --- | --- | --- | --- |
+| Sửa đổi bị giữ lại (`revision_suggested`) | đề xuất của AI không qua chốt chặn | giữ nguyên | Áp cho cả truyện · Áp từ chương N · Giữ nguyên |
+| Dịch lại (`revision_suggested`) | sau một `correction` có chương đã dịch bị ảnh hưởng, khi quy ước là "hỏi" | chỉ liệt kê | Dịch lại các chương này · Chỉ liệt kê |
+| Có thể là một (`merge_suggested`) | mục mới viết liền mục đã có (`X の Y`, `X・Y`), hoặc model trả `same_as` | hai mục riêng | Gộp vào mục kia · Hai mục khác nhau |
+| Giới tính chưa chắc (`gender_uncertain`) | các câu chứng giới tính hợp lệ mâu thuẫn nhau (少年 và 彼女) | `unknown` | Nam · Nữ · Không rõ |
+
+- **Không hỏi lại.** Mỗi câu có một fingerprint: hash của loại, mục, mục kia và đề xuất. Trả lời xong thì cờ được
+  gỡ. Fingerprint cùng nhãn đã chọn được ghi vào lịch sử mục (`field = 'question'`). Câu có fingerprint đã trả
+  lời thì không được tạo lại.
+- **Gộp.** Nguồn và alias của mục mới thành alias của mục kia; bằng chứng và lịch sử chuyển sang mục kia; mục mới
+  bị xóa.
+- **Trả lời trong màn Từ điển.** Nút "Cần xem (N)" liệt kê các câu đang mở, xếp theo mức ảnh hưởng (số lần dạng
+  của mục xuất hiện trong các chương chưa dịch). Thẻ câu hỏi dùng chung giao diện với `ask_questions` của chat
+  (`QuestionForm`). Chọn "Dịch lại" thì Mira hỏi xác nhận rồi mới tạo task.
+- **Trả lời qua chat.**
+  - Mỗi lượt có tác phẩm làm đích sẽ kèm một dòng: số câu hỏi đang mở và các quy ước chưa chốt.
+  - Model đọc câu hỏi bằng `read_context_questions`, hỏi người dùng tối đa 5 câu bằng `ask_questions`, rồi áp
+    đáp án bằng `answer_context_questions`. Mỗi câu có kết quả riêng, nên một câu đã đóng không chặn các câu khác.
+  - `ask_questions` trả `autoAnswered` (Autopilot) thì model không áp đáp án và không lưu quy ước.
+- **Quy ước tác phẩm** (bảng `work_convention`, migration 20). Không có dòng nào thì là mặc định, chưa chốt.
+
+  | Quy ước | Giá trị | Mặc định |
+  | --- | --- | --- |
+  | Kiểu phiên âm tên Nhật | Hepburn có dấu · Hepburn không dấu · kiểu `ou` | Hepburn không dấu |
+  | Kính ngữ | Giữ hậu tố · Việt hóa | Giữ hậu tố |
+  | Khi sửa sai đụng chương đã dịch | Chỉ liệt kê · Hỏi có dịch lại không | Chỉ liệt kê |
+
+  - Trước task dịch đầu tiên, chat hỏi các quy ước chưa chốt trong một lần `ask_questions`, rồi lưu bằng
+    `set_work_conventions`.
+  - Xem và sửa ở mục "Quy ước của tác phẩm" trong màn Từ điển.
+  - Kiểu phiên âm đi vào prompt phân loại của bước trích. Kính ngữ đi vào bản chụp ngữ cảnh của chương, nên một
+    chương đã ghim thì giữ quy ước lúc nó bắt đầu chạy.
+  - Đổi kiểu phiên âm thì code phiên lại bằng bảng kana → romaji (`romaji.ts`) những mục tên người thỏa ba điều:
+    có cách đọc, chưa được sửa tay, và bản dịch đúng cách phiên cũ. Mỗi mục phiên lại có lịch sử với nguồn
+    `code`. Mira trả số mục đã đổi và số mục bị bỏ qua.
+
+Chưa làm: số câu hỏi trong chi tiết task ở màn Hoạt động. Màn đó đang được làm ở phần việc khác.
+
 ## 7. Câu hỏi còn mở
 
-- Chuẩn phiên romaji: Hepburn có dấu (Ryōta), không dấu (Ryota) hay `ou` (Ryouta)? Cần một quyết định
-  cho mỗi tác phẩm hoặc mặc định chung.
+- Chuẩn phiên romaji: đã thành quy ước của từng tác phẩm, mặc định Hepburn không dấu (mục 9).
 - Tên Trung: Hán Việt nên tra bằng bảng tất định thay vì để model đoán? Cần nguồn dữ liệu có giấy phép
   dùng được.
 - Quét bao nhiêu chương đầu là đủ trước khi dịch, và có quét toàn truyện khi người dùng cho phép không?

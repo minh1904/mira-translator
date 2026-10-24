@@ -22,7 +22,7 @@ import {
   buildAnalysisMessages,
   collectAddressingEvidence,
   parseAnalysis,
-  provenGender,
+  genderVerdict,
   verifiedQuotes,
   type AnalysisCharacter
 } from '../ai/addressingAnalysis'
@@ -60,6 +60,10 @@ import {
   type RevisionQuote
 } from '../../infra/storage/contextRevisions'
 import type { Db } from '../../infra/storage/sqlite'
+import { attachQuestion } from '../../infra/storage/contextQuestions'
+import { readConventions } from '../../infra/storage/workConventions'
+import type { RomanizationStyle } from '../ai/romaji'
+import { QUESTION_LABELS } from '../../../shared/contracts/contextQuestions'
 import type { LibraryStore } from '../library/library'
 
 /** One model call: the messages in, the text and reported usage out. */
@@ -208,10 +212,17 @@ function progressDyad(
     if (blocked) {
       flagRevision(db, active.id, {
         kind: 'progression',
-        fields: { target: `${input.self} / ${input.address}` },
+        fields: {},
         fromChapterId: input.fromChapterId,
         evidence: input.evidence,
-        reason: blocked
+        reason: blocked,
+        dyad: {
+          sourceCharacterId,
+          targetCharacterId,
+          self: input.self,
+          address: input.address,
+          secondPerson: input.secondPerson
+        }
       })
       return 'kept'
     }
@@ -239,6 +250,66 @@ function progressDyad(
   })
 }
 
+/**
+ * "May be one": a new term written next to an existing one as `X の Y` or `X・Y` (翠風のシルフィア), or one
+ * the model marked `same_as` an existing term. Both stay separate entries (the default); the new one
+ * carries the question.
+ */
+function askMerges(
+  db: Db,
+  fresh: ExtractedTerm[],
+  known: KnownEntry[],
+  chunk: ExtractionChapter[],
+  runId: string
+): void {
+  const lines = chunk.flatMap((chapter) =>
+    chapter.text.split(/\r?\n/).map((line) => ({ chapter, line }))
+  )
+  const idOf = (source: string): string | undefined =>
+    db
+      .prepare(
+        "SELECT id FROM context_entry WHERE kind = 'term' AND source = ? AND status != 'rejected'"
+      )
+      .get<{ id: string }>(source)?.id
+  for (const term of fresh) {
+    const entryId = idOf(term.source)
+    if (!entryId) continue
+    const mine = [term.source, ...(term.aliases ?? [])]
+    for (const other of known) {
+      const theirs = [other.source, ...other.aliases]
+      const same = term.same_as === other.source
+      const hit = lines.find(({ line }) =>
+        mine.some((a) =>
+          theirs.some((b) =>
+            [`${a}の${b}`, `${b}の${a}`, `${a}・${b}`, `${b}・${a}`].some((pair) =>
+              line.includes(pair)
+            )
+          )
+        )
+      )
+      if (!same && !hit) continue
+      attachQuestion(db, entryId, {
+        kind: 'merge',
+        title: `Có thể là một: ${term.source} và ${other.source}`,
+        options: [QUESTION_LABELS.merge, QUESTION_LABELS.distinct],
+        default: QUESTION_LABELS.distinct,
+        fromChapterId: null,
+        otherEntryId: other.id,
+        proposal: null,
+        evidence: hit
+          ? [
+              {
+                chapterId: (hit.chapter as { id?: string }).id ?? null,
+                quote: hit.line.trim().slice(0, 200)
+              }
+            ]
+          : [],
+        runId
+      })
+    }
+  }
+}
+
 /** Verbatim lines of `chapters` that contain `form`, one per chapter. */
 function quotesOf(
   form: string,
@@ -253,12 +324,15 @@ function quotesOf(
   return quotes
 }
 
-/** Identifies the prompt version of a source language: both system prompts, hashed. */
-export function extractionPromptHash(sourceLang: string): string {
+/** Identifies the prompt version of a source language (and naming style): both system prompts, hashed. */
+export function extractionPromptHash(
+  sourceLang: string,
+  romanization: RomanizationStyle = 'hepburn_plain'
+): string {
   const text =
     buildSweepMessages(sourceLang, [])[0]!.content +
     '\n' +
-    buildClassifyMessages(sourceLang, [])[0]!.content
+    buildClassifyMessages(sourceLang, [], [], [], romanization)[0]!.content
   return 'sha256:' + createHash('sha256').update(text).digest('hex')
 }
 
@@ -300,7 +374,9 @@ export class ContextExtractionService {
         return { text: result.text, usage: result.usage }
       })
     const model = translator.entry.model
-    const promptHash = extractionPromptHash(sourceLang)
+    const romanization = this.library.withWork(input.workId, (db) => readConventions(db))
+      .ja_romanization.value
+    const promptHash = extractionPromptHash(sourceLang, romanization)
 
     const numbers = new Map(
       this.library.listChapters(input.workId).map((chapter) => [chapter.id, chapter.number])
@@ -388,7 +464,8 @@ export class ContextExtractionService {
             sourceLang,
             batch,
             knownForBatch(batch, known),
-            first ? inChunk : []
+            first ? inChunk : [],
+            romanization
           )
           first = false
           const text = await ask(messages)
@@ -474,6 +551,7 @@ export class ContextExtractionService {
               now: now()
             })
             this.applyRevisions(db, revisions, inChunk, chunk, corpus, runId, now())
+            askMerges(db, fresh, known, chunk, runId)
             return result
           })
         )
@@ -674,11 +752,15 @@ export class ContextExtractionService {
       return []
     }
     const facts = new Map(result.characters.map((each) => [each.source, each]))
+    // People whose gender quotes contradict each other: `unknown` now, and a question afterwards.
+    const conflicts = new Map<string, Array<{ chapter: number; quote: string }>>()
     const person = (source: string): AddressingProposal['from'] | null => {
       const known = people.get(source)
       if (!known) return null
       const fact = facts.get(source)
-      const gender = provenGender(fact, [known.source, ...(known.aliases ?? [])], chapters)
+      const verdict = genderVerdict(fact, [known.source, ...(known.aliases ?? [])], chapters)
+      if (verdict.conflict) conflicts.set(known.source, verdict.conflict)
+      const gender = verdict.gender
       return {
         source: known.source,
         target: known.target,
@@ -731,13 +813,35 @@ export class ContextExtractionService {
         }))
       })
     }
-    if (proposals.length === 0) return changed
     const promptHash = 'sha256:' + createHash('sha256').update(messages[0]!.content).digest('hex')
-    return [
-      ...changed,
-      ...this.library.withWork(workId, (db) =>
-        saveAddressingProposals(db, { runId, model, promptHash, proposals, now })
-      )
-    ]
+    const saved =
+      proposals.length === 0
+        ? []
+        : this.library.withWork(workId, (db) =>
+            saveAddressingProposals(db, { runId, model, promptHash, proposals, now })
+          )
+    if (conflicts.size > 0) {
+      this.library.withWork(workId, (db) => {
+        for (const character of listCharacters(db)) {
+          const quotes = conflicts.get(character.source)
+          if (!quotes || character.gender !== 'unknown') continue
+          attachQuestion(db, character.id, {
+            kind: 'gender',
+            title: `Giới tính chưa chắc: ${character.target || character.source}`,
+            options: [QUESTION_LABELS.male, QUESTION_LABELS.female, QUESTION_LABELS.unknown],
+            default: QUESTION_LABELS.unknown,
+            fromChapterId: null,
+            otherEntryId: null,
+            proposal: null,
+            evidence: quotes.map((quote) => ({
+              chapterId: chapters.find((chapter) => chapter.number === quote.chapter)?.id ?? null,
+              quote: quote.quote
+            })),
+            runId
+          })
+        }
+      })
+    }
+    return [...changed, ...saved]
   }
 }

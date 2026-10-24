@@ -10,12 +10,18 @@ import {
   updateGlossaryEntrySchema
 } from '../../../shared/contracts/glossary'
 import { idSchema } from '../../../shared/contracts/library'
+import {
+  answerContextQuestionSchema,
+  setWorkConventionSchema
+} from '../../../shared/contracts/contextQuestions'
+import { ContextQuestionService } from '../../services/context/contextQuestionService'
 import { StorageError } from '../../infra/storage/errors'
 import { createHandler } from '../handler'
 import { glossaryOf, type AreaHandlers, type HandlerDeps } from './deps'
 
 export function glossaryHandlers(deps: HandlerDeps): AreaHandlers<'glossary'> {
   const glossary = glossaryOf(deps)
+  const questions = new ContextQuestionService(deps.library)
   return {
     [CHANNELS.glossaryList]: createHandler(listGlossarySchema, (input) => ({
       entries: glossary.list(input.workId, {
@@ -50,6 +56,18 @@ export function glossaryHandlers(deps: HandlerDeps): AreaHandlers<'glossary'> {
     })),
     [CHANNELS.glossaryApplied]: createHandler(appliedContextSchema, (input) =>
       glossary.applied(input.workId, input.chapterId)
+    ),
+    [CHANNELS.glossaryQuestions]: createHandler(v.strictObject({ workId: idSchema }), (input) =>
+      questions.list(input.workId)
+    ),
+    [CHANNELS.glossaryAnswerQuestion]: createHandler(answerContextQuestionSchema, (input) =>
+      questions.answer(input.workId, input.questionId, input.label)
+    ),
+    [CHANNELS.glossaryConventions]: createHandler(v.strictObject({ workId: idSchema }), (input) =>
+      questions.conventions(input.workId)
+    ),
+    [CHANNELS.glossarySetConvention]: createHandler(setWorkConventionSchema, (input) =>
+      questions.setConvention(input.workId, input.key, input.value)
     ),
     [CHANNELS.glossaryHistory]: createHandler(
       v.strictObject({ workId: idSchema, entryId: idSchema }),

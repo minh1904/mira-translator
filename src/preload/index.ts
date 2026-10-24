@@ -66,6 +66,11 @@ import type { WorkspaceLoad, WorkspaceState } from '../shared/contracts/workspac
 import type { SegmentInput, TextRecord, TextSide } from '../shared/contracts/text'
 import type { TaskQualityView } from '../shared/contracts/taskQuality'
 import type {
+  AnswerContextQuestionResult,
+  ContextQuestionView,
+  WorkConventions
+} from '../shared/contracts/contextQuestions'
+import type {
   AppliedContext,
   ContextEntryHistory,
   ContextEntryItem,
@@ -344,6 +349,22 @@ const desktopApi: DesktopApi = {
   glossary: {
     history: (options) =>
       ipcRenderer.invoke(CHANNELS.glossaryHistory, options) as Promise<Result<ContextEntryHistory>>,
+    questions: (workId) =>
+      ipcRenderer.invoke(CHANNELS.glossaryQuestions, { workId }) as Promise<
+        Result<ContextQuestionView[]>
+      >,
+    answerQuestion: (input) =>
+      ipcRenderer.invoke(CHANNELS.glossaryAnswerQuestion, input) as Promise<
+        Result<AnswerContextQuestionResult>
+      >,
+    conventions: (workId) =>
+      ipcRenderer.invoke(CHANNELS.glossaryConventions, { workId }) as Promise<
+        Result<WorkConventions>
+      >,
+    setConvention: (input) =>
+      ipcRenderer.invoke(CHANNELS.glossarySetConvention, input) as Promise<
+        Result<{ conventions: WorkConventions; renamed: number; skipped: number }>
+      >,
     list: (options) =>
       ipcRenderer.invoke(CHANNELS.glossaryList, options) as Promise<
         Result<{ entries: ContextEntryItem[] }>

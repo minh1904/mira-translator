@@ -120,7 +120,7 @@ export const ANALYSIS_OUTPUT_EXAMPLE = {
     {
       source: 'ミリィ',
       gender: 'female',
-      genderEvidence: 'ch2: ミリィは優しい娘だった。',
+      genderEvidence: ['ch2: ミリィは優しい娘だった。'],
       thirdPerson: 'cô',
       notes: 'Hầu gái nuôi Rion từ bé; luôn nói kính ngữ'
     }
@@ -219,7 +219,7 @@ export function buildAnalysisMessages(input: {
     '- "address" là cách gọi người nghe như bản gốc (tên kèm hậu tố, danh xưng, hoặc đại từ). Nếu "address" là tên hoặc danh xưng thì BẮT BUỘC có "secondPerson": đại từ tiếng Việt dùng khi bản gốc lược chủ ngữ hoặc dùng あなた/貴方/你.',
     '- "secondPerson" phải hợp vai: người dưới gọi người trên không dùng đại từ hạ vai (hầu gái nói kính ngữ với con trai nhà chủ: "cậu", không phải "em").',
     '- Chỉ đề xuất cặp có ít nhất một câu bằng chứng; trích nguyên câu gốc kèm số chương. Không chắc thì ghi rõ trong "notes" và để "confidence": "thấp".',
-    '- "gender" male/female BẮT BUỘC kèm "genderEvidence": một câu nguyên văn có tên nhân vật và một từ chỉ giới tính (女, 男, 娘, 少女, 少年, 彼女, 彼…). Đại từ tự xưng 僕, 俺, 私 không phải bằng chứng giới tính. Không có câu như vậy: "unknown".',
+    '- "gender" male/female BẮT BUỘC kèm "genderEvidence": danh sách câu nguyên văn (mỗi câu một chương), mỗi câu có tên nhân vật và một từ chỉ giới tính (女, 男, 娘, 少女, 少年, 彼女, 彼…). Đại từ tự xưng 僕, 俺, 私 không phải bằng chứng giới tính. Không có câu như vậy: "unknown".',
     '- Không bịa nhân vật mới; dùng đúng "source" đã cho.',
     '- <possible_changes> là chỗ cách gọi một nhân vật đổi giữa hai chương. Nếu câu thoại cho thấy một cặp đổi cách xưng hô từ một chương và giữ cách mới về sau, trả cặp đó kèm "fromChapter" (số chương bắt đầu) và câu chứng ở ít nhất hai chương từ chương đó trở đi. Đổi chỉ trong một cảnh (cãi nhau, nói đùa) thì không ghi "fromChapter".',
     '</rules>',
@@ -340,9 +340,33 @@ export function provenGender(
   forms: string[],
   chapters: ChapterSource[]
 ): 'male' | 'female' | 'unknown' {
-  if (fact?.gender !== 'male' && fact?.gender !== 'female') return 'unknown'
-  const proven = verifiedQuotes([fact.genderEvidence], chapters).some(
+  return genderVerdict(fact, forms, chapters).gender
+}
+
+const FEMALE_WORD = /女|娘|母|姉|妹/u
+const MALE_WORD = /男|少年|彼(?!女)|父|兄|弟/u
+
+/**
+ * Like `provenGender`, and also tells when the valid quotes contradict each other (少年 in one, 彼女 in
+ * another): then the gender is `unknown` and `conflict` holds the quotes for a question to the person.
+ */
+export function genderVerdict(
+  fact: { gender?: unknown; genderEvidence?: unknown } | undefined,
+  forms: string[],
+  chapters: ChapterSource[]
+): {
+  gender: 'male' | 'female' | 'unknown'
+  conflict: Array<{ chapter: number; quote: string }> | null
+} {
+  if (fact?.gender !== 'male' && fact?.gender !== 'female')
+    return { gender: 'unknown', conflict: null }
+  const raw = Array.isArray(fact.genderEvidence) ? fact.genderEvidence : [fact.genderEvidence]
+  const valid = verifiedQuotes(raw, chapters).filter(
     ({ quote }) => GENDER_WORD.test(quote) && forms.some((form) => form && quote.includes(form))
   )
-  return proven ? fact.gender : 'unknown'
+  if (valid.length === 0) return { gender: 'unknown', conflict: null }
+  const female = valid.some(({ quote }) => FEMALE_WORD.test(quote))
+  const male = valid.some(({ quote }) => MALE_WORD.test(quote.replace(/彼女/gu, '')))
+  if (female && male) return { gender: 'unknown', conflict: valid }
+  return { gender: fact.gender, conflict: null }
 }
